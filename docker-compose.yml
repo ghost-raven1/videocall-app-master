@@ -74,8 +74,8 @@ services:
         chmod -R 755 /app/logs &&
         echo '🗄️ Running database migrations...' &&
         python manage.py migrate &&
-        echo '📦 Collecting static files using simple script...' &&
-        /usr/local/bin/collect_static_simple.sh &&
+        echo '📦 Collecting static files...' &&
+        python manage.py collectstatic --noinput --clear &&
         echo '🔧 Setting final permissions...' &&
         chown -R 1000:1000 /staticfiles /app/media /app/logs &&
         echo '✅ Video call app initialization complete!'
