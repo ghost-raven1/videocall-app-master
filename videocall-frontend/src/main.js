@@ -2,7 +2,8 @@
 import { createApp } from 'vue'
 import { createI18n } from 'vue-i18n'
 import { createPinia } from 'pinia'
-import { ru, en } from './assets/locales';
+import ru from './locales/ru';
+import en from './locales/en';
 import router from './router'
 import App from './App.vue'
 import { apiService } from './services/api'
