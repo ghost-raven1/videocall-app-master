@@ -127,8 +127,8 @@ services:
         echo '🌐 Starting Django backend with Daphne (WebSocket support)...' &&
         echo '📊 Verifying configuration...' &&
         python manage.py check &&
-        echo '📦 Ensuring static files are collected...' &&
-        python ensure_static_files.py &&
+        echo '📦 Collecting static files...' &&
+        python manage.py collectstatic --noinput --clear &&
         echo '🔌 Starting Daphne server...' &&
         daphne -b 0.0.0.0 -p 8000 videocall_app.asgi:application --access-log - --verbosity 2
       "
