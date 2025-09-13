@@ -917,6 +917,7 @@ watch(
         const videoElement = remoteVideoRefs.value.get(participantId)
         if (videoElement && stream) {
           videoElement.srcObject = stream
+          console.log('Video element updated for participant:', participantId, 'Audio tracks:', stream.getAudioTracks().length, 'Video tracks:', stream.getVideoTracks().length)
         }
       })
     })

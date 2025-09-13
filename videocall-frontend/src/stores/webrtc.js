@@ -113,6 +113,47 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  const updateLocalMediaForParticipantCount = async (participantCount) => {
+    try {
+      if (!localStream.value) return { success: false, error: 'No local stream' }
+
+      const newConstraints = getMediaConstraints(participantCount)
+      
+      // Обновляем настройки медиа
+      mediaConstraints.value = newConstraints
+
+      // Получаем новый поток с обновленными настройками
+      const newStream = await navigator.mediaDevices.getUserMedia(newConstraints)
+      
+      // Останавливаем старые треки
+      localStream.value.getTracks().forEach(track => track.stop())
+      
+      // Заменяем поток
+      localStream.value = newStream
+
+      // Обновляем треки во всех существующих peer connections
+      peerConnections.value.forEach((peerConnection, participantId) => {
+        // Удаляем старые треки
+        const senders = peerConnection.getSenders()
+        senders.forEach(sender => {
+          if (sender.track) {
+            peerConnection.removeTrack(sender)
+          }
+        })
+
+        // Добавляем новые треки
+        newStream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, newStream)
+        })
+      })
+
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to update local media:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
   const createPeerConnection = (participantId) => {
     try {
       // Ensure participantId is a string
@@ -129,7 +170,11 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       // Handle remote stream
       peerConnection.ontrack = (event) => {
         console.log('Received remote track from:', safeParticipantId, event)
-        remoteStreams.value.set(safeParticipantId, event.streams[0])
+        const remoteStream = event.streams[0]
+        if (remoteStream) {
+          remoteStreams.value.set(safeParticipantId, remoteStream)
+          console.log('Remote stream added for participant:', safeParticipantId, 'Audio tracks:', remoteStream.getAudioTracks().length, 'Video tracks:', remoteStream.getVideoTracks().length)
+        }
       }
 
       // Handle ICE candidates
@@ -270,7 +315,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
-  const handleUserJoined = (data) => {
+  const handleUserJoined = async (data) => {
     const participantId = String(data.participant_id || 'unknown')
 
     if (!remoteParticipants.value.find((p) => p.id === participantId)) {
@@ -283,9 +328,11 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
     globalStore.addNotification('Someone joined the call', 'info', 3000)
 
-    // Обновляем настройки медиа при увеличении количества участников
+    // Обновляем медиа поток при увеличении количества участников
     const newParticipantCount = remoteParticipants.value.length + 1
-    mediaConstraints.value = getMediaConstraints(newParticipantCount)
+    if (newParticipantCount > 3) {
+      await updateLocalMediaForParticipantCount(newParticipantCount)
+    }
 
     // Create peer connection for the new participant
     if (localStream.value) {
@@ -301,10 +348,6 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     remoteParticipants.value = remoteParticipants.value.filter((p) => p.id !== participantId)
 
     globalStore.addNotification('Someone left the call', 'info', 3000)
-
-    // Обновляем настройки медиа при уменьшении количества участников
-    const newParticipantCount = remoteParticipants.value.length + 1
-    mediaConstraints.value = getMediaConstraints(newParticipantCount)
 
     // Close peer connection and remove stream
     const peerConnection = peerConnections.value.get(participantId)
@@ -574,6 +617,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
     // Actions
     initializeLocalMedia,
+    updateLocalMediaForParticipantCount,
     createPeerConnection,
     connectWebSocket,
     createOffer,
