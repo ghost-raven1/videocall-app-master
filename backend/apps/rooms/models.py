@@ -124,7 +124,7 @@ class RoomManager:
 
         # Check participant limit
         current_participants = room_data.get('participants', [])
-        max_participants = room_data.get('max_participants', 2)
+        max_participants = room_data.get('max_participants', 100)
 
         if len(current_participants) >= max_participants:
             return None, "Room is full"

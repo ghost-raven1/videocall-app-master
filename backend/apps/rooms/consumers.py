@@ -41,7 +41,7 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
 
             # Check room capacity
             participants = room_data.get('participants', [])
-            max_participants = room_data.get('max_participants', 2)
+            max_participants = room_data.get('max_participants', 100)
 
             if len(participants) >= max_participants and self.participant_id not in participants:
                 await self.close(code=4003)  # Room is full

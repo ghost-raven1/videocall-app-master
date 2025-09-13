@@ -102,22 +102,27 @@
 
     <!-- Video Container -->
     <div class="flex-1 relative overflow-hidden">
-      <!-- Remote Video (main) -->
-      <div v-if="webrtcStore.hasRemoteVideo" class="absolute inset-0">
-        <video
-          ref="remoteVideoRef"
-          autoplay
-          playsinline
-          class="w-full h-full object-cover"
-          @loadedmetadata="onRemoteVideoLoaded"
-        ></video>
-
-        <!-- Remote video overlay info -->
-        <div
-          v-if="showVideoInfo"
-          class="absolute top-4 left-4 bg-black bg-opacity-50 px-3 py-2 rounded-lg text-white text-sm"
-        >
-          <p>{{ remoteVideoInfo }}</p>
+      <!-- Multiple Remote Videos Grid -->
+      <div v-if="webrtcStore.hasRemoteVideo" class="absolute inset-0 p-2">
+        <div :class="getVideoGridClass()">
+          <div
+            v-for="(stream, participantId) in webrtcStore.remoteStreams"
+            :key="participantId"
+            class="relative bg-gray-800 rounded-lg overflow-hidden"
+          >
+            <video
+              :ref="el => setRemoteVideoRef(el, participantId)"
+              autoplay
+              playsinline
+              class="w-full h-full object-cover"
+              @loadedmetadata="onRemoteVideoLoaded"
+            ></video>
+            
+            <!-- Participant name overlay -->
+            <div class="absolute bottom-2 left-2 bg-black bg-opacity-50 px-2 py-1 rounded text-white text-xs">
+              {{ participantId.substring(0, 8) }}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -549,7 +554,7 @@ const globalStore = useGlobalStore()
 
 // Template refs
 const localVideoRef = ref(null)
-const remoteVideoRef = ref(null)
+const remoteVideoRefs = ref(new Map()) // Map of participantId -> video element
 
 // Reactive state
 const roomInfo = ref(null)
@@ -609,8 +614,19 @@ const connectionStatusColor = computed(() => {
 })
 
 const participantCount = computed(() => {
-  return webrtcStore.remoteParticipants.length + 1 // +1 for local participant
+  return webrtcStore.connectedParticipantsCount + 1 // +1 for local participant
 })
+
+// Get CSS class for video grid based on number of participants
+const getVideoGridClass = () => {
+  const participantCount = webrtcStore.remoteStreams.size
+  if (participantCount === 0) return ''
+  if (participantCount === 1) return 'grid grid-cols-1 h-full'
+  if (participantCount === 2) return 'grid grid-cols-2 gap-2 h-full'
+  if (participantCount <= 4) return 'grid grid-cols-2 gap-2 h-full'
+  if (participantCount <= 6) return 'grid grid-cols-3 gap-2 h-full'
+  return 'grid grid-cols-4 gap-2 h-full'
+}
 
 const roomLink = computed(() => {
   if (roomInfo.value) {
@@ -740,11 +756,7 @@ const initializeCall = async () => {
     connectingMessage.value = 'Setting up connection...'
     connectingSubMessage.value = 'Preparing for video call'
 
-    // Create peer connection
-    const peerResult = webrtcStore.createPeerConnection()
-    if (!peerResult.success) {
-      throw new Error('Failed to create peer connection')
-    }
+    // Note: Peer connections will be created automatically when other users join
 
     connectingMessage.value = 'Connecting to room...'
     connectingSubMessage.value = 'Almost ready'
@@ -855,10 +867,19 @@ const onRemoteVideoLoaded = () => {
   }, 3000)
 }
 
+// Set remote video ref for a specific participant
+const setRemoteVideoRef = (el, participantId) => {
+  if (el) {
+    remoteVideoRefs.value.set(participantId, el)
+  }
+}
+
 const startStatsMonitoring = () => {
-  if (webrtcStore.peerConnection) {
+  // Monitor the first available peer connection for overall stats
+  if (webrtcStore.peerConnections.size > 0) {
+    const firstConnection = webrtcStore.peerConnections.values().next().value
     statsMonitor.value = webrtcService.createQualityMonitor(
-      webrtcStore.peerConnection,
+      firstConnection,
       (quality, stats) => {
         connectionStats.value = stats
       },
@@ -880,16 +901,20 @@ watch(
   { immediate: true },
 )
 
+// Watch for remote streams changes
 watch(
-  () => webrtcStore.remoteStream,
-  (newStream) => {
+  () => webrtcStore.remoteStreams,
+  (newStreams) => {
     nextTick(() => {
-      if (remoteVideoRef.value && newStream) {
-        remoteVideoRef.value.srcObject = newStream
-      }
+      newStreams.forEach((stream, participantId) => {
+        const videoElement = remoteVideoRefs.value.get(participantId)
+        if (videoElement && stream) {
+          videoElement.srcObject = stream
+        }
+      })
     })
   },
-  { immediate: true },
+  { immediate: true, deep: true },
 )
 
 // Update call duration
