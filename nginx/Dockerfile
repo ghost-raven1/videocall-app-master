@@ -1,14 +1,14 @@
 FROM nginx:alpine
 
 # Копируем конфигурацию nginx
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY nginx/nginx.conf /etc/nginx/nginx.conf
 
 # Создаем директорию для статических файлов
 RUN mkdir -p /staticfiles
 
 # Копируем статические файлы Django (если они есть)
 # Это будет работать только если статические файлы уже собраны
-COPY ../backend/staticfiles/ /staticfiles/ 2>/dev/null || true
+COPY backend/staticfiles/ /staticfiles/ 2>/dev/null || true
 
 # Устанавливаем правильные права доступа
 RUN chown -R nginx:nginx /staticfiles && \

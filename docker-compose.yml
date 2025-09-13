@@ -150,9 +150,7 @@ services:
 
   # Nginx Reverse Proxy with WebSocket support
   nginx:
-    build:
-      context: ./nginx
-      dockerfile: Dockerfile
+    image: nginx:alpine
     ports:
       - "80:80"
       - "443:443"
