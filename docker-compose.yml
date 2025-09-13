@@ -128,7 +128,7 @@ services:
         echo '📊 Verifying configuration...' &&
         python manage.py check &&
         echo '📦 Ensuring static files are collected...' &&
-        /usr/local/bin/collect_static_simple.sh &&
+        python ensure_static_files.py &&
         echo '🔌 Starting Daphne server...' &&
         daphne -b 0.0.0.0 -p 8000 videocall_app.asgi:application --access-log - --verbosity 2
       "
@@ -150,7 +150,9 @@ services:
 
   # Nginx Reverse Proxy with WebSocket support
   nginx:
-    image: nginx:alpine
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
     ports:
       - "80:80"
       - "443:443"
