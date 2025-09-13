@@ -275,7 +275,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # Application-specific settings
 ROOM_EXPIRY_HOURS = 24
-MAX_PARTICIPANTS_PER_ROOM = 2
+MAX_PARTICIPANTS_PER_ROOM = 100
 SHORT_CODE_LENGTH = 6
 
 # Default primary key field type
