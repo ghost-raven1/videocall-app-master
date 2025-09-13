@@ -10,7 +10,7 @@ SECRET_KEY = config('SECRET_KEY', default='your-secret-key-here-change-in-produc
 DEBUG = config('DEBUG', default=False, cast=bool)
 
 # ALLOWED_HOSTS - только ваши настоящие домены
-allowed_hosts_default = 'yourdomain.com,www.yourdomain.com,localhost,127.0.0.1'
+allowed_hosts_default = 'video-call-ghost.ru,www.video-call-ghost.ru,localhost,127.0.0.1'
 ALLOWED_HOSTS = config('ALLOWED_HOSTS', default=allowed_hosts_default).split(',')
 
 # Убираем пустые строки и пробелы
@@ -135,8 +135,8 @@ CSRF_TRUSTED_ORIGINS = [
 if not DEBUG:
     # Add your production domains
     CSRF_TRUSTED_ORIGINS.extend([
-        'https://yourdomain.com',
-        'https://www.yourdomain.com',
+        'https://video-call-ghost.ru',
+        'https://www.video-call-ghost.ru',
     ])
 
 # REST Framework configuration

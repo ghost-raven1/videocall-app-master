@@ -123,7 +123,7 @@ sudo apt install nginx certbot python3-certbot-nginx
 
 **Получение сертификатов Let's Encrypt:**
 ```bash
-sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+sudo certbot --nginx -d video-call-ghost.ru -d www.video-call-ghost.ru
 ```
 
 **Остановка системного Nginx после получения сертификатов:**
@@ -144,18 +144,18 @@ cp env.example .env
 # Основные настройки
 DEBUG=False
 SECRET_KEY=your-super-secret-django-key-here
-DOMAIN_NAME=yourdomain.com
+DOMAIN_NAME=video-call-ghost.ru
 
 # База данных
 POSTGRES_PASSWORD=strong-database-password
 
 # Пути к SSL сертификатам
-SSL_CERT_PATH=/etc/letsencrypt/live/yourdomain.com/fullchain.pem
-SSL_KEY_PATH=/etc/letsencrypt/live/yourdomain.com/privkey.pem
+SSL_CERT_PATH=/etc/letsencrypt/live/video-call-ghost.ru/fullchain.pem
+SSL_KEY_PATH=/etc/letsencrypt/live/video-call-ghost.ru/privkey.pem
 
 # Домены
-ALLOWED_HOSTS=yourdomain.com,www.yourdomain.com
-CORS_ALLOWED_ORIGINS=https://yourdomain.com,https://www.yourdomain.com
+ALLOWED_HOSTS=video-call-ghost.ru,www.video-call-ghost.ru
+CORS_ALLOWED_ORIGINS=https://video-call-ghost.ru,https://www.video-call-ghost.ru
 ```
 
 **Обновите nginx.conf:**
