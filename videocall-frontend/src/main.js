@@ -12,6 +12,8 @@ import './style.css'
 const app = createApp(App)
 const pinia = createPinia()
 const i18n = createI18n({
+  legacy: false,
+  globalInjection: true,
   locale: 'ru',
   fallbackLocale: 'en',
   messages: {
