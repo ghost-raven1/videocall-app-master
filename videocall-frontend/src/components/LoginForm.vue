@@ -16,8 +16,8 @@
             ></path>
           </svg>
         </div>
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-2">Video Call</h1>
-        <p class="text-gray-600 dark:text-gray-300">Enter the access password to continue</p>
+        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-2">{{ $t('app.name') }}</h1>
+        <p class="text-gray-600 dark:text-gray-300">{{ $t('login.desc') }}</p>
       </div>
 
       <form @submit.prevent="handleLogin" class="space-y-6">
@@ -26,7 +26,7 @@
             for="password"
             class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
           >
-            Password
+            {{ $t('login.password') }}
           </label>
           <input
             id="password"
@@ -47,16 +47,16 @@
           >
             <span v-if="isLoading" class="flex items-center justify-center">
               <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-              Signing in...
+              {{ $t('login.signingIn') }}
             </span>
-            <span v-else>Sign In</span>
+            <span v-else>{{ $t('login.signIn') }}</span>
           </button>
         </div>
       </form>
 
       <div class="mt-6 text-center">
         <p class="text-xs text-gray-500 dark:text-gray-400">
-          Secure video calling without registration
+          {{ $t('app.desc') }}
         </p>
       </div>
     </div>

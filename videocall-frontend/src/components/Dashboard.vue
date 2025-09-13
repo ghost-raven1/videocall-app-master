@@ -17,7 +17,9 @@
               ></path>
             </svg>
           </div>
-          <h1 class="text-xl font-semibold text-gray-900 dark:text-white">Video Call</h1>
+          <h1 class="text-xl font-semibold text-gray-900 dark:text-white">
+            {{ $t('dashboard.videoCall') }}
+          </h1>
         </div>
 
         <button
@@ -46,16 +48,16 @@
       <!-- Action Buttons -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <ActionCard
-          title="Create Link"
-          description="Start a new video call and share the link"
+          :title="$t('dashboard.cards.createLink.title')"
+          :description="$t('dashboard.cards.createLink.desc')"
           icon="plus"
           :loading="roomsStore.isCreatingRoom"
           @click="handleCreateRoom"
         />
 
         <ActionCard
-          title="Join Call"
-          description="Enter a room code or link to join"
+          :title="$t('dashboard.cards.joinCall.title')"
+          :description="$t('dashboard.cards.joinCall.desc')"
           icon="login"
           @click="showJoinModal = true"
         />
@@ -63,7 +65,9 @@
 
       <!-- Room History -->
       <div v-if="roomsStore.roomHistory.length > 0" class="mb-8">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Recent Rooms</h2>
+        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          {{ $t('dashboard.recentRooms') }}
+        </h2>
         <div class="space-y-2">
           <div
             v-for="room in roomsStore.roomHistory.slice(0, 5)"
@@ -71,7 +75,9 @@
             class="card p-4 flex items-center justify-between"
           >
             <div class="flex-1">
-              <p class="font-medium text-gray-900 dark:text-white">{{ room.short_code }}</p>
+              <p class="font-medium text-gray-900 dark:text-white">
+                {{ room.short_code }}
+              </p>
               <p class="text-sm text-gray-500 dark:text-gray-400">
                 {{ utils.formatRelativeTime(new Date(room.joined_at)) }}
               </p>
@@ -81,7 +87,7 @@
               :disabled="roomsStore.isJoiningRoom"
               class="btn-secondary px-4 py-2 text-sm"
             >
-              Rejoin
+              {{ $t('dashboard.rejoin') }}
             </button>
           </div>
         </div>
@@ -96,7 +102,9 @@
         @click="showJoinModal = false"
       >
         <div class="card w-full max-w-md p-6 animate-slide-up" @click.stop>
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Join Video Call</h3>
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            Join Video Call
+          </h3>
 
           <form @submit.prevent="handleJoinSubmit" class="space-y-4">
             <div>
