@@ -74,8 +74,8 @@ services:
         chmod -R 755 /app/logs &&
         echo '🗄️ Running database migrations...' &&
         python manage.py migrate &&
-        echo '📦 Collecting static files...' &&
-        python manage.py collectstatic --noinput --clear &&
+        echo '📦 Collecting static files using simple script...' &&
+        /usr/local/bin/collect_static_simple.sh &&
         echo '🔧 Setting final permissions...' &&
         chown -R 1000:1000 /staticfiles /app/media /app/logs &&
         echo '✅ Video call app initialization complete!'
@@ -127,6 +127,8 @@ services:
         echo '🌐 Starting Django backend with Daphne (WebSocket support)...' &&
         echo '📊 Verifying configuration...' &&
         python manage.py check &&
+        echo '📦 Ensuring static files are collected...' &&
+        /usr/local/bin/collect_static_simple.sh &&
         echo '🔌 Starting Daphne server...' &&
         daphne -b 0.0.0.0 -p 8000 videocall_app.asgi:application --access-log - --verbosity 2
       "

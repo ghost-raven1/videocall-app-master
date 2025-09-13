@@ -23,6 +23,11 @@ RUN groupadd -r appuser -g 1000 && useradd -r -g appuser -u 1000 appuser
 # Копирование исходного кода
 COPY . .
 
+# Копирование скриптов для сбора статических файлов
+COPY collect_static.sh /usr/local/bin/collect_static.sh
+COPY collect_static_simple.sh /usr/local/bin/collect_static_simple.sh
+RUN chmod +x /usr/local/bin/collect_static.sh /usr/local/bin/collect_static_simple.sh
+
 # Создание директорий для статических файлов, медиа и логов с правильными правами
 RUN mkdir -p /app/staticfiles /app/media /app/logs && \
     chown -R appuser:appuser /app && \
