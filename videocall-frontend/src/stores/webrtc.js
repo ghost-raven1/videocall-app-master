@@ -20,19 +20,42 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   const isNegotiating = ref(new Map()) // Map of participant_id -> boolean
   const pendingOffers = ref(new Map()) // Map of participant_id -> array of offers
 
-  // Media constraints
-  const mediaConstraints = ref({
-    video: {
+  // Media constraints - адаптивные под количество участников
+  const getMediaConstraints = (participantCount = 1) => {
+    // Адаптируем качество под количество участников
+    let videoConfig = {
       width: { ideal: 1280, max: 1920 },
       height: { ideal: 720, max: 1080 },
       frameRate: { ideal: 30, max: 60 },
-    },
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  })
+    }
+
+    if (participantCount > 6) {
+      // Для больших групп снижаем качество
+      videoConfig = {
+        width: { ideal: 640, max: 1280 },
+        height: { ideal: 480, max: 720 },
+        frameRate: { ideal: 15, max: 30 },
+      }
+    } else if (participantCount > 3) {
+      // Для средних групп умеренное качество
+      videoConfig = {
+        width: { ideal: 960, max: 1280 },
+        height: { ideal: 540, max: 720 },
+        frameRate: { ideal: 20, max: 30 },
+      }
+    }
+
+    return {
+      video: videoConfig,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    }
+  }
+
+  const mediaConstraints = ref(getMediaConstraints(1))
 
   // Computed
   const hasLocalVideo = computed(() => localStream.value !== null)
@@ -92,6 +115,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
   const createPeerConnection = (participantId) => {
     try {
+      // Ensure participantId is a string
+      const safeParticipantId = String(participantId || 'unknown')
       const peerConnection = new RTCPeerConnection(rtcConfiguration)
 
       // Add local stream tracks to peer connection
@@ -103,8 +128,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
       // Handle remote stream
       peerConnection.ontrack = (event) => {
-        console.log('Received remote track from:', participantId, event)
-        remoteStreams.value.set(participantId, event.streams[0])
+        console.log('Received remote track from:', safeParticipantId, event)
+        remoteStreams.value.set(safeParticipantId, event.streams[0])
       }
 
       // Handle ICE candidates
@@ -113,25 +138,25 @@ export const useWebRTCStore = defineStore('webrtc', () => {
           sendWebSocketMessage({
             type: 'ice_candidate',
             candidate: event.candidate,
-            target: participantId,
+            target: safeParticipantId,
           })
         }
       }
 
       // Handle connection state changes
       peerConnection.onconnectionstatechange = () => {
-        console.log(`Connection state with ${participantId}:`, peerConnection.connectionState)
+        console.log(`Connection state with ${safeParticipantId}:`, peerConnection.connectionState)
         
         if (peerConnection.connectionState === 'connected') {
           isConnected.value = true
-          globalStore.addNotification(`Connected to ${participantId}`, 'success', 2000)
+          globalStore.addNotification(`Connected to ${safeParticipantId}`, 'success', 2000)
         } else if (peerConnection.connectionState === 'disconnected' || peerConnection.connectionState === 'failed') {
           // Remove the connection and stream
-          peerConnections.value.delete(participantId)
-          remoteStreams.value.delete(participantId)
+          peerConnections.value.delete(safeParticipantId)
+          remoteStreams.value.delete(safeParticipantId)
           
           if (peerConnection.connectionState === 'failed') {
-            globalStore.addNotification(`Connection failed with ${participantId}`, 'error', 3000)
+            globalStore.addNotification(`Connection failed with ${safeParticipantId}`, 'error', 3000)
           }
           
           // Update overall connection state
@@ -143,9 +168,9 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       }
 
       // Store the connection
-      peerConnections.value.set(participantId, peerConnection)
-      isNegotiating.value.set(participantId, false)
-      pendingOffers.value.set(participantId, [])
+      peerConnections.value.set(safeParticipantId, peerConnection)
+      isNegotiating.value.set(safeParticipantId, false)
+      pendingOffers.value.set(safeParticipantId, [])
 
       return { success: true }
     } catch (error) {
@@ -246,7 +271,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   }
 
   const handleUserJoined = (data) => {
-    const participantId = data.participant_id
+    const participantId = String(data.participant_id || 'unknown')
 
     if (!remoteParticipants.value.find((p) => p.id === participantId)) {
       remoteParticipants.value.push({
@@ -258,6 +283,10 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
     globalStore.addNotification('Someone joined the call', 'info', 3000)
 
+    // Обновляем настройки медиа при увеличении количества участников
+    const newParticipantCount = remoteParticipants.value.length + 1
+    mediaConstraints.value = getMediaConstraints(newParticipantCount)
+
     // Create peer connection for the new participant
     if (localStream.value) {
       createPeerConnection(participantId)
@@ -267,11 +296,15 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   }
 
   const handleUserLeft = (data) => {
-    const participantId = data.participant_id
+    const participantId = String(data.participant_id || 'unknown')
 
     remoteParticipants.value = remoteParticipants.value.filter((p) => p.id !== participantId)
 
     globalStore.addNotification('Someone left the call', 'info', 3000)
+
+    // Обновляем настройки медиа при уменьшении количества участников
+    const newParticipantCount = remoteParticipants.value.length + 1
+    mediaConstraints.value = getMediaConstraints(newParticipantCount)
 
     // Close peer connection and remove stream
     const peerConnection = peerConnections.value.get(participantId)
@@ -287,7 +320,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
   const handleWebRTCOffer = async (data) => {
     try {
-      const senderId = data.sender
+      const senderId = String(data.sender || 'unknown')
       const isNegotiatingWithSender = isNegotiating.value.get(senderId) || false
       
       if (isNegotiatingWithSender) {
@@ -335,13 +368,13 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       }
     } catch (error) {
       console.error('Failed to handle WebRTC offer:', error)
-      isNegotiating.value.set(data.sender, false)
+      isNegotiating.value.set(String(data.sender || 'unknown'), false)
     }
   }
 
   const handleWebRTCAnswer = async (data) => {
     try {
-      const senderId = data.sender
+      const senderId = String(data.sender || 'unknown')
       const peerConnection = peerConnections.value.get(senderId)
       
       if (!peerConnection) {
@@ -363,7 +396,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
   const handleICECandidate = async (data) => {
     try {
-      const senderId = data.sender
+      const senderId = String(data.sender || 'unknown')
       const peerConnection = peerConnections.value.get(senderId)
       
       if (peerConnection && peerConnection.remoteDescription) {
@@ -377,7 +410,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   }
 
   const handleMediaStateUpdate = (data) => {
-    const participant = remoteParticipants.value.find((p) => p.id === data.participant_id)
+    const participantId = String(data.participant_id || 'unknown')
+    const participant = remoteParticipants.value.find((p) => p.id === participantId)
     if (participant) {
       participant.mediaState = data.state
     }
@@ -385,39 +419,40 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
   const createOffer = async (participantId) => {
     try {
-      const isNegotiatingWithParticipant = isNegotiating.value.get(participantId) || false
+      const safeParticipantId = String(participantId || 'unknown')
+      const isNegotiatingWithParticipant = isNegotiating.value.get(safeParticipantId) || false
       
       if (isNegotiatingWithParticipant) {
-        console.warn(`Already negotiating with ${participantId}, ignoring create offer request`)
+        console.warn(`Already negotiating with ${safeParticipantId}, ignoring create offer request`)
         return
       }
 
-      let peerConnection = peerConnections.value.get(participantId)
+      let peerConnection = peerConnections.value.get(safeParticipantId)
       if (!peerConnection) {
-        createPeerConnection(participantId)
-        peerConnection = peerConnections.value.get(participantId)
+        createPeerConnection(safeParticipantId)
+        peerConnection = peerConnections.value.get(safeParticipantId)
       }
 
       // Only create offer if in stable state
       if (peerConnection.signalingState === 'stable') {
-        isNegotiating.value.set(participantId, true)
-        console.log(`Creating offer for ${participantId}, current state:`, peerConnection.signalingState)
+        isNegotiating.value.set(safeParticipantId, true)
+        console.log(`Creating offer for ${safeParticipantId}, current state:`, peerConnection.signalingState)
         const offer = await peerConnection.createOffer()
         await peerConnection.setLocalDescription(offer)
 
         sendWebSocketMessage({
           type: 'offer',
           offer: offer,
-          target: participantId,
+          target: safeParticipantId,
         })
         
-        isNegotiating.value.set(participantId, false)
+        isNegotiating.value.set(safeParticipantId, false)
       } else {
-        console.warn(`Cannot create offer for ${participantId} in current signaling state:`, peerConnection.signalingState)
+        console.warn(`Cannot create offer for ${safeParticipantId} in current signaling state:`, peerConnection.signalingState)
       }
     } catch (error) {
       console.error('Failed to create offer:', error)
-      isNegotiating.value.set(participantId, false)
+      isNegotiating.value.set(String(participantId || 'unknown'), false)
     }
   }
 

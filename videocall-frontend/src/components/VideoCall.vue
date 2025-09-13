@@ -30,6 +30,10 @@
             ></path>
           </svg>
           <span>{{ participantCount }}</span>
+          <!-- Performance warning for large groups -->
+          <div v-if="participantCount > 10" class="ml-2 px-2 py-1 bg-yellow-500 bg-opacity-20 text-yellow-300 text-xs rounded">
+            ⚠️ Large group
+          </div>
         </div>
 
         <!-- Menu button -->
@@ -120,7 +124,7 @@
             
             <!-- Participant name overlay -->
             <div class="absolute bottom-2 left-2 bg-black bg-opacity-50 px-2 py-1 rounded text-white text-xs">
-              {{ participantId.substring(0, 8) }}
+              {{ String(participantId).substring(0, 8) }}
             </div>
           </div>
         </div>
@@ -625,7 +629,10 @@ const getVideoGridClass = () => {
   if (participantCount === 2) return 'grid grid-cols-2 gap-2 h-full'
   if (participantCount <= 4) return 'grid grid-cols-2 gap-2 h-full'
   if (participantCount <= 6) return 'grid grid-cols-3 gap-2 h-full'
-  return 'grid grid-cols-4 gap-2 h-full'
+  if (participantCount <= 9) return 'grid grid-cols-3 gap-1 h-full'
+  if (participantCount <= 16) return 'grid grid-cols-4 gap-1 h-full'
+  // For more than 16 participants, use a scrollable grid
+  return 'grid grid-cols-4 gap-1 h-full overflow-y-auto'
 }
 
 const roomLink = computed(() => {
