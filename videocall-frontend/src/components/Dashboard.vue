@@ -103,18 +103,18 @@
       >
         <div class="card w-full max-w-md p-6 animate-slide-up" @click.stop>
           <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-            Join Video Call
+            {{ $t('app.modals.joinVideoCall.title') }}
           </h3>
 
           <form @submit.prevent="handleJoinSubmit" class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Room Code or Link
+                {{ $t('app.modals.joinVideoCall.title') }}
               </label>
               <input
                 v-model="joinInput"
                 type="text"
-                placeholder="Enter room code or paste link"
+                :placeholder="$t('app.modals.joinVideoCall.enterRoomCodeOrPasteLink')"
                 class="input-field"
                 :disabled="roomsStore.isJoiningRoom"
               />
@@ -127,15 +127,15 @@
                 class="btn-secondary flex-1"
                 :disabled="roomsStore.isJoiningRoom"
               >
-                Cancel
+                {{ $t('app.buttons.cancel') }}
               </button>
               <button
                 type="submit"
                 :disabled="!joinInput.trim() || roomsStore.isJoiningRoom"
                 class="btn-primary flex-1 disabled:opacity-50"
               >
-                <span v-if="roomsStore.isJoiningRoom">Joining...</span>
-                <span v-else>Join</span>
+                <span v-if="roomsStore.isJoiningRoom">{{ $t('app.buttons.joining') }}</span>
+                <span v-else>{{ $t('app.buttons.join') }}</span>
               </button>
             </div>
           </form>

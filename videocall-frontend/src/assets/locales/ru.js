@@ -3,12 +3,25 @@ const ru = {
         name: 'Видеозвонок',
         desc: 'Защищенные видеозвонки без регистрации',
         backToDashboard: 'Вернуться в дэшборд',
+        buttons: {
+            cancel: "Отмена",
+            join: "Присоединиться",
+            joining: "Присоединение..."
+        },
+        modals: {
+            joinVideoCall: {
+                title: 'Присоединение к видеозвонку',
+                roomCodeOrLink: 'Код комнаты или ссылка',
+                enterRoomCodeOrPasteLink: 'Введите код комнаты или вставьте ссылку'
+            }
+        }
       },
       login: {
         desc: 'Введите пароль для продолжения',
         password: 'Пароль',
         signingIn: 'Входим...',
-        signIn: 'Войти'
+        signIn: 'Войти',
+        enterPassword: 'Введите пароль',
       },
     joinRoom: {
         roomCode: "Код комнаты",
@@ -23,12 +36,12 @@ const ru = {
         rejoin: 'Переподключиться',
         cards: {
             createLink: {
-                title: "Create Link",
-                desc: "Start a new video call and share the link"
+                title: "Создать ссылку",
+                desc: "Начать видеозвонок и поделиться ссылкой"
             },
             joinCall: {
-                title: "Join Call",
-                desc: "Enter a room code or link to join"
+                title: "Присоединиться к звонку",
+                desc: "Введите код комнаты или вставьте ссылку"
             }
         }
       }

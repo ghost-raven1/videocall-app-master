@@ -32,7 +32,7 @@
             id="password"
             v-model="password"
             type="password"
-            placeholder="Enter password"
+            :placeholder="$t('login.enterPassword')"
             class="input-field"
             :disabled="isLoading"
             required
