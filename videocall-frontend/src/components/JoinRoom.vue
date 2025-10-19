@@ -14,9 +14,9 @@
             ></path>
           </svg>
         </div>
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-2">Join Video Call</h1>
+        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-2">{{ $t('joinRoom.joinTitle') }}</h1>
         <p class="text-gray-600 dark:text-gray-300">
-          Room code: <span class="font-mono font-bold text-lg">{{ roomCode }}</span>
+          {{ $t('joinRoom.roomCode') }}: <span class="font-mono font-bold text-lg">{{ roomCode }}</span>
         </p>
       </div>
 
@@ -24,7 +24,7 @@
         <div
           class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"
         ></div>
-        <p class="text-gray-600 dark:text-gray-300">Joining room...</p>
+        <p class="text-gray-600 dark:text-gray-300">{{ $t('joinRoom.joiningRoom') }}</p>
       </div>
 
       <div v-else-if="error" class="text-center py-8">
@@ -40,14 +40,16 @@
             ></path>
           </svg>
         </div>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Room Not Found</h3>
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">{{ $t('joinRoom.roomNotFound') }}</h3>
         <p class="text-gray-600 dark:text-gray-300 mb-4">{{ error }}</p>
-        <button @click="$router.push('/')" class="btn-primary px-6 py-2">Back to Dashboard</button>
+        <button @click="$router.push('/')" class="btn-primary px-6 py-2">{{ $t('app.backToDashboard') }}</button>
       </div>
 
       <div v-else class="space-y-6">
         <div class="text-center">
-          <button @click="joinRoom" class="btn-primary w-full py-4 text-lg">Join Call</button>
+          <button @click="joinRoom" class="btn-primary w-full py-4 text-lg">
+            {{ $t('joinRoom.joinCall') }}
+          </button>
         </div>
 
         <div class="text-center">
@@ -55,7 +57,7 @@
             @click="$router.push('/')"
             class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           >
-            Back to Dashboard
+            {{ $t('app.backToDashboard') }}
           </button>
         </div>
       </div>

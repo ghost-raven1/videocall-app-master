@@ -1,6 +1,9 @@
 // src/main.js - Vue.js application entry point with PWA support
 import { createApp } from 'vue'
+import { createI18n } from 'vue-i18n'
 import { createPinia } from 'pinia'
+import ru from './locales/ru';
+import en from './locales/en';
 import router from './router'
 import App from './App.vue'
 import { apiService } from './services/api'
@@ -8,9 +11,20 @@ import './style.css'
 
 const app = createApp(App)
 const pinia = createPinia()
+const i18n = createI18n({
+  legacy: false,
+  globalInjection: true,
+  locale: 'ru',
+  fallbackLocale: 'en',
+  messages: {
+    en: en,
+    ru: ru
+  }
+})
 
 app.use(pinia)
 app.use(router)
+app.use(i18n)
 
 // Initialize API service with CSRF token
 apiService
