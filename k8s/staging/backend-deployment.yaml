@@ -1,0 +1,208 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: videocall-blue
+  namespace: videocall-staging
+  labels:
+    app: videocall
+    version: blue
+    environment: staging
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: videocall
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: videocall
+        version: blue
+        environment: staging
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/${{ github.repository }}/videocall-backend:staging
+        ports:
+        - containerPort: 8000
+          name: backend
+        env:
+        - name: DEBUG
+          value: "False"
+        - name: DB_HOST
+          value: postgres.videocall-staging.svc.cluster.local
+        - name: DB_PORT
+          value: "5432"
+        - name: REDIS_URL
+          value: redis://redis.videocall-staging.svc.cluster.local:6379/0
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: postgres-config
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: postgres-config
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: POSTGRES_PASSWORD
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SECRET_KEY
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /api/health/
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health/
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: videocall-green
+  namespace: videocall-staging
+  labels:
+    app: videocall
+    version: green
+    environment: staging
+spec:
+  replicas: 0
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: videocall
+      version: green
+  template:
+    metadata:
+      labels:
+        app: videocall
+        version: green
+        environment: staging
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/${{ github.repository }}/videocall-backend:staging
+        ports:
+        - containerPort: 8000
+          name: backend
+        env:
+        - name: DEBUG
+          value: "False"
+        - name: DB_HOST
+          value: postgres.videocall-staging.svc.cluster.local
+        - name: DB_PORT
+          value: "5432"
+        - name: REDIS_URL
+          value: redis://redis.videocall-staging.svc.cluster.local:6379/0
+        - name: POSTGRES_DB
+          valueFrom:
+            configMapKeyRef:
+              name: postgres-config
+              key: POSTGRES_DB
+        - name: POSTGRES_USER
+          valueFrom:
+            configMapKeyRef:
+              name: postgres-config
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secrets
+              key: POSTGRES_PASSWORD
+        - name: SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: SECRET_KEY
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /api/health/
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /api/health/
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: videocall-app
+  namespace: videocall-staging
+  labels:
+    app: videocall
+    environment: staging
+spec:
+  selector:
+    app: videocall
+    version: blue
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  - name: websocket
+    port: 8000
+    targetPort: 8000
+    protocol: TCP
+  type: ClusterIP

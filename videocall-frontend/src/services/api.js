@@ -1,4 +1,4 @@
-// src/services/api.js - API service layer with CSRF support
+// src/services/api.js - API service layer with JWT support
 import axios from 'axios'
 
 // Create axios instance with base configuration
@@ -8,39 +8,33 @@ const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  withCredentials: true, // Include session cookies
+  withCredentials: true, // Include httpOnly cookies for JWT
 })
 
-// Get CSRF token from cookie
-const getCSRFToken = () => {
-  const name = 'csrftoken'
-  let cookieValue = null
-  if (document.cookie && document.cookie !== '') {
-    const cookies = document.cookie.split(';')
-    for (let i = 0; i < cookies.length; i++) {
-      const cookie = cookies[i].trim()
-      if (cookie.substring(0, name.length + 1) === name + '=') {
-        cookieValue = decodeURIComponent(cookie.substring(name.length + 1))
-        break
-      }
-    }
+// JWT token management
+const tokenManager = {
+  // Get access token from httpOnly cookie (server-side only)
+  getAccessToken() {
+    // Access tokens are stored in httpOnly cookies and automatically sent
+    return null // We don't need to read it client-side
+  },
+
+  // Get refresh token from httpOnly cookie (server-side only)
+  getRefreshToken() {
+    return null // We don't need to read it client-side
+  },
+
+  // Clear all auth cookies (logout)
+  clearTokens() {
+    document.cookie = 'access_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
+    document.cookie = 'refresh_token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;'
   }
-  return cookieValue
 }
 
-// Request interceptor for adding auth headers and logging
+// Request interceptor for logging
 apiClient.interceptors.request.use(
   (config) => {
     console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`)
-
-    // Add CSRF token for non-GET requests
-    if (config.method && !['get', 'head', 'options'].includes(config.method.toLowerCase())) {
-      const csrfToken = getCSRFToken()
-      if (csrfToken) {
-        config.headers['X-CSRFToken'] = csrfToken
-      }
-    }
-
     return config
   },
   (error) => {
@@ -49,7 +43,7 @@ apiClient.interceptors.request.use(
   },
 )
 
-// Response interceptor for handling errors and logging
+// Response interceptor for handling JWT authentication errors
 apiClient.interceptors.response.use(
   (response) => {
     console.log(`API Response: ${response.status} ${response.config.url}`)
@@ -62,24 +56,34 @@ apiClient.interceptors.response.use(
       url: error.config?.url,
     })
 
-    // Handle specific error cases
+    // Handle JWT-specific error cases
     if (error.response?.status === 401) {
-      // Unauthorized - redirect to login if needed
-      console.log('Unauthorized access detected')
-    } else if (error.response?.status === 403) {
-      // Forbidden - might be CSRF issue, try to get new token
-      console.log('Forbidden access - possible CSRF issue')
+      // Unauthorized - token might be expired
+      console.log('Unauthorized access - token may be expired')
 
-      // Try to refresh CSRF token and retry once
+      // Try to refresh token once before giving up
       if (!error.config._retry) {
         error.config._retry = true
         try {
-          await getCsrfToken()
+          await jwtManager.refreshAccessToken()
+          // Retry the original request
           return apiClient(error.config)
-        } catch (retryError) {
-          console.error('Failed to retry with new CSRF token:', retryError)
+        } catch (refreshError) {
+          console.warn('Token refresh failed:', refreshError)
+          // Clear invalid tokens
+          tokenManager.clearTokens()
+          // Dispatch custom event for auth state change
+          window.dispatchEvent(new CustomEvent('auth:token-expired'))
         }
+      } else {
+        // Clear invalid tokens if retry also failed
+        tokenManager.clearTokens()
+        // Dispatch custom event for auth state change
+        window.dispatchEvent(new CustomEvent('auth:token-expired'))
       }
+    } else if (error.response?.status === 403) {
+      // Forbidden - insufficient permissions
+      console.log('Forbidden access - insufficient permissions')
     } else if (error.response?.status === 429) {
       // Rate limited
       console.log('Rate limit exceeded')
@@ -92,56 +96,100 @@ apiClient.interceptors.response.use(
   },
 )
 
-// Get CSRF token endpoint
-const getCsrfToken = async () => {
-  try {
-    const response = await apiClient.get('/csrf/')
-    const token = response.data.csrfToken
-    if (token) {
-      // Set token for future requests
-      apiClient.defaults.headers.common['X-CSRFToken'] = token
+// JWT token management with automatic refresh
+const jwtManager = {
+  refreshPromise: null,
+
+  async refreshAccessToken() {
+    // Prevent multiple simultaneous refresh requests
+    if (this.refreshPromise) {
+      return this.refreshPromise
     }
-    return token
-  } catch (error) {
-    console.warn('Failed to get CSRF token:', error)
-    return null
-  }
-}
 
-// Initialize CSRF token
-let csrfInitialized = false
+    this.refreshPromise = this._doRefreshToken()
+    try {
+      const result = await this.refreshPromise
+      return result
+    } finally {
+      this.refreshPromise = null
+    }
+  },
 
-const initializeCSRF = async () => {
-  if (!csrfInitialized) {
-    const token = await getCsrfToken()
-    csrfInitialized = !!token
+  async _doRefreshToken() {
+    try {
+      const response = await apiClient.post('/authentication/token/refresh/')
+      return response.data
+    } catch (error) {
+      console.warn('Failed to refresh JWT token:', error)
+      throw error
+    }
+  },
+
+  isTokenExpiringSoon(expiresAt) {
+    if (!expiresAt) return false
+    const now = Math.floor(Date.now() / 1000)
+    const fiveMinutesFromNow = now + (5 * 60)
+    return expiresAt < fiveMinutesFromNow
+  },
+
+  scheduleTokenRefresh(expiresAt) {
+    if (!expiresAt) return
+
+    const now = Math.floor(Date.now() / 1000)
+    const refreshTime = (expiresAt - now - (5 * 60)) * 1000 // Refresh 5 minutes before expiry
+
+    if (refreshTime > 0) {
+      setTimeout(() => {
+        this.refreshAccessToken().catch(error => {
+          console.warn('Scheduled token refresh failed:', error)
+        })
+      }, refreshTime)
+    }
   }
 }
 
 // API service object with all endpoint methods
 export const apiService = {
-  // Initialize CSRF
+  // Initialize JWT system
   async initialize() {
-    await initializeCSRF()
+    // No client-side initialization needed for JWT with httpOnly cookies
+    console.log('JWT API service initialized')
   },
 
-  // Authentication endpoints
-  async login(password) {
-    await initializeCSRF()
-    return apiClient.post('/auth/login/', { password })
+  // Authentication endpoints using JWT with httpOnly cookies
+  async login(credentials) {
+    const response = await apiClient.post('/auth/token/', credentials)
+
+    // Schedule token refresh if we get expiration info
+    if (response.data.expires_at) {
+      jwtManager.scheduleTokenRefresh(response.data.expires_at)
+    }
+
+    return response
+  },
+
+  async refreshToken() {
+    return await jwtManager.refreshAccessToken()
   },
 
   async logout() {
-    return apiClient.post('/auth/logout/')
+    try {
+      // Call server logout endpoint that clears cookies
+      await apiClient.post('/auth/logout/')
+    } catch (error) {
+      console.warn('Server logout failed, clearing local tokens anyway:', error)
+    } finally {
+      // Always clear any remaining cookies on client side
+      tokenManager.clearTokens()
+    }
   },
 
   async checkAuth() {
     return apiClient.get('/auth/check/')
   },
 
-  // Room management endpoints
+  // Room management endpoints (no CSRF needed for JWT)
   async createRoom() {
-    await initializeCSRF()
     return apiClient.post('/rooms/create/')
   },
 
@@ -150,19 +198,16 @@ export const apiService = {
   },
 
   async joinRoom(roomIdentifier) {
-    await initializeCSRF()
     return apiClient.post('/rooms/join/', {
       room_identifier: roomIdentifier,
     })
   },
 
   async leaveRoom(roomId) {
-    await initializeCSRF()
     return apiClient.post(`/rooms/${roomId}/leave/`)
   },
 
   async deleteRoom(roomId) {
-    await initializeCSRF()
     return apiClient.delete(`/rooms/${roomId}/delete/`)
   },
 
@@ -204,18 +249,12 @@ export const apiUtils = {
   },
 
   /**
-   * Check if error is due to CSRF
-   */
-  isCSRFError(error) {
-    return error.response?.status === 403
-  },
-
-  /**
    * Check if error is due to rate limiting
    */
   isRateLimitError(error) {
     return error.response?.status === 429
   },
+
 
   /**
    * Retry API call with exponential backoff
@@ -229,22 +268,17 @@ export const apiUtils = {
       } catch (error) {
         lastError = error
 
-        // Retry CSRF errors once
-        if (this.isCSRFError(error) && attempt === 0) {
-          await initializeCSRF()
-          continue
-        }
-
-        // Don't retry on client errors (4xx) except CSRF
-        if (
-          error.response?.status >= 400 &&
-          error.response?.status < 500 &&
-          !this.isCSRFError(error)
-        ) {
+        // Don't retry on authentication errors (401/403)
+        if (this.isAuthError(error)) {
           break
         }
 
-        // Wait before retrying (exponential backoff)
+        // Don't retry on other client errors (4xx)
+        if (error.response?.status >= 400 && error.response?.status < 500) {
+          break
+        }
+
+        // Wait before retrying server errors (exponential backoff)
         if (attempt < maxRetries - 1) {
           const delay = baseDelay * Math.pow(2, attempt)
           await new Promise((resolve) => setTimeout(resolve, delay))
@@ -253,6 +287,26 @@ export const apiUtils = {
     }
 
     throw lastError
+  },
+
+  /**
+   * Refresh JWT token if needed and retry request
+   */
+  async retryWithTokenRefresh(apiCall) {
+    try {
+      return await apiCall()
+    } catch (error) {
+      if (error.response?.status === 401) {
+        try {
+          await jwtManager.refreshAccessToken()
+          return await apiCall()
+        } catch (refreshError) {
+          console.error('Token refresh failed:', refreshError)
+          throw error
+        }
+      }
+      throw error
+    }
   },
 }
 

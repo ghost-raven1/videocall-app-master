@@ -1,0 +1,58 @@
+# Streaming Node Configuration
+server:
+  address: "0.0.0.0"
+  port: 8080
+  read_timeout: "10s"
+  write_timeout: "10s"
+  max_connections: 1000
+  allowed_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+    - "https://yourdomain.com"
+    - "https://www.yourdomain.com"
+  enable_profiling: false
+
+webrtc:
+  ice_servers:
+    - urls:
+        - "stun:stun.l.google.com:19302"
+    - urls:
+        - "turn:your-turn-server.com:3478"
+      username: "user"
+      credential: "pass"
+  enable_simulcast: true
+  enable_bandwidth_limit: true
+  max_bitrate: 5000000    # 5 Mbps
+  min_bitrate: 100000     # 100 kbps
+  default_bitrate: 1000000 # 1 Mbps
+
+quality:
+  enable_adaptation: true
+  adaptation_interval: "5s"
+  packet_loss_threshold: 0.05    # 5%
+  rtt_threshold: "100ms"
+  quality_check_interval: "1s"
+  bitrate_increase_factor: 1.1
+  bitrate_decrease_factor: 0.8
+
+logging:
+  level: "info"
+  file: ""  # Empty means stdout
+  max_size: 100    # MB
+  max_age: 30      # days
+  max_backups: 3
+  compress: true
+
+security:
+  enable_tls: false
+  cert_file: "cert.pem"
+  key_file: "key.pem"
+  enable_auth: false
+  jwt_secret: ""
+  token_expiry_hours: 24
+
+django:
+  url: "localhost:8000"
+  enable_websocket: true
+  reconnect_interval: "5s"
+  max_reconnects: 10

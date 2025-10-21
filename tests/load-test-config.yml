@@ -1,0 +1,297 @@
+# Artillery Load Testing Configuration for Video Call Application
+# Supports 100+ concurrent users across all system components
+
+config:
+  target: 'http://localhost'
+  phases:
+    # Phase 1: Warm-up (10 users over 30 seconds)
+    - duration: 30
+      arrivalRate: 1
+      rampTo: 10
+
+    # Phase 2: Load increase (100 users over 2 minutes)
+    - duration: 120
+      arrivalRate: 2
+      rampTo: 100
+
+    # Phase 3: Sustained load (100 users for 3 minutes)
+    - duration: 180
+      arrivalRate: 0
+      maxVUs: 100
+
+    # Phase 4: Load spike (150 users for 1 minute)
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 150
+
+    # Phase 5: Cool down (back to 0 over 30 seconds)
+    - duration: 30
+      arrivalRate: 0
+      rampTo: 0
+
+  defaults:
+    headers:
+      Content-Type: 'application/json'
+
+  # Global timeout settings
+  timeout: 30
+  http:
+    timeout: 30
+    pool: 50
+
+  # WebSocket settings for real-time communication
+  ws:
+    subprotocols: ['websocket']
+
+scenarios:
+
+  # Scenario 1: Room Management Load Testing
+  - name: "Room Management"
+    weight: 30
+    flow:
+      # Create room
+      - post:
+          url: "/api/rooms/"
+          json:
+            name: "Load Test Room {{ $randomString }}"
+            max_participants: 10
+          capture:
+            json: "$.code"
+            as: "roomCode"
+
+      # Get room info
+      - get:
+          url: "/api/rooms/{{ roomCode }}/"
+
+      # Update room settings (simulated)
+      - put:
+          url: "/api/rooms/{{ roomCode }}/"
+          json:
+            name: "Updated Load Test Room {{ $randomString }}"
+
+      # List rooms
+      - get:
+          url: "/api/rooms/"
+
+      # Delete room
+      - delete:
+          url: "/api/rooms/{{ roomCode }}/"
+
+  # Scenario 2: WebSocket Signaling Load Testing
+  - name: "WebSocket Signaling"
+    weight: 40
+    flow:
+      # Establish WebSocket connection
+      - think: 2 # Simulate user joining delay
+
+      # Connect to room via WebSocket
+      - send:
+          url: "ws://localhost:8000/ws/rooms/{{ $randomString(8) }}/"
+          send:
+            type: "join_room"
+            user_id: "load-test-user-{{ $vuID }}-{{ $randomInt(1, 1000) }}"
+            timestamp: "{{ $timestamp }}"
+
+      # Simulate WebRTC offer/answer exchange
+      - think: 1
+      - send:
+          type: "webrtc_offer"
+          from: "load-test-user-{{ $vuID }}-{{ $randomInt(1, 1000) }}"
+          to: "load-test-user-{{ $randomInt(1, 100) }}"
+          sdp: "{{ $randomString(1000) }}"
+
+      - think: 0.5
+      - send:
+          type: "webrtc_answer"
+          from: "load-test-user-{{ $randomInt(1, 100) }}"
+          to: "load-test-user-{{ $vuID }}-{{ $randomInt(1, 1000) }}"
+          sdp: "{{ $randomString(1000) }}"
+
+      # Simulate ICE candidates
+      - loop:
+          - send:
+              type: "ice_candidate"
+              from: "load-test-user-{{ $vuID }}-{{ $randomInt(1, 1000) }}"
+              candidate: "{{ $randomString(500) }}"
+          - think: 2
+        count: 3
+
+      # Simulate participant leaving
+      - think: 5
+      - send:
+          type: "leave_room"
+          user_id: "load-test-user-{{ $vuID }}-{{ $randomInt(1, 1000) }}"
+
+  # Scenario 3: Admin Dashboard Load Testing
+  - name: "Admin Dashboard"
+    weight: 20
+    flow:
+      # Get dashboard stats
+      - get:
+          url: "/admin/api/dashboard/stats/"
+
+      # List rooms (admin view)
+      - get:
+          url: "/admin/api/rooms/"
+
+      # Get room details
+      - get:
+          url: "/admin/api/rooms/{{ $randomString(8) }}/"
+
+      # Get analytics data
+      - get:
+          url: "/admin/api/analytics/"
+
+      # Get user management data
+      - get:
+          url: "/admin/api/users/"
+
+      # Simulate filtering and pagination
+      - get:
+          url: "/admin/api/rooms/?page=1&limit=50"
+
+      - get:
+          url: "/admin/api/users/?status=active&limit=100"
+
+  # Scenario 4: SFU Direct Load Testing
+  - name: "SFU Direct"
+    weight: 10
+    flow:
+      # Health check
+      - get:
+          url: "http://localhost:8080/health"
+
+      # Create room via SFU API
+      - post:
+          url: "http://localhost:8080/api/rooms"
+          json:
+            room_id: "sfu-load-test-{{ $randomString(8) }}"
+            max_peers: 20
+
+      # Get room stats
+      - get:
+          url: "http://localhost:8080/api/rooms/sfu-load-test-{{ $randomString(8) }}/stats"
+
+      # Simulate peer operations
+      - post:
+          url: "http://localhost:8080/api/rooms/sfu-load-test-{{ $randomString(8) }}/peers"
+          json:
+            peer_id: "peer-{{ $vuID }}-{{ $randomInt(1, 1000) }}"
+            metadata:
+              name: "Load Test Peer {{ $vuID }}"
+              device: "desktop"
+
+      # Get server stats
+      - get:
+          url: "http://localhost:8080/api/stats"
+
+      # Cleanup
+      - delete:
+          url: "http://localhost:8080/api/rooms/sfu-load-test-{{ $randomString(8) }}"
+
+  # Scenario 5: Frontend Asset Load Testing
+  - name: "Frontend Assets"
+    weight: 5
+    flow:
+      # Load main page
+      - get:
+          url: "/"
+
+      # Load JavaScript bundles
+      - get:
+          url: "/assets/index.js"
+
+      # Load CSS
+      - get:
+          url: "/assets/index.css"
+
+      # Load admin interface
+      - get:
+          url: "/admin/"
+
+      # Load admin assets
+      - get:
+          url: "/admin/assets/admin.js"
+
+      - get:
+          url: "/admin/assets/admin.css"
+
+      # Load WebSocket client
+      - get:
+          url: "/socket.io/socket.io.js"
+
+  # Scenario 6: Database Load Testing
+  - name: "Database Operations"
+    weight: 15
+    flow:
+      # Bulk room creation
+      - loop:
+          - post:
+              url: "/api/rooms/"
+              json:
+                name: "DB Load Test Room {{ $loopCount }}-{{ $vuID }}"
+                max_participants: "{{ $randomInt(5, 20) }}"
+          - think: 0.1
+        count: 5
+
+      # Bulk participant operations
+      - post:
+          url: "/api/rooms/bulk-operations/"
+          json:
+            operations: [
+              {"type": "add_participant", "room_code": "{{ $randomString(8) }}", "user_id": "user-{{ $vuID }}-{{ $loopCount }}"},
+              {"type": "update_participant", "room_code": "{{ $randomString(8) }}", "user_id": "user-{{ $vuID }}-{{ $loopCount }}"},
+              {"type": "remove_participant", "room_code": "{{ $randomString(8) }}", "user_id": "user-{{ $vuID }}-{{ $loopCount }}"}
+            ]
+
+      # Complex queries
+      - get:
+          url: "/api/rooms/stats/?include_participants=true&active_only=true"
+
+      - get:
+          url: "/api/analytics/usage/?timeframe=1h&granularity=5m"
+
+  # Scenario 7: Concurrent User Simulation
+  - name: "Concurrent Users"
+    weight: 25
+    flow:
+      # Simulate realistic user behavior pattern
+      - think: "{{ $randomInt(1, 5) }}" # Random delay 1-5 seconds
+
+      # User creates room
+      - post:
+          url: "/api/rooms/"
+          json:
+            name: "Concurrent Test Room {{ $vuID }}"
+            max_participants: 15
+          capture:
+            json: "$.code"
+            as: "concurrentRoomCode"
+
+      # Multiple users join simultaneously
+      - loop:
+          - post:
+              url: "/api/rooms/{{ concurrentRoomCode }}/join/"
+              json:
+                user_id: "concurrent-user-{{ $vuID }}-{{ $loopCount }}"
+                device_info:
+                  type: "{{ $randomInt(1, 3) }}" # 1=desktop, 2=mobile, 3=tablet
+                  os: "{{ $randomInt(1, 4) }}" # 1=Windows, 2=macOS, 3=Linux, 4=iOS
+          - think: "{{ $randomInt(0.5, 2) }}"
+        count: "{{ $randomInt(3, 8) }}"
+
+      # Simulate active call duration
+      - think: "{{ $randomInt(10, 30) }}"
+
+      # Users leave randomly
+      - loop:
+          - delete:
+              url: "/api/rooms/{{ concurrentRoomCode }}/leave/"
+              json:
+                user_id: "concurrent-user-{{ $vuID }}-{{ $loopCount }}"
+          - think: "{{ $randomInt(1, 3) }}"
+        count: "{{ $randomInt(2, 5) }}"
+
+      # Room cleanup
+      - delete:
+          url: "/api/rooms/{{ concurrentRoomCode }}/"

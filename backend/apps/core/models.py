@@ -32,10 +32,22 @@ class SystemSettings(models.Model):
     @classmethod
     def get_settings(cls):
         """Get or create system settings instance"""
+        import os
+        from decouple import config
+
+        # Get admin password from environment variable
+        admin_password = config('ADMIN_PASSWORD', default=None)
+
+        if admin_password is None:
+            raise ValueError(
+                "ADMIN_PASSWORD environment variable is required for security. "
+                "Please set a strong admin password in your environment variables."
+            )
+
         settings, created = cls.objects.get_or_create(
             pk=1,
             defaults={
-                'access_password_hash': make_password('admin123'),
+                'access_password_hash': make_password(admin_password),
                 'is_active': True
             }
         )

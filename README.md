@@ -141,21 +141,23 @@ cp env.example .env
 
 **Настройте переменные в `.env`:**
 ```bash
-# Основные настройки
+# 🔐 КРИТИЧНЫЕ НАСТРОЙКИ БЕЗОПАСНОСТИ (ОБЯЗАТЕЛЬНЫ ДЛЯ ПРОДАКШЕНА)
 DEBUG=False
-SECRET_KEY=your-super-secret-django-key-here
+SECRET_KEY=your-super-secret-django-key-generate-a-unique-one-for-production
+ADMIN_PASSWORD=your-secure-admin-password-change-immediately-in-production
+JWT_SECRET=your-secure-jwt-secret-key-change-immediately-in-production
+
+# 🌐 Домены и сеть
 DOMAIN_NAME=video-call-ghost.ru
+ALLOWED_HOSTS=video-call-ghost.ru,www.video-call-ghost.ru
+CORS_ALLOWED_ORIGINS=https://video-call-ghost.ru,https://www.video-call-ghost.ru
 
-# База данных
-POSTGRES_PASSWORD=strong-database-password
-
-# Пути к SSL сертификатам
+# 🔒 SSL сертификаты (пути в системе)
 SSL_CERT_PATH=/etc/letsencrypt/live/video-call-ghost.ru/fullchain.pem
 SSL_KEY_PATH=/etc/letsencrypt/live/video-call-ghost.ru/privkey.pem
 
-# Домены
-ALLOWED_HOSTS=video-call-ghost.ru,www.video-call-ghost.ru
-CORS_ALLOWED_ORIGINS=https://video-call-ghost.ru,https://www.video-call-ghost.ru
+# 💾 База данных
+POSTGRES_PASSWORD=strong-database-password-generate-secure-one
 ```
 
 **Обновите nginx.conf:**
@@ -247,13 +249,31 @@ docker-compose logs -f db
 
 ## 🛡️ Безопасность
 
+### 🚨 Критические требования безопасности
+
+**ВАЖНО**: Перед развертыванием в продакшен обязательно настройте следующие переменные окружения:
+
+1. **`SECRET_KEY`** - Уникальный ключ Django (генерируйте новый для каждого окружения)
+2. **`ADMIN_PASSWORD`** - Сильный пароль для административного доступа
+3. **`JWT_SECRET`** - Уникальный секрет для JWT токенов стримингового сервера
+
+Генерируйте секретные ключи с помощью:
+```bash
+# Генерация SECRET_KEY (Django)
+python -c "import secrets; print(secrets.token_urlsafe(50))"
+
+# Генерация JWT_SECRET (32+ символов)
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
 ### Рекомендации по безопасности
 
-1. **Измените пароль по умолчанию** в админ-панели
-2. **Используйте сложные пароли** для базы данных
-3. **Регулярно обновляйте** SSL-сертификаты
-4. **Настройте файрвол** для ограничения доступа
-5. **Мониторьте логи** на предмет подозрительной активности
+1. **Никогда не используйте значения по умолчанию** для SECRET_KEY, ADMIN_PASSWORD, JWT_SECRET
+2. **Используйте сильные уникальные пароли** для базы данных и админ-панели
+3. **Храните секреты в защищенном месте** (не в репозитории)
+4. **Регулярно обновляйте** SSL-сертификаты
+5. **Настройте файрвол** для ограничения доступа
+6. **Мониторьте логи** на предмет подозрительной активности
 
 ### Настройка файрвола (UFW)
 

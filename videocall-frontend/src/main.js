@@ -7,10 +7,103 @@ import en from './locales/en';
 import router from './router'
 import App from './App.vue'
 import { apiService } from './services/api'
+import { errorReportingService, ErrorReportingPlugin } from './services/error-reporting'
 import './style.css'
 
 const app = createApp(App)
 const pinia = createPinia()
+
+// Global error handler for Vue application errors
+app.config.errorHandler = (error, instance, info) => {
+  console.error('Vue Error Handler:', {
+    error: error.message,
+    stack: error.stack,
+    component: instance?.$?.type?.name || 'Unknown',
+    info,
+    timestamp: new Date().toISOString(),
+    url: window.location.href,
+    userAgent: navigator.userAgent,
+  })
+
+  // Report to error reporting service
+  errorReportingService.captureError(error, {
+    type: 'vue-error',
+    component: instance?.$?.type?.name || 'Unknown',
+    info,
+    severity: 'error',
+  })
+
+  // Show user-friendly error notification
+  const globalStore = useGlobalStore()
+  globalStore.addNotification(
+    'An unexpected error occurred. Please refresh the page if the problem persists.',
+    'error',
+    8000
+  )
+}
+
+// Global handler for unhandled promise rejections
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled Promise Rejection:', {
+    reason: event.reason?.message || event.reason,
+    stack: event.reason?.stack,
+    timestamp: new Date().toISOString(),
+    url: window.location.href,
+    userAgent: navigator.userAgent,
+  })
+
+  // Report to error reporting service
+  errorReportingService.captureError(event.reason, {
+    type: 'unhandled-rejection',
+    severity: 'error',
+  })
+
+  // Show user-friendly error notification
+  const globalStore = useGlobalStore()
+  globalStore.addNotification(
+    'A background operation failed. Please try again or refresh the page.',
+    'error',
+    8000
+  )
+
+  // Prevent the default browser behavior (logging to console)
+  event.preventDefault()
+})
+
+// Global handler for JavaScript errors
+window.addEventListener('error', (event) => {
+  console.error('Global JavaScript Error:', {
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    error: event.error,
+    timestamp: new Date().toISOString(),
+    url: window.location.href,
+    userAgent: navigator.userAgent,
+  })
+
+  // Report to error reporting service
+  errorReportingService.captureError(event.error || new Error(event.message), {
+    type: 'javascript-error',
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    severity: 'error',
+  })
+
+  // Show user-friendly error notification for script errors
+  if (event.filename && !event.filename.includes('chrome-extension')) {
+    const globalStore = useGlobalStore()
+    globalStore.addNotification(
+      'A script error occurred. Please refresh the page if the problem persists.',
+      'error',
+      8000
+    )
+  }
+})
+
+// Initialize i18n first with default settings
 const i18n = createI18n({
   legacy: false,
   globalInjection: true,
@@ -25,6 +118,16 @@ const i18n = createI18n({
 app.use(pinia)
 app.use(router)
 app.use(i18n)
+app.use(ErrorReportingPlugin)
+
+// Now initialize the global store and set up language synchronization
+const globalStore = useGlobalStore()
+globalStore.initializeLanguage()
+
+// Listen for language changes from store and update i18n
+window.addEventListener('language-changed', (event) => {
+  i18n.global.locale.value = event.detail.language
+})
 
 // Initialize API service with CSRF token
 apiService

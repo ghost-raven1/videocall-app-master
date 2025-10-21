@@ -102,30 +102,174 @@
 
     <!-- Video Container -->
     <div class="flex-1 relative overflow-hidden">
-      <!-- Remote Video (main) -->
-      <div v-if="webrtcStore.hasRemoteVideo" class="absolute inset-0">
-        <video
-          ref="remoteVideoRef"
-          autoplay
-          playsinline
-          class="w-full h-full object-cover"
-          @loadedmetadata="onRemoteVideoLoaded"
-        ></video>
+      <!-- Multi-user call (3+ participants) -->
+      <ParticipantGrid
+        v-if="webrtcStore.isMultiUserCall"
+        :room-code="roomInfo?.short_code"
+        :waiting-message="waitingMessage"
+        :show-participants-count="true"
+        @participant-count-changed="onParticipantCountChanged"
+      />
 
-        <!-- Remote video overlay info -->
+      <!-- Two-user call (existing layout for backward compatibility) -->
+      <div v-else-if="webrtcStore.participantCount === 2" class="two-user-layout">
+        <!-- Remote Video (main) -->
+        <div v-if="webrtcStore.hasRemoteVideo" class="absolute inset-0">
+          <video
+            ref="remoteVideoRef"
+            autoplay
+            playsinline
+            class="w-full h-full object-cover"
+            @loadedmetadata="onRemoteVideoLoaded"
+          ></video>
+
+          <!-- Remote video overlay info -->
+          <div
+            v-if="showVideoInfo"
+            class="absolute top-4 left-4 bg-black bg-opacity-50 px-3 py-2 rounded-lg text-white text-sm"
+          >
+            <p>{{ remoteVideoInfo }}</p>
+          </div>
+        </div>
+
+        <!-- No remote video placeholder -->
         <div
-          v-if="showVideoInfo"
-          class="absolute top-4 left-4 bg-black bg-opacity-50 px-3 py-2 rounded-lg text-white text-sm"
+          v-else
+          class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900"
         >
-          <p>{{ remoteVideoInfo }}</p>
+          <div class="text-center text-white max-w-md mx-auto p-8">
+            <div
+              class="w-32 h-32 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce-gentle"
+            >
+              <svg
+                class="w-16 h-16 text-gray-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                ></path>
+              </svg>
+            </div>
+            <h3 class="text-xl font-medium mb-2">{{ waitingMessage }}</h3>
+            <p class="text-gray-400 mb-4">Share the room code to invite someone:</p>
+            <div class="bg-gray-800 px-4 py-3 rounded-xl">
+              <p class="font-mono font-bold text-2xl tracking-wider text-green-400">
+                {{ roomInfo?.short_code }}
+              </p>
+            </div>
+            <button
+              @click="copyRoomCode"
+              class="mt-4 bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg transition-colors inline-flex items-center space-x-2"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                ></path>
+              </svg>
+              <span>{{ roomCodeCopied ? 'Copied!' : 'Copy Code' }}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Local Video (picture-in-picture) -->
+        <div
+          v-if="webrtcStore.hasLocalVideo"
+          :class="[
+            'absolute z-20 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 cursor-pointer border-2',
+            localVideoSize === 'small'
+              ? 'w-32 h-24 bottom-4 right-4'
+              : localVideoSize === 'large'
+                ? 'w-64 h-48 bottom-4 right-4'
+                : 'w-48 h-36 bottom-4 right-4',
+            webrtcStore.isVideoEnabled ? 'border-green-400' : 'border-gray-600',
+          ]"
+          @click="toggleLocalVideoSize"
+        >
+          <video
+            ref="localVideoRef"
+            autoplay
+            muted
+            playsinline
+            class="w-full h-full object-cover"
+            :class="{ mirror: shouldMirrorLocal }"
+          ></video>
+
+          <!-- Local video controls overlay -->
+          <div
+            class="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-opacity flex items-center justify-center opacity-0 hover:opacity-100"
+          >
+            <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M4 8V4m0 0h4M4 4l5 5m11-5v4m0-4h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"
+              ></path>
+            </svg>
+          </div>
+
+          <!-- Muted indicator -->
+          <div
+            v-if="!webrtcStore.isAudioEnabled"
+            class="absolute bottom-2 left-2 bg-red-500 rounded-full p-1"
+          >
+            <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1m0 0V7a3 3 0 013-3h8a3 3 0 013 3v2M4 9h1m11 0h5m-9 0a1 1 0 011-1v-1a1 1 0 011-1m-1 1v1a1 1 0 001 1M9 7h8a3 3 0 013 3v2"
+              ></path>
+            </svg>
+          </div>
+
+          <!-- Camera off indicator -->
+          <div
+            v-if="!webrtcStore.isVideoEnabled"
+            class="absolute inset-0 bg-gray-800 flex items-center justify-center"
+          >
+            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636"
+              ></path>
+            </svg>
+          </div>
+        </div>
+
+        <!-- Connection quality indicator -->
+        <div
+          v-if="connectionStats && showConnectionQuality"
+          class="absolute top-4 right-4 bg-black bg-opacity-50 px-3 py-2 rounded-lg text-white text-sm z-10"
+        >
+          <div class="flex items-center space-x-2">
+            <div
+              :class="[
+                'w-3 h-3 rounded-full',
+                connectionQuality >= 80
+                  ? 'bg-green-400'
+                  : connectionQuality >= 50
+                    ? 'bg-yellow-400'
+                    : 'bg-red-400',
+              ]"
+            ></div>
+            <span>{{ connectionQualityText }}</span>
+          </div>
         </div>
       </div>
 
-      <!-- No remote video placeholder -->
-      <div
-        v-else
-        class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900"
-      >
+      <!-- Single participant waiting state -->
+      <div v-else class="single-user-layout">
         <div class="text-center text-white max-w-md mx-auto p-8">
           <div
             class="w-32 h-32 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce-gentle"
@@ -167,99 +311,22 @@
           </button>
         </div>
       </div>
-
-      <!-- Local Video (picture-in-picture) -->
-      <div
-        v-if="webrtcStore.hasLocalVideo"
-        :class="[
-          'absolute z-20 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 cursor-pointer border-2',
-          localVideoSize === 'small'
-            ? 'w-32 h-24 bottom-4 right-4'
-            : localVideoSize === 'large'
-              ? 'w-64 h-48 bottom-4 right-4'
-              : 'w-48 h-36 bottom-4 right-4',
-          webrtcStore.isVideoEnabled ? 'border-green-400' : 'border-gray-600',
-        ]"
-        @click="toggleLocalVideoSize"
-      >
-        <video
-          ref="localVideoRef"
-          autoplay
-          muted
-          playsinline
-          class="w-full h-full object-cover"
-          :class="{ mirror: shouldMirrorLocal }"
-        ></video>
-
-        <!-- Local video controls overlay -->
-        <div
-          class="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-opacity flex items-center justify-center opacity-0 hover:opacity-100"
-        >
-          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4 8V4m0 0h4M4 4l5 5m11-5v4m0-4h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"
-            ></path>
-          </svg>
-        </div>
-
-        <!-- Muted indicator -->
-        <div
-          v-if="!webrtcStore.isAudioEnabled"
-          class="absolute bottom-2 left-2 bg-red-500 rounded-full p-1"
-        >
-          <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1m0 0V7a3 3 0 013-3h8a3 3 0 013 3v2M4 9h1m11 0h5m-9 0a1 1 0 011-1v-1a1 1 0 011-1m-1 1v1a1 1 0 001 1M9 7h8a3 3 0 013 3v2"
-            ></path>
-          </svg>
-        </div>
-
-        <!-- Camera off indicator -->
-        <div
-          v-if="!webrtcStore.isVideoEnabled"
-          class="absolute inset-0 bg-gray-800 flex items-center justify-center"
-        >
-          <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636"
-            ></path>
-          </svg>
-        </div>
-      </div>
-
-      <!-- Connection quality indicator -->
-      <div
-        v-if="connectionStats && showConnectionQuality"
-        class="absolute top-4 right-4 bg-black bg-opacity-50 px-3 py-2 rounded-lg text-white text-sm z-10"
-      >
-        <div class="flex items-center space-x-2">
-          <div
-            :class="[
-              'w-3 h-3 rounded-full',
-              connectionQuality >= 80
-                ? 'bg-green-400'
-                : connectionQuality >= 50
-                  ? 'bg-yellow-400'
-                  : 'bg-red-400',
-            ]"
-          ></div>
-          <span>{{ connectionQualityText }}</span>
-        </div>
-      </div>
     </div>
 
     <!-- Controls -->
-    <div class="bg-gray-900 p-6 safe-area-inset">
-      <div class="max-w-md mx-auto flex items-center justify-center space-x-6">
+    <div class="bg-gray-900 p-4 safe-area-inset">
+      <!-- Multi-user controls for 3+ participants -->
+      <MultiUserControls
+        v-if="webrtcStore.isMultiUserCall"
+        :participant-count="webrtcStore.participantCount"
+        @layout-changed="onLayoutChanged"
+        @screen-share-toggled="onScreenShareToggled"
+        @recording-toggled="onRecordingToggled"
+        @participant-pinned="onParticipantPinned"
+      />
+
+      <!-- Standard controls for 2-user calls (backward compatibility) -->
+      <div v-else class="max-w-md mx-auto flex items-center justify-center space-x-6">
         <!-- Toggle Audio -->
         <button
           @click="webrtcStore.toggleAudio"
@@ -362,6 +429,35 @@
       <!-- Connection status message -->
       <div v-if="connectionMessage" class="mt-4 text-center text-sm text-gray-400">
         {{ connectionMessage }}
+      </div>
+
+      <!-- Fallback mode message -->
+      <div v-if="fallbackModeMessage" class="mt-4 text-center">
+        <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 text-sm">
+          <div class="flex items-center justify-center space-x-2 text-yellow-800 dark:text-yellow-200">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+            </svg>
+            <span>{{ fallbackModeMessage }}</span>
+          </div>
+
+          <!-- Fallback controls -->
+          <div v-if="showFallbackControls" class="mt-3 flex justify-center space-x-2">
+            <button
+              v-if="canRestoreVideo"
+              @click="restoreVideoFromAudioOnly"
+              class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded transition-colors"
+            >
+              Restore Video
+            </button>
+            <button
+              @click="handleConnectionHelp"
+              class="text-xs bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded transition-colors"
+            >
+              Get Help
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -516,6 +612,58 @@
       </div>
     </Teleport>
 
+    <!-- Connection Help Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showConnectionHelp"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        @click="showConnectionHelp = false"
+      >
+        <div class="card w-full max-w-md p-6 animate-slide-up" @click.stop>
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Connection Help</h3>
+
+          <div class="space-y-4 text-sm">
+            <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+              <h4 class="font-medium text-blue-900 dark:text-blue-100 mb-2">Common Solutions:</h4>
+              <ul class="space-y-1 text-blue-800 dark:text-blue-200">
+                <li>• Check your internet connection</li>
+                <li>• Disable VPN if using one</li>
+                <li>• Close other applications using camera/microphone</li>
+                <li>• Refresh the page to restart the call</li>
+              </ul>
+            </div>
+
+            <div class="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+              <h4 class="font-medium text-green-900 dark:text-green-100 mb-2">Still Having Issues?</h4>
+              <ul class="space-y-1 text-green-800 dark:text-green-200">
+                <li>• Try using a different browser</li>
+                <li>• Check if your firewall is blocking the connection</li>
+                <li>• Ensure no browser extensions are interfering</li>
+              </ul>
+            </div>
+
+            <div class="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+              <h4 class="font-medium text-yellow-900 dark:text-yellow-100 mb-2">Current Status:</h4>
+              <div class="text-yellow-800 dark:text-yellow-200">
+                <p><strong>Mode:</strong> {{ currentFallbackMode || 'Normal' }}</p>
+                <p><strong>Quality:</strong> {{ connectionQualityText }}</p>
+                <p><strong>State:</strong> {{ webrtcStore.connectionState }}</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-6 flex justify-between">
+            <button @click="showConnectionHelp = false" class="btn-secondary px-4 py-2">
+              Close
+            </button>
+            <button @click="refreshConnection" class="btn-primary px-4 py-2 bg-red-500 hover:bg-red-600">
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <!-- Full screen loading overlay -->
     <div
       v-if="isConnecting"
@@ -540,6 +688,9 @@ import { useRoomsStore } from '../stores/rooms'
 import { useGlobalStore } from '../stores/global'
 import { utils } from '../services/utils'
 import { webrtcService } from '../services/webrtc'
+import { webrtcRetryService } from '../services/webrtc-retry'
+import ParticipantGrid from './ParticipantGrid.vue'
+import MultiUserControls from './MultiUserControls.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -571,6 +722,12 @@ const connectingSubMessage = ref('Setting up your video call')
 // Connection monitoring
 const connectionStats = ref(null)
 const statsMonitor = ref(null)
+
+// Fallback and quality state
+const isInFallbackMode = ref(false)
+const currentFallbackMode = ref(null) // 'audio_only', 'chat_only', null
+const connectionQualityWarnings = ref([])
+const showConnectionHelp = ref(false)
 
 // Computed properties
 const connectionStatusText = computed(() => {
@@ -636,11 +793,34 @@ const connectionMessage = computed(() => {
   if (webrtcStore.connectionState === 'connecting') {
     return 'Establishing secure connection...'
   } else if (webrtcStore.connectionState === 'failed') {
-    return 'Connection failed. Please check your internet connection.'
+    return isInFallbackMode.value
+      ? `Connection issues detected. Running in ${currentFallbackMode.value?.replace('_', '-')} mode.`
+      : 'Connection failed. Please check your internet connection.'
   } else if (webrtcStore.connectionState === 'disconnected') {
-    return 'Disconnected. Attempting to reconnect...'
+    return webrtcStore.connectionRecoveryInProgress
+      ? 'Attempting to restore connection...'
+      : 'Disconnected. Attempting to reconnect...'
   }
   return ''
+})
+
+const fallbackModeMessage = computed(() => {
+  switch (currentFallbackMode.value) {
+    case 'audio_only':
+      return 'Video unavailable. Continue with audio only or check your connection.'
+    case 'chat_only':
+      return 'Audio and video unavailable. You can continue with chat or refresh the page.'
+    default:
+      return null
+  }
+})
+
+const showFallbackControls = computed(() => {
+  return isInFallbackMode.value && currentFallbackMode.value !== null
+})
+
+const canRestoreVideo = computed(() => {
+  return currentFallbackMode.value === 'audio_only' && webrtcStore.hasLocalVideo
 })
 
 // Connection quality computed properties
@@ -762,6 +942,7 @@ const initializeCall = async () => {
     // Start call timer and monitoring
     callStartTime.value = new Date()
     startStatsMonitoring()
+    setupEnhancedMonitoring()
 
     isConnecting.value = false
   } catch (error) {
@@ -855,6 +1036,31 @@ const onRemoteVideoLoaded = () => {
   }, 3000)
 }
 
+const onParticipantCountChanged = (data) => {
+  console.log('Participant count changed:', data)
+  // Handle participant count changes if needed
+}
+
+const onLayoutChanged = (layout) => {
+  console.log('Layout changed to:', layout)
+  // Handle layout changes if needed
+}
+
+const onScreenShareToggled = (isSharing) => {
+  console.log('Screen share toggled:', isSharing)
+  // Handle screen share toggle if needed
+}
+
+const onRecordingToggled = (isRecording) => {
+  console.log('Recording toggled:', isRecording)
+  // Handle recording toggle if needed
+}
+
+const onParticipantPinned = (participantId) => {
+  console.log('Participant pinned:', participantId)
+  // Handle participant pinning if needed
+}
+
 const startStatsMonitoring = () => {
   if (webrtcStore.peerConnection) {
     statsMonitor.value = webrtcService.createQualityMonitor(
@@ -865,6 +1071,77 @@ const startStatsMonitoring = () => {
       2000, // Update every 2 seconds
     )
   }
+}
+
+const setupEnhancedMonitoring = () => {
+  // Monitor connection quality and fallback scenarios
+  if (webrtcStore.peerConnection) {
+    webrtcService.monitorConnectionState(
+      webrtcStore.peerConnection,
+      'main_participant',
+      handleConnectionRecovery,
+      handleConnectionQualityChange
+    )
+  }
+}
+
+const handleConnectionRecovery = (recoveryInfo) => {
+  console.log('Connection recovery needed:', recoveryInfo)
+
+  if (recoveryInfo.type === 'connection_failed') {
+    if (recoveryInfo.canRecover === false) {
+      globalStore.addNotification(
+        'Unable to maintain connection. Please refresh the page.',
+        'error',
+        10000
+      )
+      showConnectionHelp.value = true
+    } else {
+      globalStore.addNotification('Attempting to restore connection...', 'info', 3000)
+    }
+  }
+}
+
+const handleConnectionQualityChange = (quality, state) => {
+  console.log('Connection quality changed:', quality, state)
+
+  // Show warnings for poor quality
+  if (quality.score < 40 && !connectionQualityWarnings.value.includes('poor_quality')) {
+    connectionQualityWarnings.value.push('poor_quality')
+    globalStore.addNotification(
+      'Connection quality is poor. The system will attempt to optimize.',
+      'warning',
+      5000
+    )
+  }
+
+  // Clear warnings when quality improves
+  if (quality.score >= 60) {
+    connectionQualityWarnings.value = []
+  }
+}
+
+const restoreVideoFromAudioOnly = () => {
+  if (currentFallbackMode.value === 'audio_only' && webrtcStore.hasLocalVideo) {
+    // Attempt to restore video by re-enabling video tracks
+    globalStore.addNotification('Attempting to restore video...', 'info', 3000)
+
+    // This would trigger a reconnection with video enabled
+    // The retry service will handle the restoration
+    webrtcStore.toggleVideo()
+
+    // Reset fallback mode
+    isInFallbackMode.value = false
+    currentFallbackMode.value = null
+  }
+}
+
+const handleConnectionHelp = () => {
+  showConnectionHelp.value = true
+}
+
+const refreshConnection = () => {
+  window.location.reload()
 }
 
 // Watch for stream changes

@@ -1,0 +1,221 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: monitoring
+  labels:
+    app: grafana
+data:
+  grafana.ini: |
+    [server]
+    http_port = 3000
+    root_url = %(protocol)s://%(domain)s:%(http_port)s/
+
+    [database]
+    type = sqlite3
+    path = /var/lib/grafana/grafana.db
+
+    [session]
+    provider = file
+    provider_config = sessions
+
+    [analytics]
+    check_for_updates = false
+
+    [security]
+    admin_user = admin
+    admin_password = grafana_admin_password
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-secrets
+  namespace: monitoring
+  labels:
+    app: grafana
+type: Opaque
+data:
+  admin-password: Z3JhZmFuYV9hZG1pbl9wYXNzd29yZA==  # grafana_admin_password
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:latest
+        ports:
+        - containerPort: 3000
+          name: web
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: grafana-secrets
+              key: admin-password
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/grafana
+        - name: grafana-data
+          mountPath: /var/lib/grafana
+        - name: dashboards-volume
+          mountPath: /var/lib/grafana/dashboards
+        resources:
+          requests:
+            memory: 256Mi
+            cpu: 100m
+          limits:
+            memory: 512Mi
+            cpu: 200m
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: 3000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+      volumes:
+      - name: config-volume
+        configMap:
+          name: grafana-config
+      - name: grafana-data
+        persistentVolumeClaim:
+          claimName: grafana-storage
+      - name: dashboards-volume
+        configMap:
+          name: grafana-dashboards
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana-storage
+  namespace: monitoring
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: monitoring
+  labels:
+    app: grafana
+data:
+  videocall-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "VideoCall Application Dashboard",
+        "tags": ["videocall", "application"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Backend Response Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))",
+                "legendFormat": "95th percentile"
+              }
+            ]
+          },
+          {
+            "title": "Active Rooms",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "videocall_active_rooms",
+                "legendFormat": "Active Rooms"
+              }
+            ]
+          },
+          {
+            "title": "WebSocket Connections",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "websocket_connections",
+                "legendFormat": "Active Connections"
+              }
+            ]
+          },
+          {
+            "title": "Error Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(http_requests_total{status!~\"2..\"}[5m]) / rate(http_requests_total[5m])",
+                "legendFormat": "Error Rate"
+              }
+            ]
+          }
+        ],
+        "time": {
+          "from": "now-6h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: monitoring
+  labels:
+    app: grafana
+spec:
+  selector:
+    app: grafana
+  ports:
+  - port: 3000
+    targetPort: 3000
+    name: web
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: monitoring
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: grafana.video-call-ghost.ru
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000

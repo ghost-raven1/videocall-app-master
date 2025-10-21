@@ -10,6 +10,9 @@ const VideoCall = () => import('../components/VideoCall.vue')
 const NotFound = () => import('../components/NotFound.vue')
 const JoinRoom = () => import('../components/JoinRoom.vue')
 
+// Import admin router
+import adminRouter from '../admin/router/admin'
+
 // Route definitions with comprehensive metadata
 const routes = [
   {
@@ -138,6 +141,66 @@ const routes = [
   //     icon: 'question',
   //   },
   // },
+  // Admin routes (lazy loaded for better performance)
+  {
+    path: '/admin',
+    name: 'Admin',
+    component: () => import('../admin/components/admin-layout/AdminLayout.vue'),
+    meta: {
+      requiresAuth: true,
+      isAdmin: true,
+      title: 'Админ-панель',
+      description: 'Панель управления видеозвонками',
+      showInNav: false, // Admin panel has its own navigation
+    },
+    children: [
+      {
+        path: '',
+        name: 'AdminDashboard',
+        component: () => import('../admin/views/AdminDashboard.vue'),
+        meta: {
+          title: 'Панель управления',
+          description: 'Главная страница админ-панели',
+        },
+      },
+      {
+        path: 'rooms',
+        name: 'AdminRooms',
+        component: () => import('../admin/views/AdminRooms.vue'),
+        meta: {
+          title: 'Управление комнатами',
+          description: 'Создание и управление комнатами',
+        },
+      },
+      {
+        path: 'users',
+        name: 'AdminUsers',
+        component: () => import('../admin/views/AdminUsers.vue'),
+        meta: {
+          title: 'Управление пользователями',
+          description: 'Управление пользователями системы',
+        },
+      },
+      {
+        path: 'analytics',
+        name: 'AdminAnalytics',
+        component: () => import('../admin/views/AdminAnalytics.vue'),
+        meta: {
+          title: 'Аналитика',
+          description: 'Статистика и аналитика системы',
+        },
+      },
+      {
+        path: 'settings',
+        name: 'AdminSettings',
+        component: () => import('../admin/views/AdminSettings.vue'),
+        meta: {
+          title: 'Настройки',
+          description: 'Системные настройки',
+        },
+      },
+    ],
+  },
   // Catch-all route for 404
   {
     path: '/:pathMatch(.*)*',
@@ -212,6 +275,19 @@ router.beforeEach(async (to, from, next) => {
       // Store intended destination
       const redirectQuery = to.fullPath !== '/' ? { redirect: to.fullPath } : {}
       next({ name: 'Login', query: redirectQuery })
+      return
+    }
+  }
+
+  // Check admin permissions
+  if (to.meta.isAdmin) {
+    // In real app, check if user has admin role
+    const isAdmin = globalStore.user?.role === 'admin' || globalStore.user?.is_staff
+
+    if (!isAdmin) {
+      console.warn('Access denied: Admin permissions required')
+      globalStore.addNotification('Доступ запрещен: требуются права администратора', 'error', 5000)
+      next({ name: 'Dashboard' })
       return
     }
   }

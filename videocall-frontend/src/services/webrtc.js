@@ -1,4 +1,6 @@
 // src/services/webrtc.js - WebRTC utility functions
+import { webrtcRetryService } from './webrtc-retry.js'
+
 export const webrtcService = {
   /**
    * Get STUN/TURN server configuration
@@ -81,7 +83,7 @@ export const webrtcService = {
   },
 
   /**
-   * Monitor connection quality
+   * Monitor connection quality with enhanced error handling and retry logic
    */
   createQualityMonitor(peerConnection, callback, interval = 5000) {
     if (!peerConnection || typeof callback !== 'function') {
@@ -97,10 +99,55 @@ export const webrtcService = {
         }
       } catch (error) {
         console.error('Quality monitoring error:', error)
+
+        // Try to recover from monitoring errors
+        if (error.name === 'InvalidStateError') {
+          console.log('Peer connection is closed, stopping quality monitor')
+          clearInterval(monitor)
+          return null
+        }
       }
     }, interval)
 
     return monitor
+  },
+
+  /**
+   * Create adaptive quality monitor with automatic recovery
+   */
+  createAdaptiveQualityMonitor(peerConnection, participantId, onQualityChange, onAdaptiveAction) {
+    return webrtcRetryService.createAdaptiveQualityMonitor(
+      peerConnection,
+      participantId,
+      onQualityChange,
+      onAdaptiveAction
+    )
+  },
+
+  /**
+   * Monitor connection state with retry and recovery capabilities
+   */
+  monitorConnectionState(peerConnection, participantId, onRecoveryNeeded, onQualityChange) {
+    return webrtcRetryService.monitorConnectionState(
+      peerConnection,
+      participantId,
+      onRecoveryNeeded,
+      onQualityChange
+    )
+  },
+
+  /**
+   * Execute WebRTC operation with retry logic
+   */
+  async executeWithRetry(operationId, operation, options = {}) {
+    return webrtcRetryService.executeWithRetry(operationId, operation, options)
+  },
+
+  /**
+   * Get user-friendly error message for WebRTC errors
+   */
+  getErrorMessage(error, context = '') {
+    return webrtcRetryService.getErrorMessage(error, context)
   },
 
   /**

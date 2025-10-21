@@ -1,0 +1,301 @@
+version: '3.8'
+
+services:
+  # Test Database (separate from production)
+  test-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: videocall_test
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+    volumes:
+      - test_postgres_data:/var/lib/postgresql/data/
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U test_user -d videocall_test",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # Test Redis (separate from production)
+  test-redis:
+    image: redis:7-alpine
+    volumes:
+      - test_redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks:
+      - test-network
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    networks:
+      - test-network
+    depends_on:
+      - backend
+      - sfu
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana-dashboard.json:/etc/grafana/provisioning/dashboards/load-test-dashboard.json
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-worldmap-panel
+    ports:
+      - "3000:3000"
+    networks:
+      - test-network
+    depends_on:
+      - prometheus
+
+  # Node Exporter for system metrics
+  node-exporter:
+    image: prom/node-exporter:latest
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/host/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    networks:
+      - test-network
+
+  # PostgreSQL Exporter for database metrics
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: "postgresql://test_user:test_password@test-db:5432/videocall_test?sslmode=disable"
+    ports:
+      - "9187:9187"
+    networks:
+      - test-network
+    depends_on:
+      - test-db
+
+  # Redis Exporter for Redis metrics
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    environment:
+      REDIS_ADDR: redis://test-redis:6379
+    ports:
+      - "9121:9121"
+    networks:
+      - test-network
+    depends_on:
+      - test-redis
+
+  # Nginx Exporter for web server metrics
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    command: ["-nginx.scrape-uri", "http://nginx:80/stub_status"]
+    ports:
+      - "9113:9113"
+    networks:
+      - test-network
+    depends_on:
+      - nginx
+
+  # Load Test Client (for metrics export)
+  load-test-client:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile.loadtest
+    environment:
+      - BACKEND_URL=ws://backend:8000
+      - SFU_URL=ws://sfu:8080
+      - PROMETHEUS_GATEWAY=http://prometheus:9091
+    volumes:
+      - ./tests:/app/tests
+      - /app/node_modules
+    networks:
+      - test-network
+    depends_on:
+      - backend
+      - sfu
+      - prometheus
+
+  # Main Application Services (Test Environment)
+
+  # Backend (Django + Daphne)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./backend:/app
+      - static_volume:/staticfiles:ro
+      - media_volume:/app/media
+    env_file:
+      - .env
+    environment:
+      - DEBUG=False
+      - DB_HOST=test-db
+      - DB_PORT=5432
+      - DB_NAME=videocall_test
+      - DB_USER=test_user
+      - DB_PASSWORD=test_password
+      - REDIS_URL=redis://test-redis:6379/0
+      - POSTGRES_DB=videocall_test
+      - POSTGRES_USER=test_user
+      - POSTGRES_PASSWORD=test_password
+      - PROMETHEUS_METRICS_ENABLED=true
+    depends_on:
+      test-db:
+        condition: service_healthy
+      test-redis:
+        condition: service_healthy
+    networks:
+      - test-network
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import requests; requests.get('http://localhost:8000/api/health/', timeout=10)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    command: >
+      sh -c "
+        echo '🧪 Starting Django backend in TEST mode...' &&
+        python manage.py migrate &&
+        python manage.py collectstatic --noinput &&
+        daphne -b 0.0.0.0 -p 8000 videocall_app.asgi:application --access-log - --verbosity 2
+      "
+
+  # SFU Server (Go)
+  sfu:
+    build:
+      context: ./streaming-node
+      dockerfile: Dockerfile
+    environment:
+      - SERVER_PORT=8080
+      - LOG_LEVEL=debug
+      - PROMETHEUS_METRICS_ENABLED=true
+      - PROMETHEUS_METRICS_PORT=9090
+    ports:
+      - "8080:8080"
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      - backend
+
+  # Frontend (Vue.js)
+  frontend:
+    build:
+      context: ./videocall-frontend
+      dockerfile: Dockerfile
+    environment:
+      - VITE_API_BASE_URL=http://backend:8000
+    networks:
+      - test-network
+    depends_on:
+      - backend
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - static_volume:/staticfiles:ro
+      - media_volume:/app/media:ro
+      - ./nginx/stub_status.conf:/etc/nginx/conf.d/stub_status.conf:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - test-network
+
+  # Artillery Load Testing (HTTP/WebSocket)
+  artillery:
+    image: artilleryio/artillery:latest
+    volumes:
+      - ./tests:/artillery/tests
+    working_dir: /artillery
+    networks:
+      - test-network
+    depends_on:
+      - backend
+      - nginx
+    command: ["run", "tests/load-test-config.yml"]
+
+  # Puppeteer for Browser-based Load Testing
+  puppeteer:
+    build:
+      context: .
+      dockerfile: tests/Dockerfile.puppeteer
+    volumes:
+      - ./tests:/app/tests
+    environment:
+      - FRONTEND_URL=http://frontend:3000
+      - BACKEND_URL=http://backend:8000
+      - HEADLESS=true
+      - CONCURRENT_USERS=50
+    networks:
+      - test-network
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  test_postgres_data:
+    driver: local
+  test_redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  static_volume:
+    driver: local
+  media_volume:
+    driver: local
+
+networks:
+  test-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

@@ -25,7 +25,7 @@ export default defineConfig({
           },
         ],
       },
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      includeAssets: ['favicon.ico'],
       manifest: {
         name: 'Video Call App',
         short_name: 'VideoCall',
@@ -39,46 +39,9 @@ export default defineConfig({
         categories: ['communication', 'productivity'],
         icons: [
           {
-            src: 'pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'any maskable',
-          },
-        ],
-        shortcuts: [
-          {
-            name: 'Create Room',
-            short_name: 'Create',
-            description: 'Start a new video call',
-            url: '/?action=create',
-            icons: [
-              {
-                src: 'pwa-192x192.png',
-                sizes: '192x192',
-              },
-            ],
-          },
-          {
-            name: 'Join Room',
-            short_name: 'Join',
-            description: 'Join an existing video call',
-            url: '/?action=join',
-            icons: [
-              {
-                src: 'pwa-192x192.png',
-                sizes: '192x192',
-              },
-            ],
+            src: 'favicon.ico',
+            sizes: '48x48',
+            type: 'image/x-icon',
           },
         ],
       },

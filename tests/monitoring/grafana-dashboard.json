@@ -1,0 +1,369 @@
+{
+  "dashboard": {
+    "id": null,
+    "title": "Video Call Application - Load Test Dashboard",
+    "tags": ["load-testing", "videocall", "performance"],
+    "style": "dark",
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Load Test Overview",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "load_test_connections_total",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "yellow", "value": 80},
+                {"color": "red", "value": 95}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Active Connections",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "load_test_active_connections",
+            "refId": "A",
+            "legendFormat": "Active Connections"
+          }
+        ],
+        "yAxes": [
+          {"label": "Connections", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 18, "x": 6, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Connection Success Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "(load_test_successful_connections / load_test_total_connections) * 100",
+            "refId": "A",
+            "legendFormat": "Success Rate %"
+          }
+        ],
+        "yAxes": [
+          {"label": "Success Rate %", "min": 0, "max": 100}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "Message Throughput",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(load_test_messages_sent_total[1m])",
+            "refId": "A",
+            "legendFormat": "Messages Sent/sec"
+          },
+          {
+            "expr": "rate(load_test_messages_received_total[1m])",
+            "refId": "B",
+            "legendFormat": "Messages Received/sec"
+          }
+        ],
+        "yAxes": [
+          {"label": "Messages/sec", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+      },
+      {
+        "id": 5,
+        "title": "Average Latency",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "load_test_message_latency_ms",
+            "refId": "A",
+            "legendFormat": "Avg Latency (ms)"
+          }
+        ],
+        "yAxes": [
+          {"label": "Latency (ms)", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 6,
+        "title": "Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(load_test_errors_total[1m])",
+            "refId": "A",
+            "legendFormat": "Errors/sec"
+          }
+        ],
+        "yAxes": [
+          {"label": "Errors/sec", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      },
+      {
+        "id": 7,
+        "title": "Backend Performance",
+        "type": "row",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 24}
+      },
+      {
+        "id": 8,
+        "title": "Django Response Time",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "django_http_response_latency_ms",
+            "refId": "A",
+            "legendFormat": "Response Time (ms)"
+          }
+        ],
+        "yAxes": [
+          {"label": "Response Time (ms)", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 25}
+      },
+      {
+        "id": 9,
+        "title": "Django Request Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(django_http_requests_total[1m])",
+            "refId": "A",
+            "legendFormat": "Requests/sec"
+          }
+        ],
+        "yAxes": [
+          {"label": "Requests/sec", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 25}
+      },
+      {
+        "id": 10,
+        "title": "SFU Performance",
+        "type": "row",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 33}
+      },
+      {
+        "id": 11,
+        "title": "SFU Active Rooms",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sfu_rooms_active",
+            "refId": "A",
+            "legendFormat": "Active Rooms"
+          }
+        ],
+        "yAxes": [
+          {"label": "Rooms", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 34}
+      },
+      {
+        "id": 12,
+        "title": "SFU Active Peers",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "sfu_peers_active",
+            "refId": "A",
+            "legendFormat": "Active Peers"
+          }
+        ],
+        "yAxes": [
+          {"label": "Peers", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 8, "y": 34}
+      },
+      {
+        "id": 13,
+        "title": "SFU RTP Packets",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(sfu_rtp_packets_total[1m])",
+            "refId": "A",
+            "legendFormat": "RTP Packets/sec"
+          }
+        ],
+        "yAxes": [
+          {"label": "Packets/sec", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 8, "x": 16, "y": 34}
+      },
+      {
+        "id": 14,
+        "title": "System Resources",
+        "type": "row",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 42}
+      },
+      {
+        "id": 15,
+        "title": "CPU Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "100 - (avg(irate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+            "refId": "A",
+            "legendFormat": "{{instance}} CPU Usage %"
+          }
+        ],
+        "yAxes": [
+          {"label": "CPU %", "min": 0, "max": 100}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 43}
+      },
+      {
+        "id": 16,
+        "title": "Memory Usage",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "100 * (1 - ((avg_over_time(node_memory_MemFree_bytes[5m]) + avg_over_time(node_memory_Cached_bytes[5m]) + avg_over_time(node_memory_Buffers_bytes[5m])) / avg_over_time(node_memory_MemTotal_bytes[5m])))",
+            "refId": "A",
+            "legendFormat": "{{instance}} Memory Usage %"
+          }
+        ],
+        "yAxes": [
+          {"label": "Memory %", "min": 0, "max": 100}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 43}
+      },
+      {
+        "id": 17,
+        "title": "Database Performance",
+        "type": "row",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 51}
+      },
+      {
+        "id": 18,
+        "title": "PostgreSQL Connections",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "pg_stat_activity_count",
+            "refId": "A",
+            "legendFormat": "Active Connections"
+          }
+        ],
+        "yAxes": [
+          {"label": "Connections", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 52}
+      },
+      {
+        "id": 19,
+        "title": "PostgreSQL Query Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(pg_stat_statements_total[1m])",
+            "refId": "A",
+            "legendFormat": "Queries/sec"
+          }
+        ],
+        "yAxes": [
+          {"label": "Queries/sec", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 52}
+      },
+      {
+        "id": 20,
+        "title": "Real-time Events",
+        "type": "row",
+        "gridPos": {"h": 1, "w": 24, "x": 0, "y": 60}
+      },
+      {
+        "id": 21,
+        "title": "Room Events",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "increase(videocall_room_events_total[1m])",
+            "refId": "A",
+            "legendFormat": "{{event_type}}"
+          }
+        ],
+        "yAxes": [
+          {"label": "Events/min", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 61}
+      },
+      {
+        "id": 22,
+        "title": "Participant Events",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "increase(videocall_participant_events_total[1m])",
+            "refId": "A",
+            "legendFormat": "{{event_type}}"
+          }
+        ],
+        "yAxes": [
+          {"label": "Events/min", "min": 0}
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 61}
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {
+      "refresh_intervals": ["5s", "10s", "30s", "1m", "5m"]
+    },
+    "templating": {
+      "list": [
+        {
+          "name": "instance",
+          "type": "query",
+          "query": "up",
+          "refresh": 1,
+          "includeAll": true,
+          "allValue": ".*",
+          "multi": true
+        }
+      ]
+    },
+    "annotations": {
+      "list": [
+        {
+          "name": "Load Test Start",
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "load_test_started",
+          "iconColor": "green",
+          "textFormat": "Load test started"
+        },
+        {
+          "name": "Load Test End",
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "load_test_completed",
+          "iconColor": "blue",
+          "textFormat": "Load test completed"
+        }
+      ]
+    },
+    "refresh": "5s",
+    "schemaVersion": 27,
+    "version": 1,
+    "links": []
+  }
+}

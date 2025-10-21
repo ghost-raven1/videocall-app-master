@@ -1,6 +1,7 @@
 // src/stores/global.js - Global application state management
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { apiService } from '../services/api'
 
 export const useGlobalStore = defineStore('global', () => {
@@ -11,6 +12,11 @@ export const useGlobalStore = defineStore('global', () => {
   const notifications = ref([])
   const isDarkMode = ref(false)
   const isOnline = ref(navigator.onLine)
+  const currentLanguage = ref('ru')
+  const availableLanguages = ref([
+    { code: 'en', name: 'English' },
+    { code: 'ru', name: 'Русский' }
+  ])
 
   // Computed
   const canUseApp = computed(() => isAuthenticated.value && isOnline.value)
@@ -70,9 +76,18 @@ export const useGlobalStore = defineStore('global', () => {
       setLoading(true, 'Checking authentication...')
       const response = await apiService.checkAuth()
       setAuthenticated(response.data.authenticated)
+
+      // Listen for token expiration events
+      window.addEventListener('auth:token-expired', () => {
+        setAuthenticated(false)
+        addNotification('Session expired. Please log in again.', 'warning', 5000)
+      })
+
+      return response.data.authenticated
     } catch (error) {
       console.error('Auth check failed:', error)
       setAuthenticated(false)
+      return false
     } finally {
       setLoading(false)
     }
@@ -112,6 +127,46 @@ export const useGlobalStore = defineStore('global', () => {
     }
   }
 
+  // Language management functions
+  const setLanguage = (languageCode) => {
+    if (availableLanguages.value.some(lang => lang.code === languageCode)) {
+      currentLanguage.value = languageCode
+      localStorage.setItem('preferred-language', languageCode)
+
+      // Update i18n locale if available
+      const i18n = useI18n()
+      if (i18n && i18n.locale) {
+        i18n.locale.value = languageCode
+      }
+
+      // Dispatch custom event for components to react
+      window.dispatchEvent(new CustomEvent('language-changed', {
+        detail: { language: languageCode }
+      }))
+
+      addNotification(`Language switched to ${availableLanguages.value.find(l => l.code === languageCode)?.name}`, 'success', 2000)
+    }
+  }
+
+  const initializeLanguage = () => {
+    const savedLanguage = localStorage.getItem('preferred-language')
+    const browserLanguage = navigator.language.split('-')[0]
+
+    let languageToSet = 'ru' // default
+
+    if (savedLanguage && availableLanguages.value.some(lang => lang.code === savedLanguage)) {
+      languageToSet = savedLanguage
+    } else if (availableLanguages.value.some(lang => lang.code === browserLanguage)) {
+      languageToSet = browserLanguage
+    }
+
+    setLanguage(languageToSet)
+  }
+
+  const getCurrentLanguage = () => {
+    return availableLanguages.value.find(lang => lang.code === currentLanguage.value) || availableLanguages.value[0]
+  }
+
   return {
     // State
     isAuthenticated,
@@ -120,6 +175,8 @@ export const useGlobalStore = defineStore('global', () => {
     notifications,
     isDarkMode,
     isOnline,
+    currentLanguage,
+    availableLanguages,
 
     // Computed
     canUseApp,
@@ -135,5 +192,8 @@ export const useGlobalStore = defineStore('global', () => {
     checkAuthentication,
     login,
     logout,
+    setLanguage,
+    initializeLanguage,
+    getCurrentLanguage,
   }
 })

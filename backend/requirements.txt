@@ -3,14 +3,16 @@ cffi==1.17.1
 channels==4.0.0
 channels-redis==4.1.0
 cryptography==41.0.7
-Django==5.2.5
+Django==4.2.25
 django-cors-headers==4.3.1
+dj-database-url==2.1.0
+psycopg2-binary==2.9.9
 django-ratelimit==4.1.0
 django-redis==5.4.0
 djangorestframework==3.14.0
+djangorestframework-simplejwt==5.3.1
 msgpack==1.1.1
 pillow==11.3.0
-psycopg2-binary==2.9.10
 pycparser==2.22
 pypng==0.20220715.0
 python-decouple==3.8
@@ -21,3 +23,15 @@ sqlparse==0.5.3
 typing_extensions==4.15.0
 uuid==1.30
 websockets==12.0
+
+# Testing dependencies
+pytest==7.4.3
+pytest-django==4.5.2
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-xdist==3.3.1
+pytest-mock==3.12.0
+pytest-env==1.0.1
+factory-boy==3.3.0
+faker==20.1.0
+responses==0.24.1

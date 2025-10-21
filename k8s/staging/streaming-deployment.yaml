@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: videocall-streaming
+  namespace: videocall-staging
+  labels:
+    app: videocall-streaming
+    environment: staging
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: videocall-streaming
+  template:
+    metadata:
+      labels:
+        app: videocall-streaming
+        environment: staging
+    spec:
+      containers:
+      - name: streaming
+        image: ghcr.io/${{ github.repository }}/videocall-streaming:staging
+        ports:
+        - containerPort: 8080
+          name: streaming
+        env:
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: app-secrets
+              key: JWT_SECRET
+        - name: SERVER_ALLOWED_ORIGINS
+          value: https://staging.video-call-ghost.ru,https://www.staging.video-call-ghost.ru
+        - name: ENVIRONMENT
+          value: staging
+        resources:
+          requests:
+            cpu: 500m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: videocall-streaming
+  namespace: videocall-staging
+  labels:
+    app: videocall-streaming
+    environment: staging
+spec:
+  selector:
+    app: videocall-streaming
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: streaming
+  type: ClusterIP

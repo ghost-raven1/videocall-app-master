@@ -1,0 +1,170 @@
+package sfu
+
+import (
+	"fmt"
+	"sync"
+
+	"streaming-node/config"
+
+	"github.com/pion/webrtc/v3"
+	"github.com/sirupsen/logrus"
+)
+
+// SFU represents the Selective Forwarding Unit
+type SFU struct {
+	config     *config.Config
+	rooms      map[string]*Room
+	roomsMutex sync.RWMutex
+	api        *webrtc.API
+	logger     *logrus.Logger
+}
+
+// NewSFU creates a new SFU instance
+func NewSFU(cfg *config.Config) *SFU {
+	// Create WebRTC API with custom configuration
+	webrtcConfig := webrtc.Configuration{
+		ICEServers: []webrtc.ICEServer{
+			{
+				URLs: []string{"stun:stun.l.google.com:19302"},
+			},
+		},
+		SDPSemantics: webrtc.SDPSemanticsUnifiedPlan,
+	}
+
+	if cfg.WebRTC.ICEServers != nil {
+		webrtcConfig.ICEServers = cfg.WebRTC.ICEServers
+	}
+
+	api := webrtc.NewAPI(webrtc.WithSettingEngine(webrtc.SettingEngine{
+		LoggerFactory: &loggerFactory{},
+	}))
+
+	logger := logrus.New()
+	logger.SetLevel(logrus.InfoLevel)
+
+	return &SFU{
+		config: cfg,
+		rooms:  make(map[string]*Room),
+		api:    api,
+		logger: logger,
+	}
+}
+
+// CreateRoom creates a new room or returns existing one
+func (s *SFU) CreateRoom(roomID string) (*Room, error) {
+	s.roomsMutex.Lock()
+	defer s.roomsMutex.Unlock()
+
+	if room, exists := s.rooms[roomID]; exists {
+		return room, nil
+	}
+
+	room := NewRoom(roomID, s.api, s.config, s.logger)
+	s.rooms[roomID] = room
+
+	s.logger.WithField("roomID", roomID).Info("Created new room")
+	return room, nil
+}
+
+// GetRoom returns a room by ID
+func (s *SFU) GetRoom(roomID string) (*Room, error) {
+	s.roomsMutex.RLock()
+	defer s.roomsMutex.RUnlock()
+
+	room, exists := s.rooms[roomID]
+	if !exists {
+		return nil, fmt.Errorf("room %s not found", roomID)
+	}
+
+	return room, nil
+}
+
+// RemoveRoom removes a room from the SFU
+func (s *SFU) RemoveRoom(roomID string) {
+	s.roomsMutex.Lock()
+	defer s.roomsMutex.Unlock()
+
+	if room, exists := s.rooms[roomID]; exists {
+		room.Close()
+		delete(s.rooms, roomID)
+		s.logger.WithField("roomID", roomID).Info("Removed room")
+	}
+}
+
+// GetRooms returns all active rooms
+func (s *SFU) GetRooms() map[string]*Room {
+	s.roomsMutex.RLock()
+	defer s.roomsMutex.RUnlock()
+
+	rooms := make(map[string]*Room)
+	for id, room := range s.rooms {
+		rooms[id] = room
+	}
+
+	return rooms
+}
+
+// Close cleans up all resources
+func (s *SFU) Close() {
+	s.roomsMutex.Lock()
+	defer s.roomsMutex.Unlock()
+
+	for roomID, room := range s.rooms {
+		room.Close()
+		s.logger.WithField("roomID", roomID).Info("Closed room")
+	}
+
+	s.rooms = make(map[string]*Room)
+	s.logger.Info("SFU closed")
+}
+
+// LoggerFactory implements webrtc.LoggerFactory
+type loggerFactory struct{}
+
+func (f *loggerFactory) NewLogger(scope string) webrtc.Logger {
+	return &logger{scope: scope}
+}
+
+type logger struct {
+	scope string
+}
+
+func (l *logger) Trace(msg string) {
+	logrus.WithField("scope", l.scope).Trace(msg)
+}
+
+func (l *logger) Tracef(format string, args ...interface{}) {
+	logrus.WithField("scope", l.scope).Tracef(format, args...)
+}
+
+func (l *logger) Debug(msg string) {
+	logrus.WithField("scope", l.scope).Debug(msg)
+}
+
+func (l *logger) Debugf(format string, args ...interface{}) {
+	logrus.WithField("scope", l.scope).Debugf(format, args...)
+}
+
+func (l *logger) Info(msg string) {
+	logrus.WithField("scope", l.scope).Info(msg)
+}
+
+func (l *logger) Infof(format string, args ...interface{}) {
+	logrus.WithField("scope", l.scope).Infof(format, args...)
+}
+
+func (l *logger) Warn(msg string) {
+	logrus.WithField("scope", l.scope).Warn(msg)
+}
+
+func (l *logger) Warnf(format string, args ...interface{}) {
+	logrus.WithField("scope", l.scope).Warnf(format, args...)
+}
+
+func (l *logger) Error(msg string) {
+	logrus.WithField("scope", l.scope).Error(msg)
+}
+
+func (l *logger) Errorf(format string, args ...interface{}) {
+	logrus.WithField("scope", l.scope).Errorf(format, args...)
+}

@@ -41,7 +41,7 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
 
             # Check room capacity
             participants = room_data.get('participants', [])
-            max_participants = room_data.get('max_participants', 2)
+            max_participants = room_data.get('max_participants', 15)
 
             if len(participants) >= max_participants and self.participant_id not in participants:
                 await self.close(code=4003)  # Room is full
@@ -56,13 +56,17 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
             # Accept the WebSocket connection
             await self.accept()
 
+            # Get SFU information for the room
+            sfu_info = await self.get_room_sfu_info(self.room_id)
+
             # Notify other participants about new user
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'user_joined',
                     'participant_id': self.participant_id,
-                    'timestamp': timezone.now().isoformat()
+                    'timestamp': timezone.now().isoformat(),
+                    'sfu_info': sfu_info
                 }
             )
 
@@ -122,6 +126,12 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
                 await self.handle_ping()
             elif message_type == 'media_state':
                 await self.handle_media_state(data)
+            elif message_type == 'sfu_enabled':
+                await self.handle_sfu_enabled(data)
+            elif message_type == 'participant_list_request':
+                await self.handle_participant_list_request()
+            elif message_type == 'room_info_request':
+                await self.handle_room_info_request()
             else:
                 await self.send_error(f'Unknown message type: {message_type}')
 
@@ -236,6 +246,76 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
             logger.error(f"Media state handling error: {e}")
             await self.send_error('Failed to process media state')
 
+    async def handle_sfu_enabled(self, data):
+        """Handle SFU enabled notification"""
+        try:
+            sfu_room_id = data.get('sfu_room_id')
+            sfu_ws_url = data.get('sfu_ws_url')
+
+            # Broadcast SFU enabled event to all participants
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'sfu_enabled',
+                    'sfu_room_id': sfu_room_id,
+                    'sfu_ws_url': sfu_ws_url,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+
+        except Exception as e:
+            logger.error(f"SFU enabled handling error: {e}")
+            await self.send_error('Failed to process SFU enabled notification')
+
+    async def handle_participant_list_request(self):
+        """Handle request for current participant list"""
+        try:
+            room_data = await self.get_room_data(self.room_id)
+            participants = room_data.get('participants', []) if room_data else []
+            sfu_info = await self.get_room_sfu_info(self.room_id)
+
+            await self.send(text_data=json.dumps({
+                'type': 'participant_list',
+                'participants': participants,
+                'participant_count': len(participants),
+                'sfu_info': sfu_info,
+                'timestamp': timezone.now().isoformat()
+            }))
+
+        except Exception as e:
+            logger.error(f"Participant list request handling error: {e}")
+            await self.send_error('Failed to get participant list')
+
+    async def handle_room_info_request(self):
+        """Handle request for room information"""
+        try:
+            room_data = await self.get_room_data(self.room_id)
+            sfu_info = await self.get_room_sfu_info(self.room_id)
+
+            if not room_data:
+                await self.send_error('Room not found')
+                return
+
+            room_info = {
+                'room_id': room_data.get('room_id'),
+                'short_code': room_data.get('short_code'),
+                'created_at': room_data.get('created_at'),
+                'max_participants': room_data.get('max_participants', 15),
+                'current_participants': len(room_data.get('participants', [])),
+                'room_mode': room_data.get('room_mode', 'p2p'),
+                'sfu_info': sfu_info
+            }
+
+            await self.send(text_data=json.dumps({
+                'type': 'room_info',
+                'room_info': room_info,
+                'timestamp': timezone.now().isoformat()
+            }))
+
+        except Exception as e:
+            logger.error(f"Room info request handling error: {e}")
+            await self.send_error('Failed to get room information')
+
     # Group message handlers
     async def user_joined(self, event):
         """Send user joined notification"""
@@ -243,7 +323,8 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
             await self.send(text_data=json.dumps({
                 'type': 'user_joined',
                 'participant_id': event['participant_id'],
-                'timestamp': event['timestamp']
+                'timestamp': event['timestamp'],
+                'sfu_info': event.get('sfu_info')
             }))
 
     async def user_left(self, event):
@@ -299,6 +380,15 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
                 'timestamp': event['timestamp']
             }))
 
+    async def sfu_enabled(self, event):
+        """Forward SFU enabled notification to client"""
+        await self.send(text_data=json.dumps({
+            'type': 'sfu_enabled',
+            'sfu_room_id': event['sfu_room_id'],
+            'sfu_ws_url': event['sfu_ws_url'],
+            'timestamp': event['timestamp']
+        }))
+
     # Helper methods
     async def send_error(self, error_message):
         """Send error message to client"""
@@ -317,3 +407,8 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
     def leave_room(self, room_id, participant_id):
         """Remove participant from room"""
         return RoomManager.leave_room(room_id, participant_id)
+
+    @database_sync_to_async
+    def get_room_sfu_info(self, room_id):
+        """Get SFU information for a room"""
+        return RoomManager.get_room_sfu_info(room_id)

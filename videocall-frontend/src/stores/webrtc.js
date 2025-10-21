@@ -2,14 +2,15 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useGlobalStore } from './global'
+import { webrtcRetryService } from '../services/webrtc-retry'
 
 export const useWebRTCStore = defineStore('webrtc', () => {
   const globalStore = useGlobalStore()
 
   // State
   const localStream = ref(null)
-  const remoteStream = ref(null)
-  const peerConnection = ref(null)
+  const remoteStreams = ref(new Map()) // Map<participantId, MediaStream>
+  const peerConnections = ref(new Map()) // Map<participantId, RTCPeerConnection>
   const websocket = ref(null)
   const isConnected = ref(false)
   const isVideoEnabled = ref(true)
@@ -17,6 +18,16 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   const connectionState = ref('new') // new, connecting, connected, disconnected, failed
   const remoteParticipants = ref([])
   const localParticipantId = ref(null)
+  const sfuMode = ref(false) // true when using SFU for 3+ users
+
+  // Retry and recovery state
+  const retryOperations = ref(new Map()) // Map<operationId, retryInfo>
+  const connectionMonitors = ref(new Map()) // Map<participantId, monitorId>
+  const qualityMonitors = ref(new Map()) // Map<participantId, monitorId>
+  const fallbackLevels = ref(new Map()) // Map<participantId, fallbackLevel>
+  const connectionRecoveryInProgress = ref(false)
+  const lastConnectionAttempt = ref(null)
+  const connectionAttemptCount = ref(0)
 
   // Media constraints
   const mediaConstraints = ref({
@@ -34,10 +45,17 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
   // Computed
   const hasLocalVideo = computed(() => localStream.value !== null)
-  const hasRemoteVideo = computed(() => remoteStream.value !== null)
+  const hasRemoteVideo = computed(() => remoteStreams.value.size > 0)
+  const hasAnyRemoteStream = computed(() => remoteStreams.value.size > 0)
+  const remoteStream = computed(() => {
+    // For backward compatibility, return the first remote stream if exists
+    return remoteStreams.value.size > 0 ? remoteStreams.value.values().next().value : null
+  })
   const isCallActive = computed(
     () => isConnected.value && (hasLocalVideo.value || hasRemoteVideo.value),
   )
+  const participantCount = computed(() => remoteParticipants.value.length + 1)
+  const isMultiUserCall = computed(() => participantCount.value > 2)
 
   // WebRTC configuration
   const rtcConfiguration = {
@@ -87,107 +105,367 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
-  const createPeerConnection = () => {
+  const createPeerConnectionForParticipant = async (participantId) => {
+    const operationId = `create_peer_${participantId}_${Date.now()}`
+
     try {
-      peerConnection.value = new RTCPeerConnection(rtcConfiguration)
+      // Use retry service for peer connection creation
+      const result = await webrtcRetryService.executeWithRetry(
+        operationId,
+        async () => {
+          const peerConnection = new RTCPeerConnection(rtcConfiguration)
 
-      // Add local stream tracks to peer connection
-      if (localStream.value) {
-        localStream.value.getTracks().forEach((track) => {
-          peerConnection.value.addTrack(track, localStream.value)
-        })
-      }
+          // Add local stream tracks to peer connection
+          if (localStream.value) {
+            localStream.value.getTracks().forEach((track) => {
+              peerConnection.addTrack(track, localStream.value)
+            })
+          }
 
-      // Handle remote stream
-      peerConnection.value.ontrack = (event) => {
-        console.log('Received remote track:', event)
-        remoteStream.value = event.streams[0]
-      }
+          return peerConnection
+        },
+        {
+          maxRetries: 3,
+          baseDelay: 1000,
+          shouldRetry: (error) => {
+            // Don't retry on configuration errors
+            return !error.message?.includes('InvalidAccessError')
+          }
+        }
+      )
 
-      // Handle ICE candidates
-      peerConnection.value.onicecandidate = (event) => {
-        if (event.candidate && websocket.value) {
-          sendWebSocketMessage({
-            type: 'ice_candidate',
-            candidate: event.candidate,
-          })
+      const peerConnection = result
+      peerConnections.value.set(participantId, peerConnection)
+
+      // Handle remote stream for this participant
+      peerConnection.ontrack = (event) => {
+        console.log(`Received remote track from participant ${participantId}:`, event)
+        remoteStreams.value.set(participantId, event.streams[0])
+
+        // Update participant stream reference
+        const participant = remoteParticipants.value.find(p => p.id === participantId)
+        if (participant) {
+          participant.stream = event.streams[0]
         }
       }
 
-      // Handle connection state changes
-      peerConnection.value.onconnectionstatechange = () => {
-        connectionState.value = peerConnection.value.connectionState
-        console.log('Connection state:', connectionState.value)
+      // Handle ICE candidates with retry
+      peerConnection.onicecandidate = async (event) => {
+        if (event.candidate && websocket.value) {
+          const iceOperationId = `ice_candidate_${participantId}_${Date.now()}`
 
-        if (connectionState.value === 'connected') {
-          isConnected.value = true
-          globalStore.addNotification('Video call connected', 'success', 3000)
-        } else if (connectionState.value === 'disconnected' || connectionState.value === 'failed') {
-          isConnected.value = false
-          if (connectionState.value === 'failed') {
-            globalStore.addNotification('Call connection failed', 'error', 5000)
+          try {
+            await webrtcRetryService.executeWithRetry(
+              iceOperationId,
+              async () => {
+                sendWebSocketMessage({
+                  type: 'ice_candidate',
+                  candidate: event.candidate,
+                  target: participantId,
+                })
+              },
+              { maxRetries: 2, baseDelay: 500 }
+            )
+          } catch (error) {
+            console.error(`Failed to send ICE candidate for ${participantId}:`, error)
           }
         }
       }
 
-      return { success: true }
+      // Enhanced connection state monitoring with recovery
+      peerConnection.onconnectionstatechange = async () => {
+        const participant = remoteParticipants.value.find(p => p.id === participantId)
+        if (participant) {
+          participant.connectionState = peerConnection.connectionState
+        }
+
+        console.log(`Connection state for ${participantId}:`, peerConnection.connectionState)
+
+        if (peerConnection.connectionState === 'connected') {
+          globalStore.addNotification(`Connected to participant`, 'success', 2000)
+          // Reset fallback level on successful connection
+          fallbackLevels.value.delete(participantId)
+        } else if (peerConnection.connectionState === 'disconnected') {
+          const userFriendlyMessage = webrtcRetryService.getErrorMessage(
+            new Error('Connection disconnected'),
+            `Participant ${participantId}`
+          )
+          globalStore.addNotification(userFriendlyMessage, 'warning', 4000)
+        } else if (peerConnection.connectionState === 'failed') {
+          const errorMessage = webrtcRetryService.getErrorMessage(
+            new Error('Connection failed'),
+            `Participant ${participantId}`
+          )
+          globalStore.addNotification(errorMessage, 'error', 5000)
+
+          // Attempt recovery
+          await handleConnectionRecovery(participantId, peerConnection)
+        }
+
+        // Update overall connection state
+        updateOverallConnectionState()
+      }
+
+      // Setup enhanced monitoring with retry service
+      const monitorId = webrtcRetryService.monitorConnectionState(
+        peerConnection,
+        participantId,
+        (recoveryInfo) => handleConnectionRecovery(participantId, peerConnection, recoveryInfo),
+        (quality, state) => handleConnectionQualityChange(participantId, quality, state)
+      )
+      connectionMonitors.value.set(participantId, monitorId)
+
+      return { success: true, peerConnection }
     } catch (error) {
-      console.error('Failed to create peer connection:', error)
+      console.error(`Failed to create peer connection for participant ${participantId}:`, error)
+      const userFriendlyMessage = webrtcRetryService.getErrorMessage(error, `Participant ${participantId}`)
+      globalStore.addNotification(userFriendlyMessage, 'error', 6000)
       return { success: false, error: error.message }
     }
   }
 
-  const connectWebSocket = (roomId) => {
-    return new Promise((resolve, reject) => {
-      try {
-        // WebSocket должен подключаться к бэкенду (порт 8000), а не к фронтенду
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-        const wsHost = import.meta.env.VITE_WS_HOST || window.location.host
-        const wsUrl = `${protocol}//${wsHost}/ws/room/${roomId}/`
+  const updateOverallConnectionState = () => {
+    const connections = Array.from(peerConnections.value.values())
+    if (connections.length === 0) {
+      connectionState.value = 'new'
+      isConnected.value = false
+      return
+    }
 
-        console.log('Connecting to WebSocket:', wsUrl)
-        websocket.value = new WebSocket(wsUrl)
+    const states = connections.map(pc => pc.connectionState)
+    if (states.every(state => state === 'connected')) {
+      connectionState.value = 'connected'
+      isConnected.value = true
+    } else if (states.some(state => state === 'connecting' || state === 'new')) {
+      connectionState.value = 'connecting'
+      isConnected.value = false
+    } else if (states.some(state => state === 'failed')) {
+      connectionState.value = 'failed'
+      isConnected.value = false
+    } else {
+      connectionState.value = 'disconnected'
+      isConnected.value = false
+    }
+  }
 
-        websocket.value.onopen = () => {
-          console.log('WebSocket connected')
-          resolve()
-        }
+  const handleConnectionRecovery = async (participantId, peerConnection, recoveryInfo) => {
+    if (connectionRecoveryInProgress.value) {
+      return // Already handling recovery
+    }
 
-        websocket.value.onmessage = async (event) => {
-          try {
-            const data = JSON.parse(event.data)
-            await handleWebSocketMessage(data)
-          } catch (error) {
-            console.error('Failed to handle WebSocket message:', error)
-          }
-        }
+    connectionRecoveryInProgress.value = true
 
-        websocket.value.onclose = (event) => {
-          console.log('WebSocket closed:', event.code, event.reason)
-          isConnected.value = false
+    try {
+      console.log(`Handling connection recovery for ${participantId}:`, recoveryInfo)
 
-          if (event.code !== 1000) {
-            // Not a normal closure
-            globalStore.addNotification('Connection lost', 'error', 5000)
-          }
-        }
-
-        websocket.value.onerror = (error) => {
-          console.error('WebSocket error:', error)
-          reject(error)
-        }
-
-        // Set timeout for connection
-        setTimeout(() => {
-          if (websocket.value && websocket.value.readyState !== WebSocket.OPEN) {
-            websocket.value.close()
-            reject(new Error('WebSocket connection timeout'))
-          }
-        }, 10000) // 10 second timeout
-      } catch (error) {
-        reject(error)
+      if (recoveryInfo.canRecover === false) {
+        globalStore.addNotification(
+          'Connection cannot be restored. Please refresh the page or check your internet connection.',
+          'error',
+          10000
+        )
+        return
       }
-    })
+
+      // Update participant state
+      const participant = remoteParticipants.value.find(p => p.id === participantId)
+      if (participant) {
+        participant.connectionState = 'connecting'
+        participant.isRecovering = true
+      }
+
+      // Attempt recovery based on type
+      if (recoveryInfo.requiresReconnection) {
+        await attemptReconnection(participantId)
+      } else {
+        globalStore.addNotification('Attempting to restore connection...', 'info', 3000)
+      }
+
+    } catch (error) {
+      console.error(`Recovery failed for ${participantId}:`, error)
+      const errorMessage = webrtcRetryService.getErrorMessage(error, 'Recovery')
+      globalStore.addNotification(errorMessage, 'error', 5000)
+    } finally {
+      connectionRecoveryInProgress.value = false
+
+      // Clear recovery flag
+      const participant = remoteParticipants.value.find(p => p.id === participantId)
+      if (participant) {
+        participant.isRecovering = false
+      }
+    }
+  }
+
+  const handleConnectionQualityChange = (participantId, quality, state) => {
+    const participant = remoteParticipants.value.find(p => p.id === participantId)
+    if (participant) {
+      participant.connectionQuality = quality.score
+
+      // Update fallback level based on quality
+      if (quality.score < 40 && !fallbackLevels.value.has(participantId)) {
+        fallbackLevels.value.set(participantId, 0)
+      }
+    }
+
+    // Show quality warnings for poor connections
+    if (quality.score < 30 && state !== 'failed') {
+      const qualityMessage = `Connection quality is poor (${quality.score}%). Attempting to improve...`
+      globalStore.addNotification(qualityMessage, 'warning', 4000)
+    }
+  }
+
+  const attemptReconnection = async (participantId) => {
+    const operationId = `reconnect_${participantId}_${Date.now()}`
+
+    try {
+      globalStore.addNotification('Reconnecting to participant...', 'info', 3000)
+
+      await webrtcRetryService.executeWithRetry(
+        operationId,
+        async () => {
+          // Close existing connection
+          const existingConnection = peerConnections.value.get(participantId)
+          if (existingConnection) {
+            existingConnection.close()
+            peerConnections.value.delete(participantId)
+          }
+
+          // Clean up remote stream
+          if (remoteStreams.value.has(participantId)) {
+            const stream = remoteStreams.value.get(participantId)
+            if (stream) {
+              stream.getTracks().forEach(track => track.stop())
+            }
+            remoteStreams.value.delete(participantId)
+          }
+
+          // Create new connection
+          await createPeerConnectionForParticipant(participantId)
+
+          // Re-initiate offer
+          await createOfferForParticipant(participantId)
+        },
+        {
+          maxRetries: 3,
+          baseDelay: 2000,
+          shouldRetry: (error) => {
+            return !error.message?.includes('NotAllowedError')
+          }
+        }
+      )
+
+      globalStore.addNotification('Reconnected successfully', 'success', 3000)
+    } catch (error) {
+      console.error(`Reconnection failed for ${participantId}:`, error)
+      const errorMessage = webrtcRetryService.getErrorMessage(error, 'Reconnection')
+      globalStore.addNotification(errorMessage, 'error', 6000)
+    }
+  }
+
+  const switchToSFUMode = () => {
+    sfuMode.value = true
+    console.log('Switching to SFU mode for multi-user call')
+    // TODO: Implement SFU connection logic
+  }
+
+  const switchToP2PMode = () => {
+    sfuMode.value = false
+    console.log('Switching to P2P mode')
+    // TODO: Implement P2P fallback logic
+  }
+
+  const connectWebSocket = async (roomId) => {
+    const operationId = `websocket_connect_${roomId}_${Date.now()}`
+
+    try {
+      return await webrtcRetryService.executeWithRetry(
+        operationId,
+        async () => {
+          return new Promise((resolve, reject) => {
+            try {
+              // WebSocket должен подключаться к бэкенду (порт 8000), а не к фронтенду
+              const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+              const wsHost = import.meta.env.VITE_WS_HOST || window.location.host
+              const wsUrl = `${protocol}//${wsHost}/ws/room/${roomId}/`
+
+              console.log('Connecting to WebSocket:', wsUrl)
+              websocket.value = new WebSocket(wsUrl)
+
+              websocket.value.onopen = () => {
+                console.log('WebSocket connected')
+                connectionAttemptCount.value = 0
+                lastConnectionAttempt.value = new Date()
+                resolve()
+              }
+
+              websocket.value.onmessage = async (event) => {
+                try {
+                  const data = JSON.parse(event.data)
+                  await handleWebSocketMessage(data)
+                } catch (error) {
+                  console.error('Failed to handle WebSocket message:', error)
+                  const errorMessage = webrtcRetryService.getErrorMessage(error, 'Message handling')
+                  globalStore.addNotification(errorMessage, 'error', 4000)
+                }
+              }
+
+              websocket.value.onclose = (event) => {
+                console.log('WebSocket closed:', event.code, event.reason)
+                isConnected.value = false
+
+                if (event.code !== 1000) {
+                  // Not a normal closure - attempt to reconnect
+                  const errorMessage = webrtcRetryService.getErrorMessage(
+                    new Error(`WebSocket closed unexpectedly: ${event.reason}`),
+                    'Connection'
+                  )
+                  globalStore.addNotification(errorMessage, 'warning', 5000)
+
+                  // Schedule reconnection attempt
+                  setTimeout(() => {
+                    if (!websocket.value || websocket.value.readyState === WebSocket.CLOSED) {
+                      console.log('Attempting WebSocket reconnection...')
+                      connectWebSocket(roomId).catch(console.error)
+                    }
+                  }, 3000)
+                }
+              }
+
+              websocket.value.onerror = (error) => {
+                console.error('WebSocket error:', error)
+                const errorMessage = webrtcRetryService.getErrorMessage(error, 'WebSocket')
+                globalStore.addNotification(errorMessage, 'error', 5000)
+                reject(error)
+              }
+
+              // Set timeout for connection
+              setTimeout(() => {
+                if (websocket.value && websocket.value.readyState !== WebSocket.OPEN) {
+                  websocket.value.close()
+                  const timeoutError = new Error('WebSocket connection timeout')
+                  const errorMessage = webrtcRetryService.getErrorMessage(timeoutError, 'Connection')
+                  globalStore.addNotification(errorMessage, 'error', 5000)
+                  reject(timeoutError)
+                }
+              }, 15000) // 15 second timeout with retry
+            } catch (error) {
+              reject(error)
+            }
+          })
+        },
+        {
+          maxRetries: 3,
+          baseDelay: 2000,
+          shouldRetry: (error) => {
+            // Retry on network errors but not on authentication errors
+            return !error.message?.includes('401') && !error.message?.includes('403')
+          }
+        }
+      )
+    } catch (error) {
+      console.error('WebSocket connection failed after retries:', error)
+      throw error
+    }
   }
 
   const handleWebSocketMessage = async (data) => {
@@ -236,63 +514,105 @@ export const useWebRTCStore = defineStore('webrtc', () => {
         id: participantId,
         joined_at: data.timestamp,
         stream: null,
+        connectionState: 'new', // new, connecting, connected, disconnected, failed
+        isVideoEnabled: true,
+        isAudioEnabled: true,
+        isScreenSharing: false,
+        audioLevel: 0,
+        connectionQuality: 0,
+        isRecording: false,
       })
+
+      // Check if we should switch to SFU mode
+      if (participantCount.value >= 3 && !sfuMode.value) {
+        switchToSFUMode()
+      }
     }
 
-    globalStore.addNotification('Someone joined the call', 'info', 3000)
+    globalStore.addNotification(`${data.participant_name || 'Someone'} joined the call`, 'info', 3000)
 
-    // If we are already in the room, send an offer to the new participant
-    if (peerConnection.value && localStream.value) {
-      createOffer()
+    // If we are already in the room, create peer connection for the new participant
+    if (localStream.value) {
+      createPeerConnectionForParticipant(participantId)
     }
   }
 
   const handleUserLeft = (data) => {
     const participantId = data.participant_id
 
+    // Close peer connection for this participant
+    if (peerConnections.value.has(participantId)) {
+      peerConnections.value.get(participantId).close()
+      peerConnections.value.delete(participantId)
+    }
+
+    // Remove remote stream for this participant
+    if (remoteStreams.value.has(participantId)) {
+      const stream = remoteStreams.value.get(participantId)
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop())
+      }
+      remoteStreams.value.delete(participantId)
+    }
+
+    // Remove participant from list
     remoteParticipants.value = remoteParticipants.value.filter((p) => p.id !== participantId)
 
-    globalStore.addNotification('Someone left the call', 'info', 3000)
+    globalStore.addNotification(`${data.participant_name || 'Someone'} left the call`, 'info', 3000)
 
-    // Clear remote stream if this was the connected peer
-    if (remoteStream.value) {
-      remoteStream.value = null
+    // Check if we should switch back from SFU mode
+    if (participantCount.value <= 2 && sfuMode.value) {
+      switchToP2PMode()
     }
   }
 
   const handleWebRTCOffer = async (data) => {
     try {
-      if (!peerConnection.value) {
-        createPeerConnection()
+      const participantId = data.sender
+
+      // Create peer connection for this participant if it doesn't exist
+      if (!peerConnections.value.has(participantId)) {
+        createPeerConnectionForParticipant(participantId)
       }
 
-      await peerConnection.value.setRemoteDescription(new RTCSessionDescription(data.offer))
-      const answer = await peerConnection.value.createAnswer()
-      await peerConnection.value.setLocalDescription(answer)
+      const peerConnection = peerConnections.value.get(participantId)
+      await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
+      const answer = await peerConnection.createAnswer()
+      await peerConnection.setLocalDescription(answer)
 
       sendWebSocketMessage({
-        type: 'answer',
+        type: 'webrtc_answer',
         answer: answer,
-        target: data.sender,
+        target: participantId,
       })
     } catch (error) {
-      console.error('Failed to handle WebRTC offer:', error)
+      console.error(`Failed to handle WebRTC offer from ${data.sender}:`, error)
     }
   }
 
   const handleWebRTCAnswer = async (data) => {
     try {
-      await peerConnection.value.setRemoteDescription(new RTCSessionDescription(data.answer))
+      const participantId = data.sender
+      const peerConnection = peerConnections.value.get(participantId)
+
+      if (peerConnection) {
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
+      }
     } catch (error) {
-      console.error('Failed to handle WebRTC answer:', error)
+      console.error(`Failed to handle WebRTC answer from ${data.sender}:`, error)
     }
   }
 
   const handleICECandidate = async (data) => {
     try {
-      await peerConnection.value.addIceCandidate(new RTCIceCandidate(data.candidate))
+      const participantId = data.sender
+      const peerConnection = peerConnections.value.get(participantId)
+
+      if (peerConnection) {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate))
+      }
     } catch (error) {
-      console.error('Failed to handle ICE candidate:', error)
+      console.error(`Failed to handle ICE candidate from ${data.sender}:`, error)
     }
   }
 
@@ -303,21 +623,32 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
-  const createOffer = async () => {
+  const createOfferForParticipant = async (participantId) => {
     try {
-      if (!peerConnection.value) {
-        createPeerConnection()
+      // Create peer connection for this participant if it doesn't exist
+      if (!peerConnections.value.has(participantId)) {
+        createPeerConnectionForParticipant(participantId)
       }
 
-      const offer = await peerConnection.value.createOffer()
-      await peerConnection.value.setLocalDescription(offer)
+      const peerConnection = peerConnections.value.get(participantId)
+      const offer = await peerConnection.createOffer()
+      await peerConnection.setLocalDescription(offer)
 
       sendWebSocketMessage({
-        type: 'offer',
+        type: 'webrtc_offer',
         offer: offer,
+        target: participantId,
       })
     } catch (error) {
-      console.error('Failed to create offer:', error)
+      console.error(`Failed to create offer for participant ${participantId}:`, error)
+    }
+  }
+
+  const initiateConnectionsWithAllParticipants = async () => {
+    for (const participant of remoteParticipants.value) {
+      if (participant.connectionState === 'new' || participant.connectionState === 'disconnected') {
+        await createOfferForParticipant(participant.id)
+      }
     }
   }
 
@@ -381,11 +712,28 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
   const endCall = async () => {
     try {
-      // Close peer connection
-      if (peerConnection.value) {
-        peerConnection.value.close()
-        peerConnection.value = null
+      // Cancel all retry operations
+      for (const operationId of retryOperations.value.keys()) {
+        webrtcRetryService.cancelRetry(operationId)
       }
+      retryOperations.value.clear()
+
+      // Stop all quality monitors
+      for (const [participantId, monitorId] of qualityMonitors.value) {
+        webrtcRetryService.stopQualityMonitor(peerConnections.value.get(participantId))
+      }
+      qualityMonitors.value.clear()
+
+      // Close all peer connections
+      for (const [participantId, peerConnection] of peerConnections.value) {
+        const monitorId = connectionMonitors.value.get(participantId)
+        if (monitorId) {
+          // The monitor cleanup is handled by the retry service
+        }
+        peerConnection.close()
+      }
+      peerConnections.value.clear()
+      connectionMonitors.value.clear()
 
       // Close WebSocket
       if (websocket.value) {
@@ -399,13 +747,19 @@ export const useWebRTCStore = defineStore('webrtc', () => {
         localStream.value = null
       }
 
-      // Clear remote stream
-      remoteStream.value = null
+      // Stop and clear all remote streams
+      for (const [participantId, stream] of remoteStreams.value) {
+        stream.getTracks().forEach((track) => track.stop())
+      }
+      remoteStreams.value.clear()
 
       // Reset state
       isConnected.value = false
       connectionState.value = 'new'
       remoteParticipants.value = []
+      sfuMode.value = false
+      connectionRecoveryInProgress.value = false
+      fallbackLevels.value.clear()
 
       console.log('Call ended successfully')
     } catch (error) {
@@ -413,11 +767,58 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  // Participant-specific methods
+  const toggleParticipantVideo = (participantId) => {
+    const participant = remoteParticipants.value.find(p => p.id === participantId)
+    if (participant) {
+      participant.isVideoEnabled = !participant.isVideoEnabled
+
+      sendWebSocketMessage({
+        type: 'participant_media_update',
+        participant_id: participantId,
+        media_state: {
+          video: participant.isVideoEnabled,
+          audio: participant.isAudioEnabled,
+        },
+      })
+    }
+  }
+
+  const toggleParticipantAudio = (participantId) => {
+    const participant = remoteParticipants.value.find(p => p.id === participantId)
+    if (participant) {
+      participant.isAudioEnabled = !participant.isAudioEnabled
+
+      sendWebSocketMessage({
+        type: 'participant_media_update',
+        participant_id: participantId,
+        media_state: {
+          video: participant.isVideoEnabled,
+          audio: participant.isAudioEnabled,
+        },
+      })
+    }
+  }
+
+  const getParticipantStream = (participantId) => {
+    return remoteStreams.value.get(participantId) || null
+  }
+
+  const getParticipantConnectionState = (participantId) => {
+    const participant = remoteParticipants.value.find(p => p.id === participantId)
+    return participant ? participant.connectionState : 'disconnected'
+  }
+
+  const getParticipantById = (participantId) => {
+    return remoteParticipants.value.find(p => p.id === participantId) || null
+  }
+
   return {
     // State
     localStream,
     remoteStream,
-    peerConnection,
+    remoteStreams,
+    peerConnections,
     websocket,
     isConnected,
     isVideoEnabled,
@@ -426,21 +827,44 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     remoteParticipants,
     localParticipantId,
     mediaConstraints,
+    sfuMode,
+    retryOperations,
+    connectionMonitors,
+    qualityMonitors,
+    fallbackLevels,
+    connectionRecoveryInProgress,
+    lastConnectionAttempt,
+    connectionAttemptCount,
 
     // Computed
     hasLocalVideo,
     hasRemoteVideo,
+    hasAnyRemoteStream,
     isCallActive,
+    participantCount,
+    isMultiUserCall,
 
     // Actions
     initializeLocalMedia,
-    createPeerConnection,
+    createPeerConnectionForParticipant,
     connectWebSocket,
-    createOffer,
+    createOfferForParticipant,
+    initiateConnectionsWithAllParticipants,
     sendWebSocketMessage,
     toggleVideo,
     toggleAudio,
+    toggleParticipantVideo,
+    toggleParticipantAudio,
     endCall,
+    getParticipantStream,
+    getParticipantConnectionState,
+    getParticipantById,
+    updateOverallConnectionState,
+    switchToSFUMode,
+    switchToP2PMode,
+    handleConnectionRecovery,
+    handleConnectionQualityChange,
+    attemptReconnection,
   }
 })
 
