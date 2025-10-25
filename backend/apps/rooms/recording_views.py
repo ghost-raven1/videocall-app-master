@@ -5,7 +5,6 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.http import FileResponse, Http404
 from .recording_models import Recording
-from .models import Room, RoomParticipant
 import logging
 
 logger = logging.getLogger(__name__)
@@ -19,9 +18,9 @@ class RecordingViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         """Filter recordings by room"""
-        room_code = self.request.query_params.get('room_code')
-        if room_code:
-            return Recording.objects.filter(room__code=room_code)
+        room_id = self.request.query_params.get('room_id')
+        if room_id:
+            return Recording.objects.filter(room_id=room_id)
         return Recording.objects.all()
     
     @action(detail=False, methods=['post'])

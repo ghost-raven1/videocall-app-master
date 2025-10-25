@@ -4,14 +4,13 @@ import uuid
 from django.db import models
 from django.core.validators import FileExtensionValidator
 from django.utils import timezone
-from .models import Room, RoomParticipant
 
 
 def recording_upload_path(instance, filename):
     """Generate upload path for recordings"""
     ext = filename.split('.')[-1]
     filename = f"{uuid.uuid4()}.{ext}"
-    return os.path.join('recordings', str(instance.room.id), filename)
+    return os.path.join('recordings', str(instance.room_id), filename)
 
 
 class Recording(models.Model):
@@ -25,15 +24,10 @@ class Recording(models.Model):
     )
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='recordings')
+    room_id = models.CharField(max_length=255, db_index=True)  # Store room ID as string
     
-    # Recording metadata
-    started_by = models.ForeignKey(
-        RoomParticipant,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='started_recordings'
-    )
+    # ID of the user who created the recording
+    created_by_id = models.CharField(max_length=255, null=True)  # Store user ID as string
     started_at = models.DateTimeField(auto_now_add=True)
     stopped_at = models.DateTimeField(null=True, blank=True)
     
