@@ -25,7 +25,7 @@ export default defineConfig({
           },
         ],
       },
-      includeAssets: ['favicon.ico'],
+      includeAssets: ['favicon.ico', 'icon.svg'],
       manifest: {
         name: 'Video Call App',
         short_name: 'VideoCall',
@@ -39,21 +39,15 @@ export default defineConfig({
         categories: ['communication', 'productivity'],
         icons: [
           {
-            src: 'favicon.ico',
-            sizes: '64x64',
-            type: 'image/x-icon',
-          },
-          {
-            src: 'favicon.ico',
-            sizes: '192x192',
-            type: 'image/x-icon',
+            src: 'icon.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
             purpose: 'any',
           },
           {
             src: 'favicon.ico',
-            sizes: '512x512',
+            sizes: '64x64 32x32 24x24 16x16',
             type: 'image/x-icon',
-            purpose: 'maskable',
           },
         ],
       },

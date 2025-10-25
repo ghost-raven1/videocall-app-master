@@ -32,9 +32,14 @@ app.use(router)
 app.use(i18n)
 app.use(ErrorReportingPlugin)
 
-// Now initialize the global store and set up language synchronization
-const globalStore = useGlobalStore()
-globalStore.initializeLanguage()
+// Initialize the global store after Pinia is installed
+let globalStore = null
+try {
+  globalStore = useGlobalStore()
+  globalStore.initializeLanguage()
+} catch (error) {
+  console.error('Failed to initialize global store:', error)
+}
 
 // Global error handler for Vue application errors (after Pinia is installed)
 app.config.errorHandler = (error, instance, info) => {
@@ -58,11 +63,13 @@ app.config.errorHandler = (error, instance, info) => {
 
   // Show user-friendly error notification
   try {
-    globalStore.addNotification(
-      'An unexpected error occurred. Please refresh the page if the problem persists.',
-      'error',
-      8000
-    )
+    if (globalStore) {
+      globalStore.addNotification(
+        'An unexpected error occurred. Please refresh the page if the problem persists.',
+        'error',
+        8000
+      )
+    }
   } catch (e) {
     console.error('Failed to show notification:', e)
   }
@@ -86,11 +93,15 @@ window.addEventListener('unhandledrejection', (event) => {
 
   // Show user-friendly error notification
   try {
-    globalStore.addNotification(
-      'A background operation failed. Please try again or refresh the page.',
-      'error',
-      8000
-    )
+    // Use a function to safely get the store
+    const store = globalStore || (typeof useGlobalStore === 'function' ? useGlobalStore() : null)
+    if (store) {
+      store.addNotification(
+        'A background operation failed. Please try again or refresh the page.',
+        'error',
+        8000
+      )
+    }
   } catch (e) {
     console.error('Failed to show notification:', e)
   }
@@ -124,11 +135,15 @@ window.addEventListener('error', (event) => {
   // Show user-friendly error notification for script errors
   if (event.filename && !event.filename.includes('chrome-extension')) {
     try {
-      globalStore.addNotification(
-        'A script error occurred. Please refresh the page if the problem persists.',
-        'error',
-        8000
-      )
+      // Use a function to safely get the store
+      const store = globalStore || (typeof useGlobalStore === 'function' ? useGlobalStore() : null)
+      if (store) {
+        store.addNotification(
+          'A script error occurred. Please refresh the page if the problem persists.',
+          'error',
+          8000
+        )
+      }
     } catch (e) {
       console.error('Failed to show notification:', e)
     }
