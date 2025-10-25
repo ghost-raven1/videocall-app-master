@@ -262,10 +262,10 @@ spec:
   ingressClassName: nginx
   tls:
   - hosts:
-    - your-domain.com
+    - video-call-ghost.ru
     secretName: videocall-tls
   rules:
-  - host: your-domain.com
+  - host: video-call-ghost.ru
     http:
       paths:
       - path: /api

@@ -24,7 +24,7 @@ cat > .env << EOF
 # Django Settings
 SECRET_KEY=${SECRET_KEY}
 DEBUG=False
-ALLOWED_HOSTS=localhost,127.0.0.1,your-domain.com
+ALLOWED_HOSTS=localhost,127.0.0.1,video-call-ghost.ru,www.video-call-ghost.ru
 
 # JWT Settings
 JWT_SECRET=${JWT_SECRET}
@@ -56,7 +56,7 @@ RECORDING_MAX_DURATION=7200
 RECORDING_FORMAT=webm
 
 # CORS Settings
-CORS_ALLOWED_ORIGINS=http://localhost,https://your-domain.com
+CORS_ALLOWED_ORIGINS=http://localhost,https://video-call-ghost.ru,https://www.video-call-ghost.ru
 
 # Email Settings (optional)
 EMAIL_BACKEND=django.core.mail.backends.console.EmailBackend
@@ -83,9 +83,11 @@ echo "⚠️  IMPORTANT: Update the following in .env file:"
 echo "   - ALLOWED_HOSTS (add your domain)"
 echo "   - CORS_ALLOWED_ORIGINS (add your domain)"
 echo ""
-echo "📋 Your secrets:"
-echo "   SECRET_KEY: ${SECRET_KEY:0:20}..."
-echo "   JWT_SECRET: ${JWT_SECRET:0:20}..."
-echo "   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:0:15}..."
+echo "📋 Your secrets have been generated!"
 echo ""
 echo "🔒 Keep these secrets safe! Never commit .env to git!"
+echo ""
+echo "Next steps:"
+echo "1. Edit .env and update ALLOWED_HOSTS with your domain"
+echo "2. Update CORS_ALLOWED_ORIGINS with your domain"
+echo "3. Run: docker-compose up -d"
