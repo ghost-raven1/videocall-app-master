@@ -2,6 +2,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
+from . import chat_views
 
 app_name = 'rooms'
 
@@ -9,6 +10,11 @@ app_name = 'rooms'
 router = DefaultRouter()
 router.register(r'admin/management', views.RoomManagementViewSet, basename='room_management')
 router.register(r'admin/analytics', views.RoomAnalyticsViewSet, basename='room_analytics')
+
+# Chat and screen share routers
+router.register(r'chat/messages', chat_views.ChatMessageViewSet, basename='chat_messages')
+router.register(r'chat/attachments', chat_views.ChatAttachmentViewSet, basename='chat_attachments')
+router.register(r'screen-share', chat_views.ScreenShareViewSet, basename='screen_share')
 
 urlpatterns = [
     # Legacy room endpoints (for backward compatibility)

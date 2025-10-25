@@ -82,6 +82,45 @@ services:
       "
     restart: "no"
 
+  # Streaming Node (Go SFU Server for WebRTC)
+  streaming-node:
+    build:
+      context: ./streaming-node
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      - SERVER_PORT=8080
+      - SERVER_ADDRESS=0.0.0.0
+      - DJANGO_URL=backend:8000
+      - LOG_LEVEL=info
+      - JWT_SECRET=${JWT_SECRET}
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--quiet",
+          "--tries=1",
+          "--spider",
+          "http://localhost:8080/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: >
+      sh -c "
+        echo '🎥 Starting Streaming Node (SFU Server)...' &&
+        echo '📡 WebRTC media forwarding enabled' &&
+        /app/streaming-node
+      "
+
   # Django Backend with Daphne (WebSocket support)
   backend:
     build:
@@ -102,10 +141,14 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - SFU_HOST=streaming-node
+      - SFU_PORT=8080
     depends_on:
       static-init:
         condition: service_completed_successfully
       redis:
+        condition: service_healthy
+      streaming-node:
         condition: service_healthy
     networks:
       - app-network

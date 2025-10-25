@@ -132,6 +132,20 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
                 await self.handle_participant_list_request()
             elif message_type == 'room_info_request':
                 await self.handle_room_info_request()
+            # Chat events
+            elif message_type == 'chat_message':
+                await self.handle_chat_message(data)
+            elif message_type == 'chat_message_edited':
+                await self.handle_chat_message_edited(data)
+            elif message_type == 'chat_message_deleted':
+                await self.handle_chat_message_deleted(data)
+            elif message_type == 'file_uploaded':
+                await self.handle_file_uploaded(data)
+            # Screen share events
+            elif message_type == 'screen_share_started':
+                await self.handle_screen_share_started(data)
+            elif message_type == 'screen_share_stopped':
+                await self.handle_screen_share_stopped(data)
             else:
                 await self.send_error(f'Unknown message type: {message_type}')
 
@@ -386,6 +400,176 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
             'type': 'sfu_enabled',
             'sfu_room_id': event['sfu_room_id'],
             'sfu_ws_url': event['sfu_ws_url'],
+            'timestamp': event['timestamp']
+        }))
+
+    # Chat message handlers
+    async def handle_chat_message(self, data):
+        """Handle new chat message"""
+        try:
+            message = data.get('message')
+            if not message:
+                await self.send_error('Message data is required')
+                return
+            
+            # Broadcast to all participants in room
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'chat_message_broadcast',
+                    'message': message,
+                    'sender': self.participant_id,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+        except Exception as e:
+            logger.error(f"Chat message handling error: {e}")
+            await self.send_error('Failed to send chat message')
+    
+    async def handle_chat_message_edited(self, data):
+        """Handle edited chat message"""
+        try:
+            message = data.get('message')
+            if not message:
+                await self.send_error('Message data is required')
+                return
+            
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'chat_message_edited_broadcast',
+                    'message': message,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+        except Exception as e:
+            logger.error(f"Chat message edit handling error: {e}")
+    
+    async def handle_chat_message_deleted(self, data):
+        """Handle deleted chat message"""
+        try:
+            message_id = data.get('message_id')
+            if not message_id:
+                await self.send_error('Message ID is required')
+                return
+            
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'chat_message_deleted_broadcast',
+                    'message_id': message_id,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+        except Exception as e:
+            logger.error(f"Chat message delete handling error: {e}")
+    
+    async def handle_file_uploaded(self, data):
+        """Handle file upload notification"""
+        try:
+            attachment = data.get('attachment')
+            message = data.get('message')
+            
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'file_uploaded_broadcast',
+                    'attachment': attachment,
+                    'message': message,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+        except Exception as e:
+            logger.error(f"File upload handling error: {e}")
+    
+    # Screen share handlers
+    async def handle_screen_share_started(self, data):
+        """Handle screen share started"""
+        try:
+            session = data.get('session')
+            if not session:
+                await self.send_error('Session data is required')
+                return
+            
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'screen_share_started_broadcast',
+                    'session': session,
+                    'participant_id': self.participant_id,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+        except Exception as e:
+            logger.error(f"Screen share start handling error: {e}")
+    
+    async def handle_screen_share_stopped(self, data):
+        """Handle screen share stopped"""
+        try:
+            session_id = data.get('session_id')
+            
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'screen_share_stopped_broadcast',
+                    'session_id': session_id,
+                    'participant_id': self.participant_id,
+                    'timestamp': timezone.now().isoformat()
+                }
+            )
+        except Exception as e:
+            logger.error(f"Screen share stop handling error: {e}")
+    
+    # Broadcast handlers for chat and screen share
+    async def chat_message_broadcast(self, event):
+        """Broadcast chat message to client"""
+        await self.send(text_data=json.dumps({
+            'type': 'chat_message',
+            'message': event['message'],
+            'sender': event['sender'],
+            'timestamp': event['timestamp']
+        }))
+    
+    async def chat_message_edited_broadcast(self, event):
+        """Broadcast edited message to client"""
+        await self.send(text_data=json.dumps({
+            'type': 'chat_message_edited',
+            'message': event['message'],
+            'timestamp': event['timestamp']
+        }))
+    
+    async def chat_message_deleted_broadcast(self, event):
+        """Broadcast deleted message to client"""
+        await self.send(text_data=json.dumps({
+            'type': 'chat_message_deleted',
+            'message_id': event['message_id'],
+            'timestamp': event['timestamp']
+        }))
+    
+    async def file_uploaded_broadcast(self, event):
+        """Broadcast file upload to client"""
+        await self.send(text_data=json.dumps({
+            'type': 'file_uploaded',
+            'attachment': event['attachment'],
+            'message': event['message'],
+            'timestamp': event['timestamp']
+        }))
+    
+    async def screen_share_started_broadcast(self, event):
+        """Broadcast screen share started to client"""
+        await self.send(text_data=json.dumps({
+            'type': 'screen_share_started',
+            'session': event['session'],
+            'participant_id': event['participant_id'],
+            'timestamp': event['timestamp']
+        }))
+    
+    async def screen_share_stopped_broadcast(self, event):
+        """Broadcast screen share stopped to client"""
+        await self.send(text_data=json.dumps({
+            'type': 'screen_share_stopped',
+            'session_id': event['session_id'],
+            'participant_id': event['participant_id'],
             'timestamp': event['timestamp']
         }))
 

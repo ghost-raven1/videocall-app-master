@@ -32,6 +32,34 @@
           <span>{{ participantCount }}</span>
         </div>
 
+        <!-- Chat button -->
+        <button
+          @click="showChat = !showChat"
+          class="p-2 hover:bg-gray-800 rounded-full transition-colors relative"
+          title="Toggle chat"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+          </svg>
+          <span v-if="unreadMessages > 0" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+            {{ unreadMessages > 9 ? '9+' : unreadMessages }}
+          </span>
+        </button>
+
+        <!-- Screen share button -->
+        <button
+          @click="toggleScreenShare"
+          :class="[
+            'p-2 rounded-full transition-colors',
+            isScreenSharing ? 'bg-green-600 hover:bg-green-700' : 'hover:bg-gray-800'
+          ]"
+          :title="isScreenSharing ? 'Stop sharing' : 'Share screen'"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+        </button>
+
         <!-- Menu button -->
         <button
           @click="showMenu = !showMenu"
@@ -102,6 +130,21 @@
 
     <!-- Video Container -->
     <div class="flex-1 relative overflow-hidden">
+      <!-- Chat Panel (Overlay) -->
+      <div
+        v-if="showChat"
+        class="absolute right-0 top-0 bottom-0 w-full md:w-96 bg-white dark:bg-gray-800 shadow-2xl z-20 transform transition-transform duration-300"
+        :class="showChat ? 'translate-x-0' : 'translate-x-full'"
+      >
+        <RoomChat
+          v-if="roomInfo"
+          :room-code="roomInfo.short_code"
+          :participant-id="currentParticipantId"
+          :websocket="websocket"
+          @close="showChat = false"
+          @new-message="onNewChatMessage"
+        />
+      </div>
       <!-- Multi-user call (3+ participants) -->
       <ParticipantGrid
         v-if="webrtcStore.isMultiUserCall"
@@ -426,6 +469,17 @@
         </button>
       </div>
 
+      <!-- Screen Share Controls -->
+      <div v-if="roomInfo" class="mt-4">
+        <ScreenShareControls
+          :room-code="roomInfo.short_code"
+          :participant-id="currentParticipantId"
+          :peer-connection="peerConnection"
+          @screen-share-started="onScreenShareStarted"
+          @screen-share-stopped="onScreenShareStopped"
+        />
+      </div>
+
       <!-- Connection status message -->
       <div v-if="connectionMessage" class="mt-4 text-center text-sm text-gray-400">
         {{ connectionMessage }}
@@ -691,6 +745,8 @@ import { webrtcService } from '../services/webrtc'
 import { webrtcRetryService } from '../services/webrtc-retry'
 import ParticipantGrid from './ParticipantGrid.vue'
 import MultiUserControls from './MultiUserControls.vue'
+import RoomChat from './RoomChat.vue'
+import ScreenShareControls from './ScreenShareControls.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -728,6 +784,14 @@ const isInFallbackMode = ref(false)
 const currentFallbackMode = ref(null) // 'audio_only', 'chat_only', null
 const connectionQualityWarnings = ref([])
 const showConnectionHelp = ref(false)
+
+// Chat and Screen Share state
+const showChat = ref(false)
+const unreadMessages = ref(0)
+const websocket = ref(null)
+const currentParticipantId = ref(null)
+const isScreenSharing = ref(false)
+const peerConnection = ref(null)
 
 // Computed properties
 const connectionStatusText = computed(() => {
@@ -1143,6 +1207,47 @@ const handleConnectionHelp = () => {
 const refreshConnection = () => {
   window.location.reload()
 }
+
+// Chat handlers
+const onNewChatMessage = (message) => {
+  if (!showChat.value) {
+    unreadMessages.value++
+    // Optional: Play notification sound
+    // new Audio('/notification.mp3').play()
+  }
+}
+
+const toggleScreenShare = async () => {
+  if (isScreenSharing.value) {
+    // Stop screen sharing handled by ScreenShareControls component
+    isScreenSharing.value = false
+  } else {
+    isScreenSharing.value = true
+  }
+}
+
+const onScreenShareStarted = ({ session, stream }) => {
+  console.log('Screen share started:', session)
+  isScreenSharing.value = true
+  // Add screen share stream to peer connection if needed
+  if (peerConnection.value && stream) {
+    stream.getTracks().forEach(track => {
+      peerConnection.value.addTrack(track, stream)
+    })
+  }
+}
+
+const onScreenShareStopped = ({ session }) => {
+  console.log('Screen share stopped:', session)
+  isScreenSharing.value = false
+}
+
+// Watch chat visibility to reset unread count
+watch(showChat, (isVisible) => {
+  if (isVisible) {
+    unreadMessages.value = 0
+  }
+})
 
 // Watch for stream changes
 watch(
