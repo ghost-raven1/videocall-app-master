@@ -61,12 +61,12 @@ class Recording(models.Model):
     class Meta:
         ordering = ['-started_at']
         indexes = [
-            models.Index(fields=['room', 'started_at']),
+            models.Index(fields=['room_id', 'started_at']),
             models.Index(fields=['status']),
         ]
     
     def __str__(self):
-        return f"Recording of {self.room.code} at {self.started_at}"
+        return f"Recording of room {self.room_id} at {self.started_at}"
     
     @property
     def is_active(self):
@@ -126,7 +126,7 @@ class Recording(models.Model):
         """Convert to dictionary for API"""
         return {
             'id': str(self.id),
-            'room_code': self.room.code,
+            'room_id': self.room_id,
             'started_at': self.started_at.isoformat(),
             'stopped_at': self.stopped_at.isoformat() if self.stopped_at else None,
             'duration': self.duration,

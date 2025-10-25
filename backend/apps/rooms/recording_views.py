@@ -27,42 +27,32 @@ class RecordingViewSet(viewsets.ModelViewSet):
     def start(self, request):
         """Start recording a room"""
         try:
-            room_code = request.data.get('room_code')
+            room_id = request.data.get('room_id')
             participant_id = request.data.get('participant_id')
             
-            # Validate room
-            try:
-                room = Room.objects.get(code=room_code)
-            except Room.DoesNotExist:
-                return Response({'error': 'Room not found'}, status=404)
+            if not room_id:
+                return Response({'error': 'room_id is required'}, status=400)
             
             # Check if already recording
             active_recording = Recording.objects.filter(
-                room=room,
+                room_id=room_id,
                 status='recording'
             ).first()
             
             if active_recording:
                 return Response({'error': 'Recording already in progress'}, status=400)
             
-            # Get participant
-            participant = None
-            if participant_id:
-                try:
-                    participant = RoomParticipant.objects.get(id=participant_id, room=room)
-                except RoomParticipant.DoesNotExist:
-                    pass
-            
-            # Create recording
+            # Create new recording
             recording = Recording.objects.create(
-                room=room,
-                started_by=participant,
+                room_id=room_id,
+                created_by_id=participant_id,
+                status='recording',
                 include_audio=request.data.get('include_audio', True),
                 include_video=request.data.get('include_video', True),
                 include_screen_share=request.data.get('include_screen_share', True)
             )
             
-            logger.info(f"Recording started for room {room_code}: {recording.id}")
+            logger.info(f"Recording started for room {room_id}: {recording.id}")
             
             return Response({
                 'success': True,
