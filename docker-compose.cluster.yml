@@ -1,0 +1,141 @@
+# docker-compose.cluster.yml - Clustered deployment configuration
+version: '3.8'
+
+services:
+  # Load Balancer
+  nginx-lb:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-lb.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend-1
+      - backend-2
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Backend instances (horizontal scaling)
+  backend-1:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - INSTANCE_ID=backend-1
+    depends_on:
+      - db
+      - redis
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  backend-2:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      - INSTANCE_ID=backend-2
+    depends_on:
+      - db
+      - redis
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # SFU Cluster (multiple nodes)
+  sfu-1:
+    build:
+      context: ./streaming-node
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    env_file:
+      - .env
+    environment:
+      - NODE_ID=sfu-1
+      - REDIS_URL=redis://redis:6379/1
+    depends_on:
+      - redis
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  sfu-2:
+    build:
+      context: ./streaming-node
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8080"
+    env_file:
+      - .env
+    environment:
+      - NODE_ID=sfu-2
+      - REDIS_URL=redis://redis:6379/1
+    depends_on:
+      - redis
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  sfu-3:
+    build:
+      context: ./streaming-node
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8080"
+    env_file:
+      - .env
+    environment:
+      - NODE_ID=sfu-3
+      - REDIS_URL=redis://redis:6379/1
+    depends_on:
+      - redis
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Database with replication support
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-videocall_db}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Redis for session sharing and SFU coordination
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    build:
+      context: ./videocall-frontend
+      dockerfile: Dockerfile
+    networks:
+      - app-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  app-network:
+    driver: bridge

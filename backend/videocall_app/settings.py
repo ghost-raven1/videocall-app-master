@@ -451,7 +451,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # Application-specific settings
 ROOM_EXPIRY_HOURS = 24
-MAX_PARTICIPANTS_PER_ROOM = 15  # Increased for multi-user support
+MAX_PARTICIPANTS_PER_ROOM = 50  # Enterprise: Increased from 15 to 50
 SHORT_CODE_LENGTH = 6
 
 # SFU (Selective Forwarding Unit) Configuration
@@ -474,6 +474,7 @@ ROOM_SETTINGS = {
     'enable_sfu': True,
     'sfu_required_threshold': 3,  # Use SFU when more than this number of participants
     'fallback_to_p2p': True,  # Allow fallback to P2P for 2-3 participants
+    'enable_recording': config('ENABLE_RECORDING', default=False, cast=bool),  # Enterprise: Recording feature
 }
 
 # Default primary key field type
@@ -536,4 +537,19 @@ if not DEBUG:
     # Admin security
     ADMIN_COOKIE_SECURE = True
     ADMIN_COOKIE_HTTPONLY = True
-    ADMIN_COOKIE_SAMESITE = 'Strict'
+
+# Enterprise SSO/LDAP Configuration
+ENABLE_LDAP = config('ENABLE_LDAP', default=False, cast=bool)
+ENABLE_SAML = config('ENABLE_SAML', default=False, cast=bool)
+ENABLE_OAUTH = config('ENABLE_OAUTH', default=False, cast=bool)
+
+# LDAP Settings (if enabled)
+if ENABLE_LDAP:
+    AUTH_LDAP_SERVER_URI = config('LDAP_SERVER_URI', default='ldap://localhost')
+    AUTH_LDAP_BIND_DN = config('LDAP_BIND_DN', default='')
+    AUTH_LDAP_BIND_PASSWORD = config('LDAP_BIND_PASSWORD', default='')
+
+# Recording Settings
+RECORDING_STORAGE_PATH = config('RECORDING_STORAGE_PATH', default='recordings/')
+RECORDING_MAX_DURATION = config('RECORDING_MAX_DURATION', default=7200, cast=int)  # 2 hours
+RECORDING_FORMAT = config('RECORDING_FORMAT', default='webm')

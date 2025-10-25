@@ -60,6 +60,9 @@
           </svg>
         </button>
 
+        <!-- Audio Settings button -->
+        <AudioSettings @settings-changed="onAudioSettingsChanged" />
+
         <!-- Menu button -->
         <button
           @click="showMenu = !showMenu"
@@ -358,6 +361,16 @@
 
     <!-- Controls -->
     <div class="bg-gray-900 p-4 safe-area-inset">
+      <!-- Recording Controls (Enterprise feature) -->
+      <div v-if="roomInfo" class="mb-4 flex justify-center">
+        <RecordingControls
+          :room-code="roomInfo.short_code"
+          :participant-id="currentParticipantId"
+          @recording-started="onRecordingStarted"
+          @recording-stopped="onRecordingStopped"
+        />
+      </div>
+
       <!-- Multi-user controls for 3+ participants -->
       <MultiUserControls
         v-if="webrtcStore.isMultiUserCall"
@@ -747,6 +760,8 @@ import ParticipantGrid from './ParticipantGrid.vue'
 import MultiUserControls from './MultiUserControls.vue'
 import RoomChat from './RoomChat.vue'
 import ScreenShareControls from './ScreenShareControls.vue'
+import RecordingControls from './RecordingControls.vue'
+import AudioSettings from './AudioSettings.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -1240,6 +1255,54 @@ const onScreenShareStarted = ({ session, stream }) => {
 const onScreenShareStopped = ({ session }) => {
   console.log('Screen share stopped:', session)
   isScreenSharing.value = false
+}
+
+// Recording handlers
+const onRecordingStarted = (recording) => {
+  console.log('Recording started:', recording)
+  // Optional: Show notification
+}
+
+const onRecordingStopped = (recording) => {
+  console.log('Recording stopped:', recording)
+  // Optional: Show notification
+}
+
+// Audio settings handler
+const onAudioSettingsChanged = async (settings) => {
+  console.log('Audio settings changed:', settings)
+  
+  // Apply new audio constraints
+  try {
+    const constraints = {
+      audio: {
+        deviceId: settings.deviceId ? { exact: settings.deviceId } : undefined,
+        echoCancellation: settings.echoCancellation,
+        noiseSuppression: settings.noiseSuppression,
+        autoGainControl: settings.autoGainControl
+      }
+    }
+    
+    // Restart audio stream with new settings
+    if (webrtcStore.localStream) {
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints)
+      
+      // Replace audio track
+      const audioTrack = newStream.getAudioTracks()[0]
+      const oldAudioTrack = webrtcStore.localStream.getAudioTracks()[0]
+      
+      if (oldAudioTrack) {
+        webrtcStore.localStream.removeTrack(oldAudioTrack)
+        oldAudioTrack.stop()
+      }
+      
+      webrtcStore.localStream.addTrack(audioTrack)
+      
+      console.log('Audio settings applied successfully')
+    }
+  } catch (error) {
+    console.error('Failed to apply audio settings:', error)
+  }
 }
 
 // Watch chat visibility to reset unread count

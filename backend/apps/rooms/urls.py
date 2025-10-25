@@ -3,6 +3,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from . import views
 from . import chat_views
+from . import recording_views
 
 app_name = 'rooms'
 
@@ -15,6 +16,9 @@ router.register(r'admin/analytics', views.RoomAnalyticsViewSet, basename='room_a
 router.register(r'chat/messages', chat_views.ChatMessageViewSet, basename='chat_messages')
 router.register(r'chat/attachments', chat_views.ChatAttachmentViewSet, basename='chat_attachments')
 router.register(r'screen-share', chat_views.ScreenShareViewSet, basename='screen_share')
+
+# Recording router (Enterprise feature)
+router.register(r'recordings', recording_views.RecordingViewSet, basename='recordings')
 
 urlpatterns = [
     # Legacy room endpoints (for backward compatibility)
