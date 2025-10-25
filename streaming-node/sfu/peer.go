@@ -236,13 +236,13 @@ func (p *Peer) Close() {
 	defer p.tracksMutex.Unlock()
 
 	// Close all tracks
-	for trackID, track := range p.tracks {
-		if err := track.Stop(); err != nil {
-			p.logger.WithFields(logrus.Fields{
-				"peerID":  p.id,
-				"trackID": trackID,
-			}).Error("Failed to stop track")
-		}
+	for trackID := range p.tracks {
+		p.logger.WithFields(logrus.Fields{
+			"peerID":  p.id,
+			"trackID": trackID,
+		}).Debug("Closing track")
+		// Note: TrackLocalStaticRTP doesn't have a Stop() method in newer versions
+		// Tracks are automatically cleaned up when the peer connection closes
 	}
 
 	p.tracks = make(map[string]*webrtc.TrackLocalStaticRTP)

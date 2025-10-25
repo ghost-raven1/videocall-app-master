@@ -3,9 +3,7 @@ package sfu
 import (
 	"fmt"
 	"sync"
-	"time"
 
-	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"

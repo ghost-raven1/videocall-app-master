@@ -6,6 +6,7 @@ import (
 
 	"streaming-node/config"
 
+	"github.com/pion/logging"
 	"github.com/pion/webrtc/v3"
 	"github.com/sirupsen/logrus"
 )
@@ -35,9 +36,11 @@ func NewSFU(cfg *config.Config) *SFU {
 		webrtcConfig.ICEServers = cfg.WebRTC.ICEServers
 	}
 
-	api := webrtc.NewAPI(webrtc.WithSettingEngine(webrtc.SettingEngine{
-		LoggerFactory: &loggerFactory{},
-	}))
+	// Create a setting engine with custom logger
+	settingEngine := webrtc.SettingEngine{}
+	settingEngine.LoggerFactory = &loggerFactory{}
+
+	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
 
 	logger := logrus.New()
 	logger.SetLevel(logrus.InfoLevel)
@@ -118,10 +121,10 @@ func (s *SFU) Close() {
 	s.logger.Info("SFU closed")
 }
 
-// LoggerFactory implements webrtc.LoggerFactory
+// LoggerFactory implements logging.LoggerFactory
 type loggerFactory struct{}
 
-func (f *loggerFactory) NewLogger(scope string) webrtc.Logger {
+func (f *loggerFactory) NewLogger(scope string) logging.LeveledLogger {
 	return &logger{scope: scope}
 }
 

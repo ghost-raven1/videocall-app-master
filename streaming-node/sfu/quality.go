@@ -59,7 +59,7 @@ func (qc *QualityController) UpdateWithRTPPacket(packet *rtp.Packet) {
 
 	// Update packet metrics
 	qc.qualityMetrics.PacketsSent++
-	qc.qualityMetrics.BytesSent += int64(packet.PayloadSize())
+	qc.qualityMetrics.BytesSent += int64(len(packet.Payload))
 	qc.qualityMetrics.LastPacketTime = now
 
 	// Calculate bitrate every second
