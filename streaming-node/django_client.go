@@ -68,7 +68,7 @@ func (dc *DjangoClient) Connect() error {
 	}
 
 	// Construct WebSocket URL for Django
-	wsURL := fmt.Sprintf("ws://%s/ws/rooms/", djangoURL)
+	wsURL := fmt.Sprintf("ws://%s/ws/rooms/", dc.djangoURL)
 
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {
@@ -329,7 +329,7 @@ func (dc *DjangoClient) handleUserJoined(event DjangoEvent) {
 	}
 
 	// Get or create room
-	room, err := dc.sfu.CreateRoom(roomID)
+	_, err := dc.sfu.CreateRoom(roomID)
 	if err != nil {
 		dc.logger.WithFields(logrus.Fields{
 			"roomID": roomID,
