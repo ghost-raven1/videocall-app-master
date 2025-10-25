@@ -8,12 +8,35 @@ import router from './router'
 import App from './App.vue'
 import { apiService } from './services/api'
 import { errorReportingService, ErrorReportingPlugin } from './services/error-reporting'
+import { useGlobalStore } from './stores/global'
 import './style.css'
 
 const app = createApp(App)
 const pinia = createPinia()
 
-// Global error handler for Vue application errors
+// Initialize i18n first with default settings
+const i18n = createI18n({
+  legacy: false,
+  globalInjection: true,
+  locale: 'ru',
+  fallbackLocale: 'en',
+  messages: {
+    en: en,
+    ru: ru
+  }
+})
+
+// Install plugins FIRST before setting up error handlers
+app.use(pinia)
+app.use(router)
+app.use(i18n)
+app.use(ErrorReportingPlugin)
+
+// Now initialize the global store and set up language synchronization
+const globalStore = useGlobalStore()
+globalStore.initializeLanguage()
+
+// Global error handler for Vue application errors (after Pinia is installed)
 app.config.errorHandler = (error, instance, info) => {
   console.error('Vue Error Handler:', {
     error: error.message,
@@ -34,15 +57,18 @@ app.config.errorHandler = (error, instance, info) => {
   })
 
   // Show user-friendly error notification
-  const globalStore = useGlobalStore()
-  globalStore.addNotification(
-    'An unexpected error occurred. Please refresh the page if the problem persists.',
-    'error',
-    8000
-  )
+  try {
+    globalStore.addNotification(
+      'An unexpected error occurred. Please refresh the page if the problem persists.',
+      'error',
+      8000
+    )
+  } catch (e) {
+    console.error('Failed to show notification:', e)
+  }
 }
 
-// Global handler for unhandled promise rejections
+// Global handler for unhandled promise rejections (after Pinia is installed)
 window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled Promise Rejection:', {
     reason: event.reason?.message || event.reason,
@@ -59,18 +85,21 @@ window.addEventListener('unhandledrejection', (event) => {
   })
 
   // Show user-friendly error notification
-  const globalStore = useGlobalStore()
-  globalStore.addNotification(
-    'A background operation failed. Please try again or refresh the page.',
-    'error',
-    8000
-  )
+  try {
+    globalStore.addNotification(
+      'A background operation failed. Please try again or refresh the page.',
+      'error',
+      8000
+    )
+  } catch (e) {
+    console.error('Failed to show notification:', e)
+  }
 
   // Prevent the default browser behavior (logging to console)
   event.preventDefault()
 })
 
-// Global handler for JavaScript errors
+// Global handler for JavaScript errors (after Pinia is installed)
 window.addEventListener('error', (event) => {
   console.error('Global JavaScript Error:', {
     message: event.message,
@@ -94,35 +123,17 @@ window.addEventListener('error', (event) => {
 
   // Show user-friendly error notification for script errors
   if (event.filename && !event.filename.includes('chrome-extension')) {
-    const globalStore = useGlobalStore()
-    globalStore.addNotification(
-      'A script error occurred. Please refresh the page if the problem persists.',
-      'error',
-      8000
-    )
+    try {
+      globalStore.addNotification(
+        'A script error occurred. Please refresh the page if the problem persists.',
+        'error',
+        8000
+      )
+    } catch (e) {
+      console.error('Failed to show notification:', e)
+    }
   }
 })
-
-// Initialize i18n first with default settings
-const i18n = createI18n({
-  legacy: false,
-  globalInjection: true,
-  locale: 'ru',
-  fallbackLocale: 'en',
-  messages: {
-    en: en,
-    ru: ru
-  }
-})
-
-app.use(pinia)
-app.use(router)
-app.use(i18n)
-app.use(ErrorReportingPlugin)
-
-// Now initialize the global store and set up language synchronization
-const globalStore = useGlobalStore()
-globalStore.initializeLanguage()
 
 // Listen for language changes from store and update i18n
 window.addEventListener('language-changed', (event) => {

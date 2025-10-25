@@ -30,7 +30,7 @@ export default defineConfig({
         name: 'Video Call App',
         short_name: 'VideoCall',
         description: 'Secure video calling without registration',
-        theme_color: '#00C853',
+        theme_color: '#22c55e',
         background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait',
@@ -40,8 +40,20 @@ export default defineConfig({
         icons: [
           {
             src: 'favicon.ico',
-            sizes: '48x48',
+            sizes: '64x64',
             type: 'image/x-icon',
+          },
+          {
+            src: 'favicon.ico',
+            sizes: '192x192',
+            type: 'image/x-icon',
+            purpose: 'any',
+          },
+          {
+            src: 'favicon.ico',
+            sizes: '512x512',
+            type: 'image/x-icon',
+            purpose: 'maskable',
           },
         ],
       },

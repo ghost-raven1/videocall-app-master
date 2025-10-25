@@ -13,7 +13,8 @@
             content="Secure video calling without registration. Create rooms, share links, and connect instantly."
         />
 
-        <!-- Tailwind CSS - ВАЖНО: загружается перед основными стилями -->
+        <!-- Tailwind CSS CDN - WARNING: For development only. Install Tailwind as PostCSS plugin for production -->
+        <!-- See: https://tailwindcss.com/docs/installation -->
         <script src="https://cdn.tailwindcss.com"></script>
         <script>
             // Конфигурация Tailwind для dark mode
@@ -37,10 +38,11 @@
         <!-- Security Headers -->
         <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
         <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-        <meta http-equiv="X-Frame-Options" content="DENY" />
+        <!-- X-Frame-Options must be set via HTTP header, not meta tag -->
 
         <!-- PWA Meta Tags -->
         <meta name="theme-color" content="#22c55e" />
+        <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="VideoCall" />
@@ -50,11 +52,8 @@
         <meta property="og:title" content="Video Call App" />
         <meta property="og:description" content="Secure video calling without registration" />
 
-        <!-- Apple Touch Icons -->
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-        <link rel="manifest" href="/site.webmanifest" />
+        <!-- Favicon - VitePWA will auto-generate manifest and additional icons -->
+        <!-- Manual manifest link removed - VitePWA injects it automatically -->
 
         <!-- Основные стили приложения -->
         <style>
