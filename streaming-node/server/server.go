@@ -13,7 +13,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
-	"github.com/pion/webrtc/v3"
 	"github.com/rs/cors"
 	"github.com/sirupsen/logrus"
 )
@@ -87,7 +86,7 @@ func NewServer(cfg *config.Config, sfuInstance *sfu.SFU) *Server {
 
 				// Check if origin is in allowed list
 				allowed := false
-				for _, allowedOrigin := range s.config.Server.AllowedOrigins {
+				for _, allowedOrigin := range cfg.Server.AllowedOrigins {
 					if allowedOrigin == "*" {
 						// Wildcard allows all origins (development only)
 						allowed = true
@@ -103,7 +102,7 @@ func NewServer(cfg *config.Config, sfuInstance *sfu.SFU) *Server {
 					logger.WithFields(logrus.Fields{
 						"origin": origin,
 						"ip":     r.RemoteAddr,
-						"allowed_origins": s.config.Server.AllowedOrigins,
+						"allowed_origins": cfg.Server.AllowedOrigins,
 					}).Warn("WebSocket connection rejected: origin not allowed")
 					return false
 				}
