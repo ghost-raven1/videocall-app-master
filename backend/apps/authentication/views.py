@@ -12,30 +12,12 @@ from django_ratelimit.decorators import ratelimit
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.conf import settings
 from django.http import HttpResponse
-from rest_framework_simplejwt.authentication import JWTAuthentication
-
 from .models import User, UserProfile, UserSession, LoginAttempt
 from apps.core.models import SystemSettings
 from apps.rooms.models import UserActivityLog
 
+
 logger = logging.getLogger(__name__)
-
-
-class CookieJWTAuthentication(JWTAuthentication):
-    """
-    JWT authentication that reads tokens from httpOnly cookies
-    """
-
-    def authenticate(self, request):
-        # First try to get token from cookie
-        access_token = request.COOKIES.get(settings.JWT_COOKIE_SETTINGS['ACCESS_TOKEN_COOKIE_NAME'])
-
-        if access_token:
-            # Create a mock request with Authorization header for JWT authentication
-            request.META['HTTP_AUTHORIZATION'] = f'Bearer {access_token}'
-
-        # Use parent authentication
-        return super().authenticate(request)
 
 
 def get_client_ip(request):
