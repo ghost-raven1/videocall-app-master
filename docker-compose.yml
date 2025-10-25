@@ -107,8 +107,9 @@ services:
           "wget",
           "--quiet",
           "--tries=1",
-          "--spider",
-          "http://localhost:8080/health",
+          "-O",
+          "/dev/null",
+          "http://127.0.0.1:8080/health",
         ]
       interval: 10s
       timeout: 5s
@@ -157,9 +158,9 @@ services:
       test:
         [
           "CMD",
-          "python",
-          "-c",
-          "import requests; requests.get('http://localhost:8000/api/health/', timeout=10)",
+          "curl",
+          "-f",
+          "http://localhost:8000/api/health/",
         ]
       interval: 30s
       timeout: 10s
@@ -184,7 +185,7 @@ services:
     restart: unless-stopped
     healthcheck:
       test:
-        ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+        ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:80/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -216,7 +217,7 @@ services:
           "--quiet",
           "--tries=1",
           "--spider",
-          "http://localhost/health/",
+          "http://127.0.0.1:80/health/",
         ]
       interval: 30s
       timeout: 10s

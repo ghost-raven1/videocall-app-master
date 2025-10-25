@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     gettext \
     vim \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Копирование и установка Python зависимостей
