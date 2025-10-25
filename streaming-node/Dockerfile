@@ -26,7 +26,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o streaming-node .
 FROM alpine:latest
 
 # Install runtime dependencies
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata wget
 
 # Create non-root user
 RUN addgroup -g 1000 appgroup && \
@@ -38,8 +38,8 @@ WORKDIR /app
 # Copy binary from builder stage
 COPY --from=builder /app/streaming-node .
 
-# Copy config files if they exist
-COPY --from=builder /app/config ./config
+# Copy config file
+COPY --from=builder /app/config.yaml .
 
 # Create directories for logs and data
 RUN mkdir -p /app/logs /app/data && \

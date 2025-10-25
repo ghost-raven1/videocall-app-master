@@ -6,10 +6,7 @@ server:
   write_timeout: "10s"
   max_connections: 1000
   allowed_origins:
-    - "http://localhost:3000"
-    - "http://127.0.0.1:3000"
-    - "https://yourdomain.com"
-    - "https://www.yourdomain.com"
+    - "*"  # Allow all origins for Docker environment
   enable_profiling: false
 
 webrtc:
