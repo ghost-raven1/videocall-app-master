@@ -8,7 +8,6 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from .chat_models import ChatMessage, ChatAttachment, ScreenShareSession
-from .models import Room, RoomParticipant
 
 
 class ChatMessageViewSet(viewsets.ModelViewSet):
@@ -22,12 +21,17 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
         room_code = self.request.query_params.get('room_code')
         room_id = self.request.query_params.get('room_id')
         
-        queryset = ChatMessage.objects.select_related('participant', 'room').prefetch_related('attachments')
+        queryset = ChatMessage.objects.prefetch_related('attachments')
         
-        if room_code:
-            queryset = queryset.filter(room__code=room_code)
-        elif room_id:
-            queryset = queryset.filter(room__id=room_id)
+        if room_id:
+            queryset = queryset.filter(room_id=room_id)
+        # Note: Room code filtering is not supported as we don't have access to Room model
+        # If needed, we would need to get room_id from room code using RoomManager
+        # elif room_code:
+        #     from .models import RoomManager
+        #     room = RoomManager.get_room_by_code(room_code)
+        #     if room:
+        #         queryset = queryset.filter(room_id=room['room_id'])
         
         # Filter out deleted messages unless requested
         if not self.request.query_params.get('include_deleted'):

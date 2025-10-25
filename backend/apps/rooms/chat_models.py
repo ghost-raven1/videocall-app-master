@@ -4,80 +4,62 @@ import uuid
 from django.db import models
 from django.core.validators import FileExtensionValidator
 from django.utils import timezone
-from .models import Room, RoomParticipant
 
 
 def chat_file_upload_path(instance, filename):
     """Generate upload path for chat attachments"""
     ext = filename.split('.')[-1]
     filename = f"{uuid.uuid4()}.{ext}"
-    return os.path.join('chat_files', str(instance.room.id), filename)
+    return os.path.join('chat_files', str(instance.room_id), filename)
 
 
 class ChatMessage(models.Model):
     """Chat message in a room"""
     
     MESSAGE_TYPES = (
-        ('text', 'Text Message'),
-        ('file', 'File Attachment'),
-        ('system', 'System Message'),
+        ('text', 'Text'),
+        ('file', 'File'),
+        ('system', 'System'),
+        ('notification', 'Notification'),
     )
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='chat_messages')
-    participant = models.ForeignKey(
-        RoomParticipant, 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name='messages'
-    )
-    
-    # Message content
+    room_id = models.CharField(max_length=255, db_index=True)  # Store room ID as string
+    sender_id = models.CharField(max_length=255)  # Store sender ID as string
+    content = models.TextField()
     message_type = models.CharField(max_length=20, choices=MESSAGE_TYPES, default='text')
-    content = models.TextField(blank=True)
-    
-    # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
-    edited_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_pinned = models.BooleanField(default=False)
+    reply_to = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='replies')
+    is_edited = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
-    
-    # Reply functionality
-    reply_to = models.ForeignKey(
-        'self', 
-        on_delete=models.SET_NULL, 
-        null=True, 
-        blank=True,
-        related_name='replies'
-    )
-    
+    metadata = models.JSONField(default=dict, blank=True)
+
     class Meta:
-        ordering = ['created_at']
+        ordering = ['-created_at']
         indexes = [
-            models.Index(fields=['room', 'created_at']),
-            models.Index(fields=['participant', 'created_at']),
+            models.Index(fields=['room_id', 'created_at']),
         ]
-    
+
     def __str__(self):
-        return f"Message in {self.room.code} by {self.participant.display_name if self.participant else 'System'}"
-    
+        return f"Message {self.id} in room {self.room_id}"
+
     def to_dict(self):
         """Convert message to dictionary for API/WebSocket"""
         return {
             'id': str(self.id),
-            'room_id': str(self.room.id),
-            'participant': {
-                'id': str(self.participant.id) if self.participant else None,
-                'display_name': self.participant.display_name if self.participant else 'System',
-                'user_id': self.participant.user_id if self.participant else None,
-            } if self.participant else None,
+            'room_id': self.room_id,
+            'sender_id': self.sender_id,
+            'content': self.content,
             'message_type': self.message_type,
-            'content': self.content if not self.is_deleted else '[Deleted]',
             'created_at': self.created_at.isoformat(),
-            'edited_at': self.edited_at.isoformat() if self.edited_at else None,
+            'is_pinned': self.is_pinned,
+            'is_edited': self.is_edited,
             'is_deleted': self.is_deleted,
-            'reply_to': str(self.reply_to.id) if self.reply_to else None,
-            'attachments': [att.to_dict() for att in self.attachments.all()],
+            'metadata': self.metadata,
+            'attachments': [a.to_dict() for a in self.attachments.all()],
+            'reply_to': self.reply_to.to_dict() if self.reply_to else None,
         }
 
 
@@ -104,74 +86,55 @@ class ChatAttachment(models.Model):
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     message = models.ForeignKey(ChatMessage, on_delete=models.CASCADE, related_name='attachments')
-    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='chat_attachments')
-    
-    # File information
+    room_id = models.CharField(max_length=255, db_index=True)  # Store room ID as string
     file = models.FileField(
         upload_to=chat_file_upload_path,
         validators=[FileExtensionValidator(allowed_extensions=ALLOWED_EXTENSIONS)]
     )
     original_filename = models.CharField(max_length=255)
     file_type = models.CharField(max_length=20, choices=FILE_TYPES, default='other')
-    file_size = models.BigIntegerField()  # in bytes
+    file_size = models.BigIntegerField()
     mime_type = models.CharField(max_length=100)
-    
-    # Metadata
     uploaded_at = models.DateTimeField(auto_now_add=True)
-    uploaded_by = models.ForeignKey(
-        RoomParticipant,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name='uploaded_files'
-    )
-    
-    # Download tracking
+    uploaded_by = models.CharField(max_length=255, null=True)  # Store user ID as string
     download_count = models.IntegerField(default=0)
-    
-    class Meta:
-        ordering = ['uploaded_at']
-        indexes = [
-            models.Index(fields=['room', 'uploaded_at']),
-            models.Index(fields=['message']),
-        ]
-    
+
     def __str__(self):
-        return f"{self.original_filename} in {self.room.code}"
-    
+        return f"Attachment {self.original_filename} for message {self.message_id}"
+
     def get_file_type_from_extension(self):
         """Determine file type from extension"""
         ext = self.original_filename.split('.')[-1].lower()
-        
         if ext in ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']:
             return 'image'
         elif ext in ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt']:
             return 'document'
         elif ext in ['zip', 'rar', '7z', 'tar', 'gz']:
             return 'archive'
-        else:
-            return 'other'
-    
+        return 'other'
+
     def save(self, *args, **kwargs):
         """Auto-detect file type on save"""
         if not self.file_type or self.file_type == 'other':
             self.file_type = self.get_file_type_from_extension()
         super().save(*args, **kwargs)
-    
+
     def to_dict(self):
         """Convert attachment to dictionary for API/WebSocket"""
         return {
             'id': str(self.id),
-            'message_id': str(self.message.id),
+            'message_id': str(self.message_id),
+            'room_id': self.room_id,
+            'file_url': self.file.url if self.file else None,
             'original_filename': self.original_filename,
             'file_type': self.file_type,
             'file_size': self.file_size,
             'mime_type': self.mime_type,
             'uploaded_at': self.uploaded_at.isoformat(),
-            'uploaded_by': self.uploaded_by.display_name if self.uploaded_by else 'Unknown',
+            'uploaded_by': self.uploaded_by,
             'download_count': self.download_count,
-            'url': self.file.url if self.file else None,
         }
-    
+
     def increment_download_count(self):
         """Increment download counter"""
         self.download_count += 1
@@ -188,55 +151,31 @@ class ScreenShareSession(models.Model):
     )
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='screen_shares')
-    participant = models.ForeignKey(
-        RoomParticipant,
-        on_delete=models.CASCADE,
-        related_name='screen_shares'
-    )
-    
-    # Session info
+    room_id = models.CharField(max_length=255, db_index=True)  # Store room ID as string
+    participant_id = models.CharField(max_length=255)  # Store participant ID as string
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
-    stream_id = models.CharField(max_length=255)  # WebRTC stream ID
-    
-    # Timestamps
+    stream_id = models.CharField(max_length=255)
     started_at = models.DateTimeField(auto_now_add=True)
     stopped_at = models.DateTimeField(null=True, blank=True)
-    
-    # Statistics
     total_duration = models.IntegerField(default=0)  # in seconds
     viewer_count = models.IntegerField(default=0)
-    
-    class Meta:
-        ordering = ['-started_at']
-        indexes = [
-            models.Index(fields=['room', 'status']),
-            models.Index(fields=['participant', 'status']),
-        ]
-    
+
     def __str__(self):
-        return f"Screen share by {self.participant.display_name} in {self.room.code}"
-    
+        return f"Screen share {self.stream_id} in room {self.room_id}"
+
     def stop(self):
         """Stop screen sharing session"""
-        if self.status != 'stopped':
-            self.status = 'stopped'
-            self.stopped_at = timezone.now()
-            if self.started_at:
-                duration = (self.stopped_at - self.started_at).total_seconds()
-                self.total_duration = int(duration)
-            self.save()
-    
+        self.status = 'stopped'
+        self.stopped_at = timezone.now()
+        self.total_duration = (self.stopped_at - self.started_at).seconds
+        self.save()
+
     def to_dict(self):
         """Convert to dictionary for API/WebSocket"""
         return {
             'id': str(self.id),
-            'room_id': str(self.room.id),
-            'participant': {
-                'id': str(self.participant.id),
-                'display_name': self.participant.display_name,
-                'user_id': self.participant.user_id,
-            },
+            'room_id': self.room_id,
+            'participant_id': self.participant_id,
             'status': self.status,
             'stream_id': self.stream_id,
             'started_at': self.started_at.isoformat(),
