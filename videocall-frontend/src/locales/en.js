@@ -1,7 +1,32 @@
 const en = {
+  landing: {
+    appName: 'Video Call',
+    login: 'Login',
+    joinMeeting: 'Join Meeting',
+    heroTitle: 'Secure Video Calls for Everyone',
+    heroSubtitle: 'Simple and reliable video conferencing platform with no registration or installation required',
+    startNow: 'Start Now',
+    learnMore: 'Learn More',
+    featuresTitle: 'Our Features',
+    feature1Title: 'HD Video & Audio',
+    feature1Desc: 'Crystal clear video and audio for comfortable communication',
+    feature2Title: 'Text Chat',
+    feature2Desc: 'Exchange messages during your call',
+    feature3Title: 'Security',
+    feature3Desc: 'Data encryption and protection against unauthorized access',
+    feature4Title: 'Cross-platform',
+    feature4Desc: 'Works on all devices without installation',
+    ctaTitle: 'Ready to Start?',
+    ctaSubtitle: 'Join a video call right now - it\'s free and requires no registration',
+    startFreeCall: 'Start Free Call',
+    termsOfService: 'Terms of Service',
+    privacyPolicy: 'Privacy Policy',
+    contact: 'Contact',
+    allRightsReserved: 'All Rights Reserved'
+  },
   app: {
     name: 'Video Call',
-    desc: 'Secure video calling without registration',
+    desc: 'Secure video calls without registration',
     backToDashboard: 'Back to Dashboard',
     buttons: {
       cancel: "Cancel",

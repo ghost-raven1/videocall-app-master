@@ -1,0 +1,57 @@
+<svg width="500" height="400" viewBox="0 0 500 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect x="50" y="50" width="400" height="300" rx="20" fill="#F0F4FF" stroke="#4F46E5" stroke-width="2"/>
+  <rect x="70" y="70" width="360" height="220" rx="10" fill="#FFFFFF" stroke="#4F46E5" stroke-width="2"/>
+  
+  <!-- Person 1 -->
+  <circle cx="150" cy="140" r="40" fill="#E6F0FF"/>
+  <circle cx="150" cy="120" r="15" fill="#4F46E5"/>
+  <path d="M120 170C120 153.431 133.431 140 150 140C166.569 140 180 153.431 180 170" stroke="#4F46E5" stroke-width="2"/>
+  
+  <!-- Person 2 -->
+  <circle cx="250" cy="140" r="40" fill="#E6F0FF"/>
+  <circle cx="250" cy="120" r="15" fill="#4F46E5"/>
+  <path d="M220 170C220 153.431 233.431 140 250 140C266.569 140 280 153.431 280 170" stroke="#4F46E5" stroke-width="2"/>
+  
+  <!-- Person 3 -->
+  <circle cx="350" cy="140" r="40" fill="#E6F0FF"/>
+  <circle cx="350" cy="120" r="15" fill="#4F46E5"/>
+  <path d="M320 170C320 153.431 333.431 140 350 140C366.569 140 380 153.431 380 170" stroke="#4F46E5" stroke-width="2"/>
+  
+  <!-- Controls -->
+  <rect x="120" y="220" width="260" height="40" rx="20" fill="#F0F4FF"/>
+  
+  <!-- Mic button -->
+  <circle cx="150" cy="240" r="15" fill="#4F46E5"/>
+  <path d="M150 233L150 247" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <path d="M145 235C145 232.791 147.239 231 150 231C152.761 231 155 232.791 155 235V245C155 247.209 152.761 249 150 249C147.239 249 145 247.209 145 245V235Z" stroke="white" stroke-width="2"/>
+  
+  <!-- Camera button -->
+  <circle cx="200" cy="240" r="15" fill="#4F46E5"/>
+  <rect x="193" y="235" width="14" height="10" rx="1" stroke="white" stroke-width="2"/>
+  <path d="M207 238L211 235V245L207 242" stroke="white" stroke-width="2"/>
+  
+  <!-- Screen share button -->
+  <circle cx="250" cy="240" r="15" fill="#4F46E5"/>
+  <rect x="243" y="235" width="14" height="10" rx="1" stroke="white" stroke-width="2"/>
+  <path d="M243 232L257 232" stroke="white" stroke-width="2"/>
+  
+  <!-- Chat button -->
+  <circle cx="300" cy="240" r="15" fill="#4F46E5"/>
+  <path d="M295 235H305C306.105 235 307 235.895 307 237V243C307 244.105 306.105 245 305 245H295C293.895 245 293 244.105 293 243V237C293 235.895 293.895 235 295 235Z" stroke="white" stroke-width="2"/>
+  <path d="M296 239H304" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  <path d="M296 242H301" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- End call button -->
+  <circle cx="350" cy="240" r="15" fill="#EF4444"/>
+  <path d="M343 240H357" stroke="white" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- Connection lines -->
+  <path d="M150 190L250 190" stroke="#4F46E5" stroke-width="1" stroke-dasharray="4 4"/>
+  <path d="M250 190L350 190" stroke="#4F46E5" stroke-width="1" stroke-dasharray="4 4"/>
+  
+  <!-- Decorative elements -->
+  <circle cx="30" cy="30" r="20" fill="#4F46E5" fill-opacity="0.1"/>
+  <circle cx="470" cy="370" r="20" fill="#4F46E5" fill-opacity="0.1"/>
+  <circle cx="30" cy="370" r="10" fill="#4F46E5" fill-opacity="0.2"/>
+  <circle cx="470" cy="30" r="10" fill="#4F46E5" fill-opacity="0.2"/>
+</svg>

@@ -25,7 +25,7 @@ const SystemMetrics = () => import('../components/analytics-monitoring/SystemMet
 // Admin routes definition
 const adminRoutes = [
   {
-    path: '/admin',
+    path: '/admin/dashboard',
     name: 'AdminLayout',
     component: AdminLayout,
     meta: {

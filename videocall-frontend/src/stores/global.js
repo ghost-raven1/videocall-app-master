@@ -141,9 +141,13 @@ export const useGlobalStore = defineStore('global', () => {
       localStorage.setItem('preferred-language', languageCode)
 
       // Update i18n locale if available
-      const i18n = useI18n()
-      if (i18n && i18n.locale) {
-        i18n.locale.value = languageCode
+      try {
+        const i18n = useI18n()
+        if (i18n && i18n.locale) {
+          i18n.locale.value = languageCode
+        }
+      } catch (error) {
+        console.warn('Failed to update i18n locale:', error)
       }
 
       // Dispatch custom event for components to react

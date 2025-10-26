@@ -9,6 +9,8 @@ const Dashboard = () => import(/* webpackChunkName: "dashboard" */ '../component
 const VideoCall = () => import(/* webpackChunkName: "video-call" */ '../components/VideoCall.vue')
 const NotFound = () => import(/* webpackChunkName: "not-found" */ '../components/NotFound.vue')
 const JoinRoom = () => import(/* webpackChunkName: "join-room" */ '../components/JoinRoom.vue')
+const LandingPage = () => import(/* webpackChunkName: "landing-page" */ '../components/LandingPage.vue')
+const CallActions = () => import(/* webpackChunkName: "call-actions" */ '../components/CallActions.vue')
 
 // Import admin router
 import adminRouter from '../admin/router/admin'
@@ -17,6 +19,17 @@ import adminRouter from '../admin/router/admin'
 const routes = [
   {
     path: '/',
+    name: 'CallActions',
+    component: CallActions,
+    meta: {
+      requiresAuth: false,
+      title: 'Создать или присоединиться к звонку',
+      description: 'Создайте новый звонок или присоединитесь к существующему',
+      showInNav: false,
+    },
+  },
+  {
+    path: '/dashboard',
     name: 'Dashboard',
     component: Dashboard,
     meta: {
@@ -40,17 +53,19 @@ const routes = [
     },
   },
   {
-    path: '/admin',
-    name: 'AdminPanel',
-    component: Dashboard, // Используем тот же компонент, но с другими параметрами
+    path: '/admin/login',
+    name: 'AdminLogin',
+    component: () => import('../components/AdminLogin.vue'),
     meta: {
-      requiresAuth: false, // Изменено для прямого доступа
-      title: 'Админ-панель',
-      description: 'Управление видеозвонками',
-      showInNav: true,
-      icon: 'settings',
-      isAdmin: true, // Флаг для отображения админ-функций
+      requiresAuth: false,
+      title: 'Вход в админ-панель',
+      description: 'Вход в панель управления',
+      showInNav: false,
     },
+  },
+  {
+    path: '/admin',
+    redirect: '/admin/login',
   },
   {
     path: '/call/:roomId',
@@ -154,6 +169,29 @@ const routes = [
   //     icon: 'question',
   //   },
   // },
+  // Admin login route
+  {
+    path: '/admin/login',
+    name: 'AdminLogin',
+    component: () => import('../admin/views/AdminLogin.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Вход в админ-панель',
+      description: 'Страница входа в панель администратора',
+      showInNav: false,
+    }
+  },
+  {
+    path: '/room/:id',
+    name: 'Room',
+    component: VideoCall,
+    meta: {
+      requiresAuth: false, // Изменено для прямого доступа
+      title: 'Video Call Room',
+      description: 'Secure video conferencing room',
+      showInNav: false,
+    },
+  },
   // Admin routes (lazy loaded for better performance)
   {
     path: '/admin',
@@ -291,18 +329,26 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.isAdmin) {
     // In real app, check if user has admin role
     const isAdmin = globalStore.user?.role === 'admin' || globalStore.user?.is_staff
-
-    if (!isAdmin) {
+    const isAdminAuthenticated = localStorage.getItem('admin_authenticated') === 'true'
+    
+    if (!isAdmin && !isAdminAuthenticated) {
       console.warn('Access denied: Admin permissions required')
       globalStore.addNotification('Доступ запрещен: требуются права администратора', 'error', 5000)
-      next({ name: 'Dashboard' })
+      next({ name: 'AdminLogin' })
       return
     }
+  }
+  
+  // Redirect from admin root to admin login if not authenticated
+  if (to.path === '/admin' && !localStorage.getItem('admin_authenticated')) {
+    next({ name: 'AdminLogin' })
+    return
   }
 
   // Handle special route logic
   await handleSpecialRoutes(to, from, next, { globalStore, roomsStore })
 })
+
 
 router.beforeResolve(async (to, from, next) => {
   // This runs after all in-component guards and async route components are resolved
