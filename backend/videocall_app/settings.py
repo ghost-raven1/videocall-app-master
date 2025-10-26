@@ -290,6 +290,12 @@ CORS_ALLOWED_ORIGINS = config(
 # Clean up origins and remove empty entries
 CORS_ALLOWED_ORIGINS = [origin.strip() for origin in CORS_ALLOWED_ORIGINS if origin.strip()]
 
+# Add SFU server to allowed origins
+CORS_ALLOWED_ORIGINS.extend([
+    'http://streaming-node:8080',
+    'http://streaming-node',
+])
+
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only in development - SECURITY RISK: Disable in production
 
@@ -333,8 +339,27 @@ CORS_EXPOSE_HEADERS = [
 
 CORS_PREFLIGHT_MAX_AGE = 86400  # 24 hours
 
+# WebSocket configuration
+ASGI_APPLICATION = 'videocall_app.asgi.application'
+
+# Channel layer configuration for WebSockets
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [("redis", 6379)],
+        },
+    },
+}
+
 # WebSocket origins for Channels
 ALLOWED_HOSTS_INCLUDE_WEBSOCKET = True
+
+# Add SFU server to ALLOWED_HOSTS
+ALLOWED_HOSTS.extend([
+    'streaming-node',
+    'streaming-node:8080',
+])
 
 # Additional CORS headers for development
 if DEBUG:
