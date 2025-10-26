@@ -12,8 +12,25 @@ const JoinRoom = () => import(/* webpackChunkName: "join-room" */ '../components
 const LandingPage = () => import(/* webpackChunkName: "landing-page" */ '../components/LandingPage.vue')
 const CallActions = () => import(/* webpackChunkName: "call-actions" */ '../components/CallActions.vue')
 
-// Import admin router
-import adminRouter from '../admin/router/admin'
+// Lazy load admin components
+const AdminLayout = () => import('../admin/components/admin-layout/AdminLayout.vue')
+const AdminDashboard = () => import('../admin/views/AdminDashboard.vue')
+const AdminRooms = () => import('../admin/views/AdminRooms.vue')
+const AdminUsers = () => import('../admin/views/AdminUsers.vue')
+const AdminSettings = () => import('../admin/views/AdminSettings.vue')
+const AdminAnalytics = () => import('../admin/views/AdminAnalytics.vue')
+
+// Lazy load additional admin components
+const UserManagement = () => import('../admin/components/user-management/UserManagement.vue')
+const UserList = () => import('../admin/components/user-management/UserList.vue')
+const UserEdit = () => import('../admin/components/user-management/UserEdit.vue')
+const UserActivity = () => import('../admin/components/user-management/UserActivity.vue')
+const RoomList = () => import('../admin/components/room-management/RoomList.vue')
+const RoomDetails = () => import('../admin/components/room-management/RoomDetails.vue')
+const RoomForceClose = () => import('../admin/components/room-management/RoomForceClose.vue')
+const RoomStats = () => import('../admin/components/room-management/RoomStats.vue')
+const AnalyticsCharts = () => import('../admin/components/analytics-monitoring/AnalyticsCharts.vue')
+const SystemMetrics = () => import('../admin/components/analytics-monitoring/SystemMetrics.vue')
 
 // Route definitions with comprehensive metadata
 const routes = [
@@ -196,58 +213,166 @@ const routes = [
   {
     path: '/admin',
     name: 'Admin',
-    component: () => import('../admin/components/admin-layout/AdminLayout.vue'),
+    component: AdminLayout,
     meta: {
       requiresAuth: true,
       isAdmin: true,
       title: 'Админ-панель',
       description: 'Панель управления видеозвонками',
       showInNav: false, // Admin panel has its own navigation
+      breadcrumb: 'Админ-панель',
     },
     children: [
       {
         path: '',
         name: 'AdminDashboard',
-        component: () => import('../admin/views/AdminDashboard.vue'),
+        component: AdminDashboard,
         meta: {
           title: 'Панель управления',
           description: 'Главная страница админ-панели',
+          breadcrumb: 'Панель управления',
         },
       },
       {
         path: 'rooms',
         name: 'AdminRooms',
-        component: () => import('../admin/views/AdminRooms.vue'),
+        component: AdminRooms,
         meta: {
           title: 'Управление комнатами',
           description: 'Создание и управление комнатами',
+          breadcrumb: 'Комнаты',
         },
       },
       {
         path: 'users',
         name: 'AdminUsers',
-        component: () => import('../admin/views/AdminUsers.vue'),
+        component: AdminUsers,
         meta: {
           title: 'Управление пользователями',
           description: 'Управление пользователями системы',
+          breadcrumb: 'Пользователи',
         },
       },
       {
         path: 'analytics',
         name: 'AdminAnalytics',
-        component: () => import('../admin/views/AdminAnalytics.vue'),
+        component: AdminAnalytics,
         meta: {
           title: 'Аналитика',
           description: 'Статистика и аналитика системы',
+          breadcrumb: 'Аналитика',
         },
       },
       {
         path: 'settings',
         name: 'AdminSettings',
-        component: () => import('../admin/views/AdminSettings.vue'),
+        component: AdminSettings,
         meta: {
           title: 'Настройки',
           description: 'Системные настройки',
+          breadcrumb: 'Настройки',
+        },
+      },
+      // User Management Routes
+      {
+        path: 'users/management',
+        name: 'UserManagement',
+        component: UserManagement,
+        meta: {
+          title: 'Управление пользователями',
+          description: 'Полное управление пользователями системы',
+          breadcrumb: 'Управление пользователями',
+        },
+      },
+      {
+        path: 'users/list',
+        name: 'UserList',
+        component: UserList,
+        meta: {
+          title: 'Список пользователей',
+          description: 'Список всех пользователей с пагинацией',
+          breadcrumb: 'Список пользователей',
+        },
+      },
+      {
+        path: 'users/edit/:id?',
+        name: 'UserEdit',
+        component: UserEdit,
+        meta: {
+          title: 'Редактирование пользователя',
+          description: 'Создание или редактирование пользователя',
+          breadcrumb: 'Редактирование',
+        },
+      },
+      {
+        path: 'users/activity/:id',
+        name: 'UserActivity',
+        component: UserActivity,
+        meta: {
+          title: 'Активность пользователя',
+          description: 'Детальная информация об активности пользователя',
+          breadcrumb: 'Активность',
+        },
+      },
+      {
+        path: 'rooms/list',
+        name: 'RoomList',
+        component: RoomList,
+        meta: {
+          title: 'Список комнат',
+          description: 'Список всех комнат',
+          breadcrumb: 'Список комнат',
+        },
+      },
+      {
+        path: 'rooms/details/:id',
+        name: 'RoomDetails',
+        component: RoomDetails,
+        meta: {
+          title: 'Детали комнаты',
+          description: 'Детальная информация о комнате',
+          breadcrumb: 'Детали комнаты',
+        },
+      },
+      {
+        path: 'rooms/force-close/:id',
+        name: 'RoomForceClose',
+        component: RoomForceClose,
+        meta: {
+          title: 'Принудительное закрытие',
+          description: 'Принудительное закрытие комнаты',
+          breadcrumb: 'Закрытие комнаты',
+        },
+      },
+      {
+        path: 'rooms/stats/:id',
+        name: 'RoomStats',
+        component: RoomStats,
+        meta: {
+          title: 'Статистика комнаты',
+          description: 'Детальная статистика комнаты',
+          breadcrumb: 'Статистика',
+        },
+      },
+      // Analytics and Monitoring Routes
+      {
+        path: 'analytics/charts',
+        name: 'AnalyticsCharts',
+        component: AnalyticsCharts,
+        meta: {
+          title: 'Графики аналитики',
+          description: 'Детальные графики и аналитика',
+          breadcrumb: 'Графики',
+        },
+      },
+      {
+        path: 'analytics/metrics',
+        name: 'SystemMetrics',
+        component: SystemMetrics,
+        meta: {
+          title: 'Системные метрики',
+          description: 'Мониторинг системных показателей',
+          breadcrumb: 'Метрики',
         },
       },
     ],
