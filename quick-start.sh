@@ -148,9 +148,9 @@ fi
 
 echo ""
 echo -e "${BLUE}🔧 Step 7/10: Creating admin user...${NC}"
-# Create admin user with credentials user/password123
-echo "Creating admin user with username: user, password: password123"
-docker-compose exec -T backend python manage.py shell -c "from apps.authentication.models import User; User.objects.create_superuser('user', 'admin@example.com', 'password123') if not User.objects.filter(username='user').exists() else print('Admin user already exists')"
+# Create admin user with credentials admin@example.com/password123
+echo "Creating admin user with email: admin@example.com, password: password123"
+docker-compose exec -T backend python manage.py shell -c "from apps.authentication.models import User; email='admin@example.com'; password='password123'; User.objects.create_superuser(email=email, password=password) if not User.objects.filter(email=email).exists() else print('Admin user already exists')"
 echo -e "${GREEN}✅ Admin user created${NC}"
 
 echo ""
