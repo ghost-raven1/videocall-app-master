@@ -158,14 +158,28 @@ export const apiService = {
 
   // Authentication endpoints using JWT with httpOnly cookies
   async login(credentials) {
-    const response = await apiClient.post('/auth/token/', credentials)
+    try {
+      // Ensure credentials is an object
+      const loginData = typeof credentials === 'string' ? JSON.parse(credentials) : credentials
+      
+      // Ensure we're sending proper JSON
+      const response = await apiClient.post('/auth/token/', loginData, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      })
 
-    // Schedule token refresh if we get expiration info
-    if (response.data.expires_at) {
-      jwtManager.scheduleTokenRefresh(response.data.expires_at)
+      // Schedule token refresh if we get expiration info
+      if (response.data.expires_at) {
+        jwtManager.scheduleTokenRefresh(response.data.expires_at)
+      }
+
+      return response
+    } catch (error) {
+      console.error('Login error:', error)
+      throw error
     }
-
-    return response
   },
 
   async refreshToken() {
