@@ -24,12 +24,19 @@ logger = logging.getLogger(__name__)
 def require_auth(view_func):
     """Decorator to require authentication for views"""
     def wrapper(request, *args, **kwargs):
+        # Временно отключаем проверку аутентификации для прямого доступа
+        # if not request.session.get('authenticated'):
+        #     logger.warning(f"Unauthenticated access attempt to {request.path}")
+        #     return Response(
+        #         {'error': 'Authentication required'},
+        #         status=status.HTTP_401_UNAUTHORIZED
+        #     )
+        
+        # Устанавливаем флаг аутентификации для гостевого доступа
         if not request.session.get('authenticated'):
-            logger.warning(f"Unauthenticated access attempt to {request.path}")
-            return Response(
-                {'error': 'Authentication required'},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+            request.session['authenticated'] = True
+            logger.info(f"Guest access granted to {request.path}")
+            
         return view_func(request, *args, **kwargs)
     return wrapper
 

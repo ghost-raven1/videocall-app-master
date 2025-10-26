@@ -3,12 +3,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useGlobalStore } from '../stores/global'
 import { useRoomsStore } from '../stores/rooms'
 
-// Lazy load components for better performance
-const LoginForm = () => import('../components/LoginForm.vue')
-const Dashboard = () => import('../components/Dashboard.vue')
-const VideoCall = () => import('../components/VideoCall.vue')
-const NotFound = () => import('../components/NotFound.vue')
-const JoinRoom = () => import('../components/JoinRoom.vue')
+// Lazy load components for better performance using code splitting
+const LoginForm = () => import(/* webpackChunkName: "login" */ '../components/LoginForm.vue')
+const Dashboard = () => import(/* webpackChunkName: "dashboard" */ '../components/Dashboard.vue')
+const VideoCall = () => import(/* webpackChunkName: "video-call" */ '../components/VideoCall.vue')
+const NotFound = () => import(/* webpackChunkName: "not-found" */ '../components/NotFound.vue')
+const JoinRoom = () => import(/* webpackChunkName: "join-room" */ '../components/JoinRoom.vue')
 
 // Import admin router
 import adminRouter from '../admin/router/admin'
@@ -20,7 +20,7 @@ const routes = [
     name: 'Dashboard',
     component: Dashboard,
     meta: {
-      requiresAuth: true,
+      requiresAuth: false, // Изменено для прямого доступа
       title: 'Video Call Dashboard',
       description: 'Create or join video calls',
       showInNav: true,
@@ -37,6 +37,19 @@ const routes = [
       description: 'Access the video calling platform',
       hideForAuth: true, // Hide this route if user is already authenticated
       showInNav: false,
+    },
+  },
+  {
+    path: '/admin',
+    name: 'AdminPanel',
+    component: Dashboard, // Используем тот же компонент, но с другими параметрами
+    meta: {
+      requiresAuth: false, // Изменено для прямого доступа
+      title: 'Админ-панель',
+      description: 'Управление видеозвонками',
+      showInNav: true,
+      icon: 'settings',
+      isAdmin: true, // Флаг для отображения админ-функций
     },
   },
   {
@@ -237,6 +250,13 @@ const router = createRouter({
   // Configure link active classes
   linkActiveClass: 'router-link-active',
   linkExactActiveClass: 'router-link-exact-active',
+  // Add page transition settings
+  pageTransition: {
+    name: 'page',
+    mode: 'out-in',
+    appear: true,
+    css: true
+  }
 })
 
 // Global navigation guards
@@ -255,7 +275,6 @@ router.beforeEach(async (to, from, next) => {
   }
 
   // Check authentication requirement
-  const requiresAuth = to.meta.requiresAuth
   const hideForAuth = to.meta.hideForAuth
   const isAuthenticated = globalStore.isAuthenticated
 
@@ -266,18 +285,7 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  // If route requires auth and user is not authenticated
-  if (requiresAuth && !isAuthenticated) {
-    // Try to check auth status from server first
-    await globalStore.checkAuthentication()
-
-    if (!globalStore.isAuthenticated) {
-      // Store intended destination
-      const redirectQuery = to.fullPath !== '/' ? { redirect: to.fullPath } : {}
-      next({ name: 'Login', query: redirectQuery })
-      return
-    }
-  }
+  // Authentication check removed to allow direct access
 
   // Check admin permissions
   if (to.meta.isAdmin) {

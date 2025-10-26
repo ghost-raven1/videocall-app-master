@@ -1,6 +1,15 @@
 <!-- src/components/VideoCall.vue - Complete main video call component -->
 <template>
-  <div class="min-h-screen bg-black flex flex-col">
+  <div class="min-h-screen bg-black flex flex-col main-container">
+    <!-- Loading overlay -->
+    <div v-if="isConnecting" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+      <div class="text-center text-white">
+        <div class="inline-block w-12 h-12 border-4 border-t-green-500 border-white border-opacity-25 rounded-full animate-spin mb-4"></div>
+        <p class="text-lg font-medium">{{ connectionMessage }}</p>
+        <p class="text-sm text-gray-300 mt-2">{{ connectionProgress }}</p>
+      </div>
+    </div>
+    
     <!-- Header -->
     <header
       class="bg-gray-900 text-white p-4 flex items-center justify-between z-10 safe-area-inset"
@@ -95,7 +104,21 @@
                   d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"
                 ></path>
               </svg>
-              <span>Share room</span>
+              <span>Поделиться комнатой</span>
+            </button>
+            <button
+              @click="toggleRecording"
+              class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+            >
+              <svg class="w-4 h-4" :style="isRecording ? 'color: red;' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
+                ></path>
+              </svg>
+              <span>{{ isRecording ? 'Остановить запись' : 'Начать запись' }}</span>
             </button>
             <button
               @click="showStats = !showStats"
@@ -106,7 +129,7 @@
                   stroke-linecap="round"
                   stroke-linejoin="round"
                   stroke-width="2"
-                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                  d="M9 19v-6a2 2 0 00-2-2H2a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
                 ></path>
               </svg>
               <span>Connection stats</span>
@@ -257,7 +280,7 @@
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 stroke-width="2"
-                d="M4 8V4m0 0h4M4 4l5 5m11-5v4m0-4h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5"
+                d="M4 8V4m0 0h4M4 4l5 5m11-5v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 011-1h1m0 0V7a3 3 0 013-3h8a3 3 0 013 3v2M4 9h1m11 0h5m-9 0a1 1 0 011-1v-1a1 1 0 011-1m-1 1v1a1 1 0 001 1M9 7h8a3 3 0 013 3v2"
               ></path>
             </svg>
           </div>
@@ -748,20 +771,20 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useWebRTCStore } from '../stores/webrtc'
-import { useRoomsStore } from '../stores/rooms'
-import { useGlobalStore } from '../stores/global'
-import { utils } from '../services/utils'
-import { webrtcService } from '../services/webrtc'
-import { webrtcRetryService } from '../services/webrtc-retry'
-import ParticipantGrid from './ParticipantGrid.vue'
-import MultiUserControls from './MultiUserControls.vue'
-import RoomChat from './RoomChat.vue'
-import ScreenShareControls from './ScreenShareControls.vue'
-import RecordingControls from './RecordingControls.vue'
-import AudioSettings from './AudioSettings.vue'
+import { useWebRTCStore } from '@/stores/webrtc'
+import { useRoomsStore } from '@/stores/rooms'
+import { useGlobalStore } from '@/stores/global'
+import ParticipantGrid from '@/components/ParticipantGrid.vue'
+import RoomChat from '@/components/RoomChat.vue'
+import AudioSettings from '@/components/AudioSettings.vue'
+import RecordingControls from '@/components/RecordingControls.vue'
+import ScreenShareControls from '@/components/ScreenShareControls.vue'
+import MultiUserControls from '@/components/MultiUserControls.vue'
+import * as webrtcService from '@/services/webrtc'
+import * as utils from '@/services/utils'
+import * as mediaService from '@/services/media'
 
 const route = useRoute()
 const router = useRouter()
@@ -791,6 +814,30 @@ const connectingMessage = ref('Connecting...')
 const connectingSubMessage = ref('Setting up your video call')
 
 // Connection monitoring
+const connectionStats = ref(null)
+const statsMonitor = ref(null)
+
+// Fallback and quality state
+const isInFallbackMode = ref(false)
+const currentFallbackMode = ref(null) // 'audio_only', 'chat_only', null
+const connectionQualityWarnings = ref([])
+const showConnectionHelp = ref(false)
+
+// Chat and Screen Share state
+const showChat = ref(false)
+const unreadMessages = ref(0)
+const websocket = ref(null)
+const currentParticipantId = ref(null)
+const isScreenSharing = ref(false)
+const peerConnection = ref(null)
+
+// Connection state variables
+const isConnecting = ref(true)
+const connectionMessage = ref('Initializing connection...')
+const connectionProgress = ref('Please wait while we set up your call')
+const connectionRetryCount = ref(0)
+const maxRetries = 3
+
 const connectionStats = ref(null)
 const statsMonitor = ref(null)
 
@@ -976,7 +1023,8 @@ const initializeCall = async () => {
 
   try {
     isConnecting.value = true
-    connectingMessage.value = 'Finding room...'
+    connectionMessage.value = 'Finding room...'
+    connectionProgress.value = 'Step 1/4: Locating room'
 
     // Get room info
     const roomResult = await roomsStore.getRoomInfo(roomId)
@@ -987,8 +1035,8 @@ const initializeCall = async () => {
     }
 
     roomInfo.value = roomResult.room
-    connectingMessage.value = 'Accessing camera and microphone...'
-    connectingSubMessage.value = 'Please allow permissions when prompted'
+    connectionMessage.value = 'Accessing camera and microphone...'
+    connectionProgress.value = 'Step 2/4: Setting up media devices'
 
     // Initialize media
     const mediaResult = await webrtcStore.initializeLocalMedia()
@@ -1450,3 +1498,117 @@ onUnmounted(async () => {
   padding-left: env(safe-area-inset-left);
 }
 </style>
+
+<script>
+export default {
+  data() {
+    return {
+      // Существующие свойства
+      isConnecting: false,
+      connectionMessage: 'Подключение к комнате...',
+      connectionProgress: 'Инициализация...',
+      connectionRetryCount: 0,
+      maxRetries: 3,
+      showMenu: false,
+      // Новые свойства для записи
+      isRecording: false,
+      mediaRecorder: null,
+      recordedChunks: [],
+    };
+  },
+  methods: {
+    // Существующие методы
+    
+    toggleRecording() {
+      if (this.isRecording) {
+        this.stopRecording();
+      } else {
+        this.startRecording();
+      }
+    },
+  
+  startRecording() {
+    if (!this.localStream) {
+      this.$toast.error('Нет доступного потока для записи');
+      return;
+    }
+    
+    try {
+      // Получаем все аудио и видео потоки
+      const streams = [this.localStream];
+      this.participants.forEach(p => {
+        if (p.stream) streams.push(p.stream);
+      });
+      
+      // Создаем общий поток из всех потоков
+      const combinedStream = new MediaStream();
+      
+      // Добавляем все аудио и видео треки в общий поток
+      streams.forEach(stream => {
+        stream.getTracks().forEach(track => {
+          combinedStream.addTrack(track);
+        });
+      });
+      
+      // Создаем MediaRecorder
+      this.mediaRecorder = new MediaRecorder(combinedStream, {
+        mimeType: 'video/webm;codecs=vp9,opus'
+      });
+      
+      this.recordedChunks = [];
+      
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          this.recordedChunks.push(event.data);
+        }
+      };
+      
+      this.mediaRecorder.onstop = () => {
+        // Создаем Blob из записанных данных
+        const blob = new Blob(this.recordedChunks, {
+          type: 'video/webm'
+        });
+        
+        // Создаем URL для скачивания
+        const url = URL.createObjectURL(blob);
+        
+        // Создаем ссылку для скачивания
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `videocall-recording-${new Date().toISOString()}.webm`;
+        
+        // Добавляем ссылку в DOM и кликаем по ней
+        document.body.appendChild(a);
+        a.click();
+        
+        // Удаляем ссылку из DOM
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
+        
+        this.$toast.success('Запись сохранена');
+      };
+      
+      // Начинаем запись
+      this.mediaRecorder.start();
+      this.isRecording = true;
+      this.$toast.info('Запись начата');
+    } catch (error) {
+      console.error('Ошибка при начале записи:', error);
+      this.$toast.error('Не удалось начать запись');
+    }
+  },
+  
+  stopRecording() {
+    if (this.mediaRecorder && this.isRecording) {
+      this.mediaRecorder.stop();
+      this.isRecording = false;
+    }
+  },
+  
+  // ... existing methods ...
+},
+// ... existing code ...
+</script>

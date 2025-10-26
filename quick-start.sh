@@ -147,20 +147,30 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}🔧 Step 7/10: Setting up nginx for production...${NC}"
+echo -e "${BLUE}🔧 Step 7/10: Creating admin user...${NC}"
+# Create admin user with credentials user/password123
+echo "Creating admin user with username: user, password: password123"
+docker-compose exec -T backend python manage.py shell -c "from apps.authentication.models import User; User.objects.create_superuser('user', 'admin@example.com', 'password123') if not User.objects.filter(username='user').exists() else print('Admin user already exists')"
+echo -e "${GREEN}✅ Admin user created${NC}"
+
+echo ""
+echo -e "${BLUE}🔧 Step 8/10: Setting up nginx for production...${NC}"
 # Copy production nginx config
 if [ -f "nginx-lb.conf" ]; then
+    # Ensure directory exists before copying
+    sudo mkdir -p /etc/nginx/sites-available/
+    sudo mkdir -p /etc/nginx/sites-enabled/
     sudo cp nginx-lb.conf /etc/nginx/sites-available/videocall
     sudo ln -sf /etc/nginx/sites-available/videocall /etc/nginx/sites-enabled/
     sudo nginx -t
-    sudo systemctl reload nginx
+    sudo systemctl reload nginx || echo -e "${YELLOW}⚠️ Failed to reload nginx, may not be running or installed${NC}"
     echo -e "${GREEN}✅ Nginx production config applied${NC}"
 else
     echo -e "${YELLOW}⚠️  nginx-lb.conf not found, skipping nginx setup...${NC}"
 fi
 
 echo ""
-echo -e "${BLUE}🔒 Step 8/10: Generating Let's Encrypt SSL certificates...${NC}"
+echo -e "${BLUE}🔒 Step 9/11: Generating Let's Encrypt SSL certificates...${NC}"
 # Install certbot if not present
 if ! command -v certbot &> /dev/null; then
     echo "Installing certbot..."
@@ -178,7 +188,7 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}🚀 Step 9/10: Launching production cluster...${NC}"
+echo -e "${BLUE}🚀 Step 10/11: Launching production cluster...${NC}"
 # Stop dev compose and start cluster
 docker-compose down
 if [ -f "docker-compose.cluster.yml" ]; then
@@ -189,7 +199,7 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}✅ Step 10/10: Verifying production setup...${NC}"
+echo -e "${BLUE}✅ Step 11/11: Verifying production setup...${NC}"
 # Wait and check production services
 sleep 10
 PROD_OK=true

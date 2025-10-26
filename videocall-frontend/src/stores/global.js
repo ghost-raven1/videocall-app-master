@@ -71,7 +71,7 @@ export const useGlobalStore = defineStore('global', () => {
     }
   }
 
-  const checkAuthentication = async () => {
+  const checkAuth = async () => {
     try {
       setLoading(true, 'Checking authentication...')
       const response = await apiService.checkAuth()
@@ -91,6 +91,13 @@ export const useGlobalStore = defineStore('global', () => {
     } finally {
       setLoading(false)
     }
+  }
+  
+  // Функция для установки гостевого доступа
+  const setGuestAccess = () => {
+    // Устанавливаем базовый доступ без аутентификации
+    setAuthenticated(true) // Разрешаем доступ к функциям приложения
+    addNotification('Вы вошли как гость. Для доступа к админ-функциям требуется авторизация.', 'info', 5000)
   }
 
   const login = async (password) => {
@@ -188,8 +195,9 @@ export const useGlobalStore = defineStore('global', () => {
     removeNotification,
     clearNotifications,
     setDarkMode,
-    setNetworkStatus,
-    checkAuthentication,
+    setOnline: setNetworkStatus,
+    checkAuth,
+    setGuestAccess,
     login,
     logout,
     setLanguage,

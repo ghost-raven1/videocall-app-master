@@ -96,4 +96,39 @@
   .control-button svg {
     @apply w-5 h-5;
   }
+  
+  .participant-grid {
+    @apply grid-cols-1;
+  }
+  
+  .room-controls {
+    @apply flex-wrap justify-center gap-2 px-2;
+  }
+  
+  .card {
+    @apply mx-2;
+  }
+  
+  .input-field {
+    @apply text-sm;
+  }
+  
+  .btn-primary, .btn-secondary {
+    @apply py-1.5 px-3 text-sm;
+  }
+}
+
+/* Small mobile devices */
+@media (max-width: 480px) {
+  .room-controls {
+    @apply fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 py-2 shadow-lg z-10;
+  }
+  
+  .participant-card {
+    @apply max-w-full;
+  }
+  
+  .main-container {
+    @apply pb-16; /* Add padding for fixed controls */
+  }
 }

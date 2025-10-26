@@ -17,7 +17,7 @@ import (
 func main() {
 	// Parse command line flags
 	configPath := flag.String("config", "config.yaml", "Path to configuration file")
-	djangoURL := flag.String("django-url", "localhost:8000", "Django backend URL")
+	djangoURL := flag.String("django-url", "videocall-app-master-backend-1:8000", "Django backend URL")
 	flag.Parse()
 
 	// Load configuration

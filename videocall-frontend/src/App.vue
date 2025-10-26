@@ -1,7 +1,11 @@
 // src/App.vue - Main application component
 <template>
   <div id="app" class="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
-    <router-view />
+    <router-view v-slot="{ Component }">
+      <transition name="page" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </router-view>
 
     <!-- Global loading indicator -->
     <Teleport to="body">
@@ -52,9 +56,14 @@ import { useGlobalStore } from './stores/global'
 
 const globalStore = useGlobalStore()
 
-onMounted(() => {
-  // Check authentication on app load
-  globalStore.checkAuthentication()
+onMounted(async () => {
+  // Проверка аутентификации опциональна, но сохраняем для админ-функций
+  if (localStorage.getItem('token')) {
+    await globalStore.checkAuth()
+  } else {
+    // Устанавливаем базовый доступ для неаутентифицированных пользователей
+    globalStore.setGuestAccess()
+  }
 
   // Set up dark mode detection
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -66,11 +75,11 @@ onMounted(() => {
 
   // Set up network status monitoring
   window.addEventListener('online', () => {
-    globalStore.setNetworkStatus(true)
+    globalStore.setOnline(true)
   })
 
   window.addEventListener('offline', () => {
-    globalStore.setNetworkStatus(false)
+    globalStore.setOnline(false)
   })
 })
 </script>

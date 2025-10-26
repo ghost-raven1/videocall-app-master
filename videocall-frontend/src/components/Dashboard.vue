@@ -56,13 +56,50 @@
 
     <!-- Main Content -->
     <main class="max-w-4xl mx-auto px-4 py-8">
+      <!-- Admin Panel Section -->
+      <div v-if="isAdminView" class="mb-8">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+          Панель администратора
+        </h2>
+        <div class="card p-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <ActionCard
+              title="Управление пользователями"
+              description="Создание, редактирование и удаление пользователей"
+              icon="users"
+              @click="handleAdminAction('users')"
+            />
+            <ActionCard
+              title="Управление комнатами"
+              description="Просмотр и управление всеми комнатами"
+              icon="video"
+              @click="handleAdminAction('rooms')"
+            />
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <ActionCard
+              title="Настройки системы"
+              description="Изменение глобальных настроек приложения"
+              icon="settings"
+              @click="handleAdminAction('settings')"
+            />
+            <ActionCard
+              title="Статистика и логи"
+              description="Просмотр статистики использования и логов"
+              icon="chart"
+              @click="handleAdminAction('stats')"
+            />
+          </div>
+        </div>
+      </div>
+      
       <!-- Video Preview -->
-      <div class="mb-8">
+      <div v-if="!isAdminView" class="mb-8">
         <VideoPreview />
       </div>
 
       <!-- Action Buttons -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+      <div v-if="!isAdminView" class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
         <ActionCard
           :title="$t('dashboard.cards.createLink.title')"
           :description="$t('dashboard.cards.createLink.desc')"
@@ -169,8 +206,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, computed } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useGlobalStore } from '../stores/global'
 import { useRoomsStore } from '../stores/rooms'
 import { utils } from '../services/utils'
@@ -179,6 +216,7 @@ import ActionCard from './ActionCard.vue'
 import RoomCreatedModal from './RoomCreatedModal.vue'
 
 const router = useRouter()
+const route = useRoute()
 const globalStore = useGlobalStore()
 const roomsStore = useRoomsStore()
 
@@ -188,14 +226,40 @@ const showRoomCreatedModal = ref(false)
 const joinInput = ref('')
 const createdRoom = ref(null)
 
+// Computed properties
+const isAdminView = computed(() => {
+  return route.meta.isAdmin === true || route.path === '/admin'
+})
+
 // Methods
 const handleLogout = async () => {
   await globalStore.logout()
-  router.push('/login')
+  router.push('/')
 }
 
 const goToAdminPanel = () => {
   router.push('/admin')
+}
+
+const handleAdminAction = (action) => {
+  switch(action) {
+    case 'users':
+      // Здесь будет логика управления пользователями
+      console.log('Управление пользователями')
+      break
+    case 'rooms':
+      // Здесь будет логика управления комнатами
+      console.log('Управление комнатами')
+      break
+    case 'settings':
+      // Здесь будет логика настроек системы
+      console.log('Настройки системы')
+      break
+    case 'stats':
+      // Здесь будет логика статистики и логов
+      console.log('Статистика и логи')
+      break
+  }
 }
 
 const handleCreateRoom = async () => {
