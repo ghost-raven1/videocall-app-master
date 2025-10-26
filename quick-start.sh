@@ -21,7 +21,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Step 1: Check configuration
-echo -e "${BLUE}📋 Step 1/6: Checking configuration...${NC}"
+echo -e "${BLUE}📋 Step 1/10: Checking configuration...${NC}"
 if [ -f "scripts/check-config.sh" ]; then
     bash scripts/check-config.sh
     if [ $? -ne 0 ]; then
@@ -33,21 +33,21 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}📦 Step 2/6: Stopping existing containers...${NC}"
+echo -e "${BLUE}📦 Step 2/10: Stopping existing containers...${NC}"
 docker-compose down 2>/dev/null || true
 echo -e "${GREEN}✅ Containers stopped${NC}"
 
 echo ""
-echo -e "${BLUE}🔨 Step 3/6: Building containers...${NC}"
+echo -e "${BLUE}🔨 Step 3/10: Building containers...${NC}"
 docker-compose build --no-cache
 echo -e "${GREEN}✅ Containers built${NC}"
 
 echo ""
-echo -e "${BLUE}🚀 Step 4/5: Starting services...${NC}"
+echo -e "${BLUE}🚀 Step 4/10: Starting services...${NC}"
 docker-compose up -d
 
 echo ""
-echo -e "${BLUE}⏳ Step 5/5: Running database migrations...${NC}"
+echo -e "${BLUE}⏳ Step 5/10: Running database migrations...${NC}"
 # Wait a bit for the database to be ready
 sleep 10
 
@@ -68,7 +68,7 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}⏳ Step 6/6: Waiting for services to be ready...${NC}"
+echo -e "${BLUE}⏳ Step 6/10: Waiting for services to be ready...${NC}"
 echo "   This may take 30-60 seconds..."
 
 # Wait for services
@@ -145,3 +145,70 @@ else
     echo "📚 See TROUBLESHOOTING_GUIDE.md for more help"
     exit 1
 fi
+
+echo ""
+echo -e "${BLUE}🔧 Step 7/10: Setting up nginx for production...${NC}"
+# Copy production nginx config
+if [ -f "nginx-lb.conf" ]; then
+    sudo cp nginx-lb.conf /etc/nginx/sites-available/videocall
+    sudo ln -sf /etc/nginx/sites-available/videocall /etc/nginx/sites-enabled/
+    sudo nginx -t
+    sudo systemctl reload nginx
+    echo -e "${GREEN}✅ Nginx production config applied${NC}"
+else
+    echo -e "${YELLOW}⚠️  nginx-lb.conf not found, skipping nginx setup...${NC}"
+fi
+
+echo ""
+echo -e "${BLUE}🔒 Step 8/10: Generating Let's Encrypt SSL certificates...${NC}"
+# Install certbot if not present
+if ! command -v certbot &> /dev/null; then
+    echo "Installing certbot..."
+    sudo apt update
+    sudo apt install certbot python3-certbot-nginx -y
+fi
+# Generate SSL certificate (replace example.com with actual domain)
+echo "Please enter your domain name for SSL certificate:"
+read -r DOMAIN
+if [ -n "$DOMAIN" ]; then
+    sudo certbot --nginx -d "$DOMAIN"
+    echo -e "${GREEN}✅ SSL certificate generated for $DOMAIN${NC}"
+else
+    echo -e "${YELLOW}⚠️  No domain provided, skipping SSL generation...${NC}"
+fi
+
+echo ""
+echo -e "${BLUE}🚀 Step 9/10: Launching production cluster...${NC}"
+# Stop dev compose and start cluster
+docker-compose down
+if [ -f "docker-compose.cluster.yml" ]; then
+    docker-compose -f docker-compose.cluster.yml up -d
+    echo -e "${GREEN}✅ Production cluster launched${NC}"
+else
+    echo -e "${YELLOW}⚠️  docker-compose.cluster.yml not found, skipping cluster launch...${NC}"
+fi
+
+echo ""
+echo -e "${BLUE}✅ Step 10/10: Verifying production setup...${NC}"
+# Wait and check production services
+sleep 10
+PROD_OK=true
+if ! curl -f -s "https://$DOMAIN/health/" > /dev/null 2>&1; then
+    PROD_OK=false
+fi
+if [ "$PROD_OK" = true ]; then
+    echo -e "${GREEN}✅ Production setup verified${NC}"
+    echo "🌐 Production app running at https://$DOMAIN"
+else
+    echo -e "${RED}❌ Production setup failed${NC}"
+    echo "🔧 Check logs: docker-compose -f docker-compose.cluster.yml logs"
+fi
+
+echo ""
+echo "================================================"
+echo -e "${GREEN}🎉 Video Call App setup complete!${NC}"
+echo "================================================"
+echo ""
+echo "🌐 Access:"
+echo "   Development: http://localhost"
+echo "   Production:  https://$DOMAIN (if configured)"

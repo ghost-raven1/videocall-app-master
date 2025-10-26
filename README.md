@@ -232,6 +232,67 @@ docker-compose ps
 - **Admin панель**: https://yourdomain.com/admin/
 - **WebSocket**: wss://yourdomain.com/ws/
 
+### 9. Настройка Nginx для продакшена
+
+Для продакшен-окружения рекомендуется использовать кластерную конфигурацию с балансировкой нагрузки.
+
+#### Генерация SSL-сертификатов с Let's Encrypt
+
+Обновите настройки домена в `.env` и выполните:
+
+```bash
+# Установка Certbot
+sudo apt install certbot python3-certbot-nginx
+
+# Получение сертификатов
+sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+```
+
+После получения сертификатов остановите системный Nginx:
+
+```bash
+sudo systemctl stop nginx
+sudo systemctl disable nginx
+```
+
+#### Запуск продакшен-кластера
+
+Используйте конфигурацию кластера для горизонтального масштабирования:
+
+```bash
+# Запуск кластера
+docker-compose -f docker-compose.cluster.yml up --build -d
+```
+
+Кластер включает:
+- **Nginx Load Balancer**: Балансировка между несколькими инстансами backend и SFU
+- **Backend Instances**: 2 инстанса Django для обработки API и WebSocket
+- **SFU Nodes**: 3 узла для медиа-стриминга с поддержкой WebRTC
+- **Redis**: Для координации сессий и SFU
+
+#### Автоматическая настройка
+
+Для автоматизации всего процесса используйте обновленный [`quick-start.sh`](quick-start.sh):
+
+```bash
+./quick-start.sh
+```
+
+Скрипт автоматически:
+- Настроит Nginx для продакшена
+- Сгенерирует SSL-сертификаты
+- Запустит кластер
+- Проверит работоспособность
+
+#### Проверка кластера
+
+- **Frontend**: https://yourdomain.com
+- **Backend API**: https://yourdomain.com/api/health/
+- **WebSocket**: wss://yourdomain.com/ws/
+- **SFU Health**: http://localhost:8081/health (локально)
+
+Для мониторинга используйте health-check эндпоинты и логи.
+
 ## 🔧 Управление проектом
 
 ### Основные команды
