@@ -148,16 +148,21 @@ class RoomManager:
 
             # Create SFU room if threshold reached
             if should_create_sfu:
-                sfu_result = cls.create_sfu_room(room_data['room_id'])
-                if sfu_result and sfu_result.get('success'):
-                    # Log SFU room creation
-                    from apps.core.models import RoomActivityLog
-                    RoomActivityLog.objects.create(
-                        room_id=room_data["room_id"],
-                        action='sfu_enabled',
-                        participant_count=len(current_participants),
-                        metadata={'sfu_room_id': sfu_result.get('sfu_room_id')}
-                    )
+                try:
+                    sfu_result = cls.create_sfu_room(room_data['room_id'])
+                    if sfu_result and sfu_result.get('success'):
+                        # Log SFU room creation
+                        from apps.core.models import RoomActivityLog
+                        RoomActivityLog.objects.create(
+                            room_id=room_data["room_id"],
+                            action='sfu_enabled',
+                            participant_count=len(current_participants),
+                            metadata={'sfu_room_id': sfu_result.get('sfu_room_id')}
+                        )
+                except Exception as e:
+                    logger.error(f"Error creating SFU room: {e}")
+                    # Ensure fallback to P2P mode
+                    cls._fallback_to_p2p_mode(room_data['room_id'], f"SFU creation error: {str(e)}")
 
             # Update room data
             cache.set(

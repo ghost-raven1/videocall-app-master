@@ -9,6 +9,15 @@ echo "🎥 Video Call App - Quick Start"
 echo "================================"
 echo ""
 
+# Определение операционной системы
+IS_MACOS=false
+if [[ "$(uname)" == "Darwin" ]]; then
+    IS_MACOS=true
+    echo -e "🍎 Обнаружена macOS - запуск в режиме локальной разработки"
+else
+    echo -e "🌐 Обнаружена не-macOS система - запуск в продакшн режиме с доменом и сертификатами"
+fi
+
 # Update step numbers in the script to reflect the new step
 # (This is a marker for the script to know where to update step numbers)
 # Step numbers will be updated in the final output
@@ -43,7 +52,22 @@ docker-compose build --no-cache
 echo -e "${GREEN}✅ Containers built${NC}"
 
 echo ""
-echo -e "${BLUE}🚀 Step 4/10: Starting services...${NC}"
+echo -e "${BLUE}🚀 Step 4/10: Настройка конфигурации и запуск сервисов...${NC}"
+
+# Настройка конфигурации Nginx в зависимости от ОС
+if [ "$IS_MACOS" = true ]; then
+    # Для macOS используем локальную конфигурацию
+    sed -i.bak 's|^      - ./nginx.conf:/etc/nginx/nginx.conf:ro|      # - ./nginx.conf:/etc/nginx/nginx.conf:ro|g' docker-compose.yml
+    sed -i.bak 's|^      # - ./nginx-local.conf:/etc/nginx/nginx.conf:ro|      - ./nginx-local.conf:/etc/nginx/nginx.conf:ro|g' docker-compose.yml
+    echo -e "   🔧 Настроена локальная конфигурация Nginx для macOS"
+else
+    # Для других ОС используем продакшн конфигурацию с доменом
+    sed -i.bak 's|^      # - ./nginx.conf:/etc/nginx/nginx.conf:ro|      - ./nginx.conf:/etc/nginx/nginx.conf:ro|g' docker-compose.yml
+    sed -i.bak 's|^      - ./nginx-local.conf:/etc/nginx/nginx.conf:ro|      # - ./nginx-local.conf:/etc/nginx/nginx.conf:ro|g' docker-compose.yml
+    echo -e "   🔧 Настроена продакшн конфигурация Nginx с поддержкой домена"
+fi
+
+# Запуск сервисов
 docker-compose up -d
 
 echo ""
