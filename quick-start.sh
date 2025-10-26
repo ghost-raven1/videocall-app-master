@@ -9,6 +9,10 @@ echo "🎥 Video Call App - Quick Start"
 echo "================================"
 echo ""
 
+# Update step numbers in the script to reflect the new step
+# (This is a marker for the script to know where to update step numbers)
+# Step numbers will be updated in the final output
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,7 +21,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Step 1: Check configuration
-echo -e "${BLUE}📋 Step 1/5: Checking configuration...${NC}"
+echo -e "${BLUE}📋 Step 1/6: Checking configuration...${NC}"
 if [ -f "scripts/check-config.sh" ]; then
     bash scripts/check-config.sh
     if [ $? -ne 0 ]; then
@@ -29,12 +33,12 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}📦 Step 2/5: Stopping existing containers...${NC}"
+echo -e "${BLUE}📦 Step 2/6: Stopping existing containers...${NC}"
 docker-compose down 2>/dev/null || true
 echo -e "${GREEN}✅ Containers stopped${NC}"
 
 echo ""
-echo -e "${BLUE}🔨 Step 3/5: Building containers...${NC}"
+echo -e "${BLUE}🔨 Step 3/6: Building containers...${NC}"
 docker-compose build --no-cache
 echo -e "${GREEN}✅ Containers built${NC}"
 
@@ -43,7 +47,28 @@ echo -e "${BLUE}🚀 Step 4/5: Starting services...${NC}"
 docker-compose up -d
 
 echo ""
-echo -e "${BLUE}⏳ Step 5/5: Waiting for services to be ready...${NC}"
+echo -e "${BLUE}⏳ Step 5/5: Running database migrations...${NC}"
+# Wait a bit for the database to be ready
+sleep 10
+
+# Run migrations
+echo -n "   Running migrations... "
+if docker-compose exec -T backend python manage.py migrate --noinput > /dev/null 2>&1; then
+    echo -e "${GREEN}✅ Done${NC}"
+else
+    echo -e "${YELLOW}⚠️  Failed to run migrations, retrying...${NC}"
+    # Wait a bit longer and try again
+    sleep 10
+    if docker-compose exec -T backend python manage.py migrate --noinput; then
+        echo -e "${GREEN}✅ Migrations applied successfully${NC}"
+    else
+        echo -e "${RED}❌ Failed to apply migrations${NC}"
+        echo -e "${YELLOW}⚠️  Continuing, but the application might not work correctly${NC}"
+    fi
+fi
+
+echo ""
+echo -e "${BLUE}⏳ Step 6/6: Waiting for services to be ready...${NC}"
 echo "   This may take 30-60 seconds..."
 
 # Wait for services
