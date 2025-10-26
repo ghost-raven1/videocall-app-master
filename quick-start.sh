@@ -179,47 +179,97 @@ echo -e "${GREEN}✅ Admin user created${NC}"
 
 echo ""
 echo -e "${BLUE}🔧 Step 8/10: Setting up nginx for production...${NC}"
-# Copy production nginx config
-if [ -f "nginx-lb.conf" ]; then
-    # Ensure directory exists before copying
-    sudo mkdir -p /etc/nginx/sites-available/
-    sudo mkdir -p /etc/nginx/sites-enabled/
-    sudo cp nginx-lb.conf /etc/nginx/sites-available/videocall
-    sudo ln -sf /etc/nginx/sites-available/videocall /etc/nginx/sites-enabled/
-    sudo nginx -t
-    sudo systemctl reload nginx || echo -e "${YELLOW}⚠️ Failed to reload nginx, may not be running or installed${NC}"
-    echo -e "${GREEN}✅ Nginx production config applied${NC}"
+
+# Пропускаем настройку Nginx на macOS
+if [ "$IS_MACOS" = true ]; then
+    echo -e "${YELLOW}⚠️ Пропуск настройки Nginx для macOS - используется Docker-контейнер${NC}"
 else
-    echo -e "${YELLOW}⚠️  nginx-lb.conf not found, skipping nginx setup...${NC}"
+    # Copy production nginx config
+    if [ -f "nginx-lb.conf" ]; then
+        echo -e "   Проверка прав для настройки Nginx..."
+        
+        # Проверяем, есть ли права sudo
+        if command -v sudo >/dev/null 2>&1; then
+            # Создаем директории с обработкой ошибок
+            echo -e "   Создание директорий Nginx..."
+            sudo mkdir -p /etc/nginx/sites-available/ || { echo -e "${YELLOW}⚠️ Не удалось создать директорию /etc/nginx/sites-available/${NC}"; }
+            sudo mkdir -p /etc/nginx/sites-enabled/ || { echo -e "${YELLOW}⚠️ Не удалось создать директорию /etc/nginx/sites-enabled/${NC}"; }
+            
+            # Копируем конфигурацию с обработкой ошибок
+            echo -e "   Копирование конфигурации Nginx..."
+            sudo cp nginx-lb.conf /etc/nginx/sites-available/videocall || { echo -e "${YELLOW}⚠️ Не удалось скопировать конфигурацию${NC}"; }
+            
+            # Создаем символическую ссылку с обработкой ошибок
+            sudo ln -sf /etc/nginx/sites-available/videocall /etc/nginx/sites-enabled/ || { echo -e "${YELLOW}⚠️ Не удалось создать символическую ссылку${NC}"; }
+            
+            # Проверяем конфигурацию и перезагружаем Nginx
+            echo -e "   Проверка и перезагрузка Nginx..."
+            sudo nginx -t && sudo systemctl reload nginx || echo -e "${YELLOW}⚠️ Не удалось перезагрузить Nginx, возможно он не установлен или не запущен${NC}"
+            
+            echo -e "${GREEN}✅ Конфигурация Nginx применена${NC}"
+        else
+            echo -e "${YELLOW}⚠️ Команда sudo не найдена, пропуск настройки Nginx...${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️ Файл nginx-lb.conf не найден, пропуск настройки Nginx...${NC}"
+    fi
 fi
 
 echo ""
-echo -e "${BLUE}🔒 Step 9/11: Generating Let's Encrypt SSL certificates...${NC}"
-# Install certbot if not present
-if ! command -v certbot &> /dev/null; then
-    echo "Installing certbot..."
-    sudo apt update
-    sudo apt install certbot python3-certbot-nginx -y
-fi
-# Generate SSL certificate (replace example.com with actual domain)
-echo "Please enter your domain name for SSL certificate:"
-read -r DOMAIN
-if [ -n "$DOMAIN" ]; then
-    sudo certbot --nginx -d "$DOMAIN"
-    echo -e "${GREEN}✅ SSL certificate generated for $DOMAIN${NC}"
+echo -e "${BLUE}🔒 Step 9/11: Настройка SSL сертификатов...${NC}"
+
+# Автоматически устанавливаем домен
+DOMAIN="video-call-ghost.ru"
+echo -e "   Используем домен: ${GREEN}$DOMAIN${NC}"
+
+# Пропускаем настройку SSL на macOS
+if [ "$IS_MACOS" = true ]; then
+    echo -e "${YELLOW}⚠️ Пропуск настройки SSL для macOS - используется локальная разработка${NC}"
 else
-    echo -e "${YELLOW}⚠️  No domain provided, skipping SSL generation...${NC}"
+    # Install certbot if not present
+    if ! command -v certbot &> /dev/null; then
+        echo "   Установка certbot..."
+        sudo apt update || { echo -e "${YELLOW}⚠️ Не удалось обновить пакеты${NC}"; }
+        sudo apt install certbot python3-certbot-nginx -y || { echo -e "${YELLOW}⚠️ Не удалось установить certbot${NC}"; }
+    fi
+    
+    # Проверяем наличие sudo прав
+    if command -v sudo >/dev/null 2>&1; then
+        # Генерируем SSL сертификат
+        echo -e "   Генерация SSL сертификата для $DOMAIN..."
+        sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" --non-interactive --agree-tos --email admin@$DOMAIN || { 
+            echo -e "${YELLOW}⚠️ Не удалось сгенерировать SSL сертификат автоматически${NC}"
+            echo -e "   Вы можете сгенерировать его вручную командой: sudo certbot --nginx -d $DOMAIN -d www.$DOMAIN"
+        }
+    else
+        echo -e "${YELLOW}⚠️ Команда sudo не найдена, пропуск генерации SSL...${NC}"
+    fi
 fi
 
 echo ""
-echo -e "${BLUE}🚀 Step 10/11: Launching production cluster...${NC}"
-# Stop dev compose and start cluster
-docker-compose down
-if [ -f "docker-compose.cluster.yml" ]; then
-    docker-compose -f docker-compose.cluster.yml up -d
-    echo -e "${GREEN}✅ Production cluster launched${NC}"
+echo -e "${BLUE}🚀 Step 10/11: Настройка рабочего окружения...${NC}"
+
+# Пропускаем запуск кластера на macOS
+if [ "$IS_MACOS" = true ]; then
+    echo -e "${YELLOW}⚠️ Пропуск запуска production кластера для macOS - используется локальная разработка${NC}"
 else
-    echo -e "${YELLOW}⚠️  docker-compose.cluster.yml not found, skipping cluster launch...${NC}"
+    # Спрашиваем пользователя, хочет ли он запустить production кластер
+    echo -e "Хотите запустить production кластер? (y/n) [n]: "
+    read -r LAUNCH_CLUSTER
+    
+    if [[ "$LAUNCH_CLUSTER" == "y" || "$LAUNCH_CLUSTER" == "Y" ]]; then
+        # Stop dev compose and start cluster
+        echo -e "   Останавливаем dev окружение и запускаем production кластер..."
+        docker-compose down
+        if [ -f "docker-compose.cluster.yml" ]; then
+            docker-compose -f docker-compose.cluster.yml up -d
+            echo -e "${GREEN}✅ Production кластер запущен${NC}"
+        else
+            echo -e "${YELLOW}⚠️ Файл docker-compose.cluster.yml не найден, пропуск запуска кластера...${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️ Пропуск запуска production кластера по выбору пользователя${NC}"
+    fi
 fi
 
 echo ""
