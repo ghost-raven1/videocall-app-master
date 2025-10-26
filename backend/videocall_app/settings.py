@@ -131,7 +131,7 @@ elif USE_POSTGRESQL:
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': config('DB_NAME', default='videocall_db'),
             'USER': config('DB_USER', default='postgres'),
-            'PASSWORD': config('DB_PASSWORD', default=''),
+            'PASSWORD': config('DB_PASSWORD', default=config('POSTGRES_PASSWORD', default='')),
             'HOST': config('DB_HOST', default='localhost'),
             'PORT': config('DB_PORT', default='5432'),
             # Production optimizations

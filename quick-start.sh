@@ -23,15 +23,19 @@ NC='\033[0m'
 
 # ======== ASCII-Арт ========
 clear
-echo -e "${BLUE}"
+echo -e "${RED}"
 cat <<'EOF'
- __     ___     _      ___       _ _        _             
- \ \   / (_)___| |__  / _ \ _ __(_) |_ __ _| | _____ _ __ 
-  \ \ / /| / __| '_ \| | | | '__| | __/ _` | |/ / _ \ '__|
-   \ V / | \__ \ | | | |_| | |  | | || (_| |   <  __/ |   
-    \_/  |_|___/_| |_|\___/|_|  |_|\__\__,_|_|\_\___|_|   
-                                                          
-           🎥  Video Call App - Quick Start 🚀
+   ▄██████████▄     ▄██████████▄
+  ███░░░░░░░░███   ███░░░░░░░░███
+ ███      ░░░███ ███      ░░░███
+███   ▄████▄  ░█████   ▄████▄  ░███
+███  ████████  ░███  ████████  ░███
+███  ░░░░░███  ░███  ░░░░░███  ░███
+███      ░███  ░███      ░███  ░███
+ ███     ░███ ████      ░███ ████
+  ███▄░░░███▄███░░░░░░░░███▄███
+   ▀██████████▀    ghost_raven1 🔥🔥🔥
+           🎥 Video Call App 🎥
 EOF
 echo -e "${NC}"
 echo "=============================================="
@@ -89,6 +93,27 @@ else
   sed -i.bak 's|^      # - ./nginx.conf:/etc/nginx/nginx.conf:ro|      - ./nginx.conf:/etc/nginx/nginx.conf:ro|g' docker-compose.yml
   sed -i.bak 's|^      - ./nginx-local.conf:/etc/nginx/nginx.conf:ro|      # - ./nginx-local.conf:/etc/nginx/nginx.conf:ro|g' docker-compose.yml
   echo -e "   🔧 Используется продакшн конфигурация nginx.conf"
+  # Дополнительно: настройка системного Nginx (если установлен)
+  if [ -f "nginx-site.conf" ]; then
+    if command -v sudo >/dev/null 2>&1; then
+      echo -e "   Копирование nginx-site.conf в системный Nginx..."
+      sudo mkdir -p /etc/nginx/sites-available/ || echo -e "${YELLOW}⚠️ Не удалось создать /etc/nginx/sites-available/${NC}"
+      sudo mkdir -p /etc/nginx/sites-enabled/ || echo -e "${YELLOW}⚠️ Не удалось создать /etc/nginx/sites-enabled/${NC}"
+      sudo cp nginx-site.conf /etc/nginx/sites-available/videocall || echo -e "${YELLOW}⚠️ Не удалось скопировать конфигурацию${NC}"
+      sudo ln -sf /etc/nginx/sites-available/videocall /etc/nginx/sites-enabled/videocall || echo -e "${YELLOW}⚠️ Не удалось создать символическую ссылку${NC}"
+      echo -e "   Проверка и перезагрузка Nginx..."
+      if command -v nginx >/dev/null 2>&1; then
+        sudo nginx -t && sudo systemctl reload nginx || echo -e "${YELLOW}⚠️ Не удалось перезагрузить Nginx, возможно он не установлен или не запущен${NC}"
+        echo -e "${GREEN}✅ Конфигурация системного Nginx применена${NC}"
+      else
+        echo -e "${YELLOW}⚠️ Системный Nginx не установлен, пропуск настройки${NC}"
+      fi
+    else
+      echo -e "${YELLOW}⚠️ Команда sudo не найдена, пропуск настройки системного Nginx...${NC}"
+    fi
+  else
+    echo -e "${YELLOW}⚠️ Файл nginx-site.conf не найден, пропуск настройки системного Nginx...${NC}"
+  fi
 fi
 echo ""
 
