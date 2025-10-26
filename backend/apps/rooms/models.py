@@ -142,12 +142,14 @@ class RoomManager:
             room_data['participants'] = current_participants
 
             # Check if we should switch to SFU mode
-            should_create_sfu = cls.check_sfu_threshold(room_data['room_id'])
+            should_create_sfu = False
+            if len(current_participants) >= getattr(settings, 'SFU_THRESHOLD', 8):
+                should_create_sfu = True
 
             # Create SFU room if threshold reached
             if should_create_sfu:
                 sfu_result = cls.create_sfu_room(room_data['room_id'])
-                if sfu_result.get('success'):
+                if sfu_result and sfu_result.get('success'):
                     # Log SFU room creation
                     from apps.core.models import RoomActivityLog
                     RoomActivityLog.objects.create(

@@ -105,6 +105,27 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  // Метод для создания основного peer connection
+  const createPeerConnection = () => {
+    try {
+      // Создаем новое соединение с использованием конфигурации
+      const peerConnection = new RTCPeerConnection(rtcConfiguration)
+      
+      // Добавляем локальные треки в соединение
+      if (localStream.value) {
+        localStream.value.getTracks().forEach((track) => {
+          peerConnection.addTrack(track, localStream.value)
+        })
+      }
+      
+      return { success: true, peerConnection }
+    } catch (error) {
+      console.error('Failed to create peer connection:', error)
+      globalStore.addNotification('Failed to create connection', 'error', 5000)
+      return { success: false, error: error.message }
+    }
+  }
+
   const createPeerConnectionForParticipant = async (participantId) => {
     const operationId = `create_peer_${participantId}_${Date.now()}`
 

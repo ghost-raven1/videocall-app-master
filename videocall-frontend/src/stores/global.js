@@ -1,7 +1,6 @@
 // src/stores/global.js - Global application state management
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { useI18n } from 'vue-i18n'
 import { apiService } from '../services/api'
 
 export const useGlobalStore = defineStore('global', () => {
@@ -140,17 +139,8 @@ export const useGlobalStore = defineStore('global', () => {
       currentLanguage.value = languageCode
       localStorage.setItem('preferred-language', languageCode)
 
-      // Update i18n locale if available
-      try {
-        const i18n = useI18n()
-        if (i18n && i18n.locale) {
-          i18n.locale.value = languageCode
-        }
-      } catch (error) {
-        console.warn('Failed to update i18n locale:', error)
-      }
-
       // Dispatch custom event for components to react
+      // Компоненты, использующие i18n, могут слушать это событие и обновлять локаль
       window.dispatchEvent(new CustomEvent('language-changed', {
         detail: { language: languageCode }
       }))

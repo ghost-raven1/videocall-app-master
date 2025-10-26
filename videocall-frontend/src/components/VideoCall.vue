@@ -1396,6 +1396,9 @@ onMounted(() => {
   durationInterval = setInterval(updateCallDuration, 1000)
 })
 
+// Импортируем onUnmounted выше в скрипте
+import { onUnmounted } from 'vue'
+
 onUnmounted(async () => {
   // Cleanup intervals
   if (durationInterval) {

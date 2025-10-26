@@ -36,7 +36,12 @@ app.use(ErrorReportingPlugin)
 let globalStore = null
 try {
   globalStore = useGlobalStore()
-  globalStore.initializeLanguage()
+  // Передаем i18n в глобальное хранилище
+  app.provide('i18n', i18n)
+  // Инициализируем язык после предоставления i18n
+  setTimeout(() => {
+    globalStore.initializeLanguage()
+  }, 0)
 } catch (error) {
   console.error('Failed to initialize global store:', error)
 }
