@@ -1,7 +1,6 @@
-version: "3.8"
+version: "3.9"
 
 services:
-  # PostgreSQL Database
   db:
     image: postgres:15-alpine
     environment:
@@ -11,234 +10,168 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data/
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-videocall_db}",
-        ]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-videocall_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
     networks:
       - app-network
-    restart: unless-stopped
 
-  # Redis for Sessions and Caching
   redis:
     image: redis:7-alpine
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
-    networks:
-      - app-network
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 3
-    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - app-network
 
-  # Инициализация статических файлов и миграций
   static-init:
     build:
       context: ./backend
-      dockerfile: Dockerfile
-    volumes:
-      - static_volume:/staticfiles
-      - media_volume:/app/media
-    env_file:
-      - .env
+    env_file: .env
     environment:
-      - DEBUG=False
-      - DB_HOST=db
-      - DB_PORT=5432
-      - REDIS_URL=redis://redis:6379/0
-      - POSTGRES_DB=${POSTGRES_DB:-videocall_db}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      DEBUG: "False"
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_DB: ${POSTGRES_DB:-videocall_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks:
-      - app-network
-    user: "0:0" # Запускаем как root для создания директорий
+    volumes:
+      - static_volume:/staticfiles
+      - media_volume:/app/media
+    user: "0:0"
     command: >
       sh -c "
-        echo '🚀 Starting video call app initialization...' &&
-        echo '📁 Creating directories and setting permissions...' &&
-        mkdir -p /staticfiles /app/media /app/logs &&
-        chown -R 1000:1000 /staticfiles /app/media /app/logs &&
-        chmod -R 755 /app/logs &&
-        echo '🗄️ Running database migrations...' &&
+        echo '🚀 Initializing...' &&
+        mkdir -p /staticfiles /app/media &&
         python manage.py migrate &&
-        echo '📦 Collecting static files...' &&
-        python manage.py collectstatic --noinput --clear &&
-        echo '🔧 Setting final permissions...' &&
-        chown -R 1000:1000 /staticfiles /app/media /app/logs &&
-        echo '✅ Video call app initialization complete!'
+        python manage.py collectstatic --noinput &&
+        chown -R 1000:1000 /staticfiles /app/media &&
+        echo '✅ Done.'
       "
     restart: "no"
-
-  # Streaming Node (Go SFU Server for WebRTC)
-  streaming-node:
-    build:
-      context: ./streaming-node
-      dockerfile: Dockerfile
-    ports:
-      - "8080:8080"
-    env_file:
-      - .env
-    environment:
-      - SERVER_PORT=8080
-      - SERVER_ADDRESS=0.0.0.0
-      - DJANGO_URL=backend:8000
-      - LOG_LEVEL=info
-      - SECURITY_JWT_SECRET=${JWT_SECRET}
     networks:
       - app-network
-    restart: unless-stopped
+
+  streaming-node:
+    build: ./streaming-node
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      SERVER_PORT: 8080
+      SERVER_ADDRESS: 0.0.0.0
+      DJANGO_URL: backend:8000
+      LOG_LEVEL: info
+      SECURITY_JWT_SECRET: ${JWT_SECRET}
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "-O",
-          "/dev/null",
-          "http://127.0.0.1:8080/health",
-        ]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-    command: >
-      sh -c "
-        echo '🎥 Starting Streaming Node (SFU Server)...' &&
-        echo '📡 WebRTC media forwarding enabled' &&
-        /app/streaming-node
-      "
+    restart: unless-stopped
+    networks:
+      - app-network
 
-  # Django Backend with Daphne (WebSocket support)
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: ./backend
     ports:
       - "8000:8000"
     volumes:
       - static_volume:/staticfiles:ro
       - media_volume:/app/media
-      - ./backend/logs:/app/logs
-    env_file:
-      - .env
+    env_file: .env
     environment:
-      - DEBUG=False
-      - DB_HOST=db
-      - DB_PORT=5432
-      - REDIS_URL=redis://redis:6379/0
-      - POSTGRES_DB=${POSTGRES_DB:-videocall_db}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - DB_PASSWORD=${POSTGRES_PASSWORD}
-      - SFU_HOST=streaming-node
-      - SFU_PORT=8080
-      - DJANGO_SETTINGS_MODULE=videocall_app.settings
+      DEBUG: "False"
+      DB_HOST: db
+      DB_PORT: 5432
+      REDIS_URL: redis://redis:6379/0
+      POSTGRES_DB: ${POSTGRES_DB:-videocall_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SFU_HOST: streaming-node
+      SFU_PORT: 8080
     depends_on:
       static-init:
         condition: service_completed_successfully
       redis:
         condition: service_healthy
       streaming-node:
-        condition: service_started
-    networks:
-      - app-network
-    restart: unless-stopped
+        condition: service_healthy
     healthcheck:
-      test:
-        [
-          "CMD",
-          "curl",
-          "-f",
-          "http://localhost:8000/api/health/",
-        ]
+      test: ["CMD-SHELL", "curl -fs http://localhost:8000/api/health/ || exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
     command: >
       sh -c "
-        echo '🌐 Starting Django backend with Daphne (WebSocket support)...' &&
-        echo '📊 Verifying configuration...' &&
+        echo '🌐 Starting Django backend...' &&
         python manage.py check &&
-        echo '🔌 Starting Daphne server...' &&
-        daphne -b 0.0.0.0 -p 8000 videocall_app.asgi:application --access-log - --verbosity 2
+        daphne -b 0.0.0.0 -p 8000 videocall_app.asgi:application
       "
-
-  # Vue.js Frontend
-  frontend:
-    build:
-      context: ./videocall-frontend
-      dockerfile: Dockerfile
+    restart: unless-stopped
     networks:
       - app-network
+
+  frontend:
+    build: ./videocall-frontend
+    expose:
+      - "80"
     restart: unless-stopped
+    networks:
+      - app-network
     healthcheck:
-      test:
-        ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:80/"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # Nginx Reverse Proxy with WebSocket support
   nginx:
     image: nginx:alpine
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-      # - ./nginx-local.conf:/etc/nginx/nginx.conf:ro
       - static_volume:/staticfiles:ro
       - media_volume:/app/media:ro
     depends_on:
       - backend
       - frontend
       - streaming-node
-    networks:
-      - app-network
-    restart: unless-stopped
     healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://127.0.0.1:80/health/",
-        ]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/health/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
+    restart: unless-stopped
+    networks:
+      - app-network
 
 volumes:
   postgres_data:
-    driver: local
   redis_data:
-    driver: local
   static_volume:
-    driver: local
   media_volume:
-    driver: local
 
 networks:
   app-network:
+    name: videocall_network
     driver: bridge
-
