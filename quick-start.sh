@@ -197,7 +197,7 @@ else
             
             # Копируем конфигурацию с обработкой ошибок
             echo -e "   Копирование конфигурации Nginx..."
-            sudo cp nginx-lb.conf /etc/nginx/sites-available/videocall || { echo -e "${YELLOW}⚠️ Не удалось скопировать конфигурацию${NC}"; }
+            sudo cp nginx.conf /etc/nginx/sites-available/videocall || { echo -e "${YELLOW}⚠️ Не удалось скопировать конфигурацию${NC}"; }
             
             # Создаем символическую ссылку с обработкой ошибок
             sudo ln -sf /etc/nginx/sites-available/videocall /etc/nginx/sites-enabled/ || { echo -e "${YELLOW}⚠️ Не удалось создать символическую ссылку${NC}"; }
