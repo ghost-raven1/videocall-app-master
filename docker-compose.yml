@@ -144,6 +144,7 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - SFU_HOST=streaming-node
       - SFU_PORT=8080
+      - DJANGO_SETTINGS_MODULE=videocall_app.settings
     depends_on:
       static-init:
         condition: service_completed_successfully

@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from django_ratelimit.decorators import ratelimit
+from .authentication import CookieJWTAuthentication
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.conf import settings
 from django.http import HttpResponse
