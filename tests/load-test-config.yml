@@ -86,7 +86,7 @@ scenarios:
 
       # Connect to room via WebSocket
       - send:
-          url: "ws://localhost:8000/ws/rooms/{{ $randomString(8) }}/"
+          url: "ws://localhost:8000/ws/room/{{ $randomString(8) }}/"
           send:
             type: "join_room"
             user_id: "load-test-user-{{ $vuID }}-{{ $randomInt(1, 1000) }}"

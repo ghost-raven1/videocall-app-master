@@ -67,7 +67,13 @@ DEBUG=True
 DATABASE_URL=sqlite:///db.sqlite3
 
 # Frontend
+# Dev окружение: бекенд на 8000
 VITE_API_BASE_URL=http://localhost:8000/api
+VITE_WS_BASE_URL=ws://localhost:8000
+
+# Prod/Staging пример
+# VITE_API_BASE_URL=https://video-call-ghost.ru/api
+# VITE_WS_BASE_URL=wss://video-call-ghost.ru
 ```
 
 ### 4. Запуск

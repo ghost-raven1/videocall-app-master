@@ -67,8 +67,8 @@ func (dc *DjangoClient) Connect() error {
 		return nil // Already connected
 	}
 
-	// Construct WebSocket URL for Django
-	wsURL := fmt.Sprintf("ws://%s/ws/rooms/", dc.djangoURL)
+    // Construct WebSocket URL for Django SFU endpoint
+    wsURL := fmt.Sprintf("ws://%s/ws/sfu/", dc.djangoURL)
 
 	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
 	if err != nil {

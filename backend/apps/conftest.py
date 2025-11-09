@@ -172,8 +172,13 @@ def websocket_communicator():
     """Create a WebSocket communicator for testing."""
     from videocall_app.asgi import application
 
-    async def _get_communicator():
-        return WebsocketCommunicator(application, "/ws/")
+    async def _get_communicator(room_id: str = "test-room"):
+        """Return WebSocketCommunicator bound to a specific test room.
+
+        Defaults to room_id="test-room" to align with current routing
+        pattern `/ws/room/<room_id>/`.
+        """
+        return WebsocketCommunicator(application, f"/ws/room/{room_id}/")
 
     return _get_communicator
 

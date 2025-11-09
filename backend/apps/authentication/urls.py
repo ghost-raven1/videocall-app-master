@@ -15,7 +15,7 @@ router.register(r'activity', views.UserActivityViewSet, basename='activity')
 urlpatterns = [
     # Legacy authentication endpoints (for backward compatibility)
     path('login/', views.login_view, name='login'),
-    path('logout/', views.logout_view, name='logout'),
+    path('legacy/logout/', views.logout_view, name='logout_legacy'),
     path('check/', views.check_auth_view, name='check'),
 
     # JWT Authentication endpoints

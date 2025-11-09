@@ -119,8 +119,8 @@ class WebSocketLoadTester extends EventEmitter {
       const scenario = this.selectScenario();
       const roomId = `load-test-room-${Math.floor(Math.random() * 1000)}`;
 
-      // Create WebSocket connection
-      const ws = new WebSocket(`${this.options.backendUrl}/ws/rooms/${roomId}/`);
+      // Create WebSocket connection (client room endpoint)
+      const ws = new WebSocket(`${this.options.backendUrl}/ws/room/${roomId}/`);
 
       ws.on('open', () => {
         this.metrics.successfulConnections++;

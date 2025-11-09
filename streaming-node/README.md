@@ -128,7 +128,7 @@ The server can be configured via `config.yaml` or environment variables:
 - `WEBRTC_DEFAULT_BITRATE` - Default bitrate (default: 1000000)
 
 ### Django Integration
-- `DJANGO_URL` - Django backend URL (default: "localhost:8000")
+- `DJANGO_URL` - Django backend URL (default: "backend:8000")
 - `DJANGO_RECONNECT_INTERVAL` - Reconnection interval (default: "5s")
 - `DJANGO_MAX_RECONNECTS` - Maximum reconnection attempts (default: 10)
 

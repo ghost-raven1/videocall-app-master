@@ -75,6 +75,9 @@ LOCAL_APPS = [
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
+# Use custom User model from apps.authentication
+AUTH_USER_MODEL = 'authentication.User'
+
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -482,6 +485,13 @@ SFU_HOST = config('SFU_HOST', default='localhost')
 SFU_PORT = config('SFU_PORT', default='8080', cast=int)
 SFU_API_BASE_URL = f'http://{SFU_HOST}:{SFU_PORT}/api'
 SFU_WS_BASE_URL = f'ws://{SFU_HOST}:{SFU_PORT}/ws'
+
+# Enforce correct SFU host configuration in production (no localhost)
+if not DEBUG and SFU_HOST in ('localhost', '127.0.0.1'):
+    raise ValueError(
+        "SFU_HOST misconfigured for production: 'localhost' is not allowed. "
+        "Set SFU_HOST to your SFU service name or domain."
+    )
 
 # SFU Room settings
 SFU_ROOM_TIMEOUT_MINUTES = 30

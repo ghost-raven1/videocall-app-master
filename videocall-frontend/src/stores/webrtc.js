@@ -4,6 +4,62 @@ import { ref, computed } from 'vue'
 import { useGlobalStore } from './global'
 import { webrtcRetryService } from '../services/webrtc-retry'
 
+/**
+ * @typedef {('user_joined'|'user_left'|'webrtc_offer'|'webrtc_answer'|'ice_candidate'|'media_state_update'|'pong'|'error')} WebSocketMessageType
+ */
+
+/**
+ * Базовая структура сообщения из WebSocket сигнального сервера.
+ * @typedef {Object} BaseWsMessage
+ * @property {WebSocketMessageType} type
+ * @property {string} [room_id]
+ * @property {string} [participant_id]
+ * @property {string} [participant_name]
+ * @property {string} [sender]
+ * @property {string} [target]
+ * @property {number|string} [timestamp]
+ * @property {any} [data]
+ * @property {string} [message]
+ * @property {any} [offer]
+ * @property {any} [answer]
+ * @property {{ candidate: string, sdpMid?: string, sdpMLineIndex?: number }} [candidate]
+ */
+
+/**
+ * @param {string} roomId
+ * @returns {string}
+ */
+function buildWebSocketUrl(roomId) {
+  const baseEnv = import.meta.env.VITE_WS_BASE_URL
+  if (typeof baseEnv === 'string' && baseEnv.trim() !== '') {
+    const base = baseEnv.replace(/\/$/, '')
+    return `${base}/ws/room/${roomId}/`
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const wsHost = import.meta.env.VITE_WS_HOST || window.location.host
+  return `${protocol}//${wsHost}/ws/room/${roomId}/`
+}
+
+/**
+ * @param {any} data
+ * @returns {data is BaseWsMessage}
+ */
+function isValidWsMessage(data) {
+  if (!data || typeof data !== 'object') return false
+  if (typeof data.type !== 'string') return false
+  const known = new Set([
+    'user_joined',
+    'user_left',
+    'webrtc_offer',
+    'webrtc_answer',
+    'ice_candidate',
+    'media_state_update',
+    'pong',
+    'error',
+  ])
+  return known.has(data.type)
+}
+
 export const useWebRTCStore = defineStore('webrtc', () => {
   const globalStore = useGlobalStore()
 
@@ -404,10 +460,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
         async () => {
           return new Promise((resolve, reject) => {
             try {
-              // WebSocket должен подключаться к бэкенду (порт 8000), а не к фронтенду
-              const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-              const wsHost = import.meta.env.VITE_WS_HOST || window.location.host
-              const wsUrl = `${protocol}//${wsHost}/ws/room/${roomId}/`
+              // WebSocket должен подключаться к бэкенду/домену (nginx), поддерживаем VITE_WS_BASE_URL
+              const wsUrl = buildWebSocketUrl(roomId)
 
               console.log('Connecting to WebSocket:', wsUrl)
               websocket.value = new WebSocket(wsUrl)
@@ -422,6 +476,10 @@ export const useWebRTCStore = defineStore('webrtc', () => {
               websocket.value.onmessage = async (event) => {
                 try {
                   const data = JSON.parse(event.data)
+                  if (!isValidWsMessage(data)) {
+                    console.warn('Invalid WS message format', data)
+                    return
+                  }
                   await handleWebSocketMessage(data)
                 } catch (error) {
                   console.error('Failed to handle WebSocket message:', error)
@@ -489,6 +547,10 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  /**
+   * Обработчик входящих WS-сообщений с предсказуемой структурой.
+   * @param {BaseWsMessage} data
+   */
   const handleWebSocketMessage = async (data) => {
     console.log('Received WebSocket message:', data.type)
 
@@ -527,6 +589,9 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  /**
+   * @param {BaseWsMessage} data
+   */
   const handleUserJoined = (data) => {
     const participantId = data.participant_id
 
@@ -558,6 +623,9 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  /**
+   * @param {BaseWsMessage} data
+   */
   const handleUserLeft = (data) => {
     const participantId = data.participant_id
 
@@ -587,6 +655,9 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  /**
+   * @param {BaseWsMessage} data
+   */
   const handleWebRTCOffer = async (data) => {
     try {
       const participantId = data.sender
@@ -611,6 +682,9 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  /**
+   * @param {BaseWsMessage} data
+   */
   const handleWebRTCAnswer = async (data) => {
     try {
       const participantId = data.sender
@@ -624,6 +698,9 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  /**
+   * @param {BaseWsMessage} data
+   */
   const handleICECandidate = async (data) => {
     try {
       const participantId = data.sender
@@ -648,7 +725,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     try {
       // Create peer connection for this participant if it doesn't exist
       if (!peerConnections.value.has(participantId)) {
-        createPeerConnectionForParticipant(participantId)
+        await createPeerConnectionForParticipant(participantId)
       }
 
       const peerConnection = peerConnections.value.get(participantId)
@@ -673,6 +750,12 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  /**
+   * Отправляет сообщение на сигнальный WebSocket-сервер.
+   * Ожидает открытое соединение, иначе логирует предупреждение.
+   *
+   * @param {Partial<BaseWsMessage> & { type: string }} message
+   */
   const sendWebSocketMessage = (message) => {
     if (websocket.value && websocket.value.readyState === WebSocket.OPEN) {
       websocket.value.send(JSON.stringify(message))
@@ -681,6 +764,10 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  /**
+   * Переключает состояние видеотрека локального пользователя и
+   * отправляет уведомление другим участникам о новом состоянии медиа.
+   */
   const toggleVideo = () => {
     if (localStream.value) {
       const videoTrack = localStream.value.getVideoTracks()[0]
@@ -706,6 +793,10 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
+  /**
+   * Переключает состояние аудиотрека локального пользователя и
+   * отправляет уведомление другим участникам о новом состоянии медиа.
+   */
   const toggleAudio = () => {
     if (localStream.value) {
       const audioTrack = localStream.value.getAudioTracks()[0]
@@ -889,3 +980,5 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   }
 })
 
+// Named exports for unit testing of helpers
+export { buildWebSocketUrl, isValidWsMessage }

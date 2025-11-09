@@ -70,6 +70,50 @@ else
     else
         echo -e "${GREEN}✅ SFU_HOST is configured: $SFU_HOST${NC}"
     fi
+
+    # Production-specific checks
+    echo ""
+    echo "🔒 Checking production safeguards..."
+    if [ "${DEBUG}" = "True" ] || [ "${DEBUG}" = "true" ]; then
+        echo -e "${RED}❌ ERROR: DEBUG must be False in production${NC}"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo -e "${GREEN}✅ DEBUG is disabled${NC}"
+    fi
+
+    if [ -z "${ALLOWED_HOSTS}" ]; then
+        echo -e "${RED}❌ ERROR: ALLOWED_HOSTS must be set for production${NC}"
+        ERRORS=$((ERRORS + 1))
+    else
+        echo -e "${GREEN}✅ ALLOWED_HOSTS is set: ${ALLOWED_HOSTS}${NC}"
+    fi
+
+    if [ -z "${CORS_ALLOWED_ORIGINS}" ]; then
+        echo -e "${YELLOW}⚠️  WARNING: CORS_ALLOWED_ORIGINS is empty${NC}"
+        WARNINGS=$((WARNINGS + 1))
+    elif echo "${CORS_ALLOWED_ORIGINS}" | grep -qi "http://"; then
+        echo -e "${YELLOW}⚠️  WARNING: CORS_ALLOWED_ORIGINS contains http:// entries (prefer https)${NC}"
+        WARNINGS=$((WARNINGS + 1))
+    else
+        echo -e "${GREEN}✅ CORS_ALLOWED_ORIGINS looks secure${NC}"
+    fi
+
+    if [ -z "${SERVER_ALLOWED_ORIGINS}" ]; then
+        echo -e "${YELLOW}⚠️  WARNING: SERVER_ALLOWED_ORIGINS is empty (SFU tokens origin check)${NC}"
+        WARNINGS=$((WARNINGS + 1))
+    fi
+
+    if [ -n "${SSL_CERT_PATH}" ] || [ -n "${SSL_KEY_PATH}" ]; then
+        if [ ! -f "${SSL_CERT_PATH}" ] || [ ! -f "${SSL_KEY_PATH}" ]; then
+            echo -e "${YELLOW}⚠️  WARNING: SSL cert/key paths set but files not found${NC}"
+            WARNINGS=$((WARNINGS + 1))
+        else
+            echo -e "${GREEN}✅ SSL certificate files present${NC}"
+        fi
+    else
+        echo -e "${YELLOW}⚠️  WARNING: SSL_CERT_PATH/SSL_KEY_PATH not set (ensure TLS termination elsewhere)${NC}"
+        WARNINGS=$((WARNINGS + 1))
+    fi
 fi
 
 echo ""
@@ -141,6 +185,31 @@ if docker-compose config &> /dev/null; then
 else
     echo -e "${RED}❌ ERROR: docker-compose.yml has syntax errors${NC}"
     ERRORS=$((ERRORS + 1))
+fi
+
+# Validate docker-compose.prod.yml if present
+if [ -f docker-compose.prod.yml ]; then
+    echo ""
+    echo "🔧 Checking docker-compose.prod.yml..."
+    if docker-compose -f docker-compose.prod.yml config &> /dev/null; then
+        echo -e "${GREEN}✅ docker-compose.prod.yml syntax is valid${NC}"
+        # Warn if backend publishes port to host in prod file
+        if docker-compose -f docker-compose.prod.yml config | grep -A3 "backend:" | grep -q "ports:"; then
+            echo -e "${YELLOW}⚠️  WARNING: backend publishes ports in prod compose (consider using expose only)${NC}"
+            WARNINGS=$((WARNINGS + 1))
+        else
+            echo -e "${GREEN}✅ backend is internal-only in prod compose${NC}"
+        fi
+        if docker-compose -f docker-compose.prod.yml config | grep -A3 "streaming-node:" | grep -q "ports:"; then
+            echo -e "${YELLOW}⚠️  WARNING: streaming-node publishes ports in prod compose (consider using expose only)${NC}"
+            WARNINGS=$((WARNINGS + 1))
+        else
+            echo -e "${GREEN}✅ streaming-node is internal-only in prod compose${NC}"
+        fi
+    else
+        echo -e "${RED}❌ ERROR: docker-compose.prod.yml has syntax errors${NC}"
+        ERRORS=$((ERRORS + 1))
+    fi
 fi
 
 echo ""

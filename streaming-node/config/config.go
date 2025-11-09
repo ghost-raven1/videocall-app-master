@@ -158,12 +158,13 @@ func getDefaultConfig() *Config {
 			JWTSecret:        "", // Must be set via environment variable
 			TokenExpiryHours: 24,
 		},
-		Django: DjangoConfig{
-			URL:               "localhost:8000",
-			EnableWebSocket:   true,
-			ReconnectInterval: "5s",
-			MaxReconnects:     10,
-		},
+        Django: DjangoConfig{
+            // Default to docker-compose backend service. Can be overridden via DJANGO_URL.
+            URL:               "backend:8000",
+            EnableWebSocket:   true,
+            ReconnectInterval: "5s",
+            MaxReconnects:     10,
+        },
 	}
 }
 

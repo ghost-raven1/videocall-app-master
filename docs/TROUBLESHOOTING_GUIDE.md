@@ -30,7 +30,7 @@ curl http://localhost:3000/health       # Frontend
 netstat -tuln | grep :808
 
 # Test WebSocket connectivity
-websocat ws://localhost:8000/ws/test/
+ websocat ws://localhost:8000/ws/room/test-room/
 
 # Check firewall settings
 sudo ufw status
@@ -261,7 +261,7 @@ docker-compose up -d db
 docker-compose logs backend
 
 # Test WebSocket endpoint
-websocat ws://localhost:8000/ws/test-room/
+ websocat ws://localhost:8000/ws/room/test-room/
 
 # Check ASGI configuration
 docker-compose exec backend python manage.py check --deploy

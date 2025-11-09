@@ -1,6 +1,12 @@
 // src/services/api.js - API service layer with JWT support
 import axios from 'axios'
 
+/**
+ * @typedef {Object} Credentials
+ * @property {string} email
+ * @property {string} password
+ */
+
 // Create axios instance with base configuration
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
@@ -117,7 +123,7 @@ const jwtManager = {
 
   async _doRefreshToken() {
     try {
-      const response = await apiClient.post('/authentication/token/refresh/')
+      const response = await apiClient.post('/auth/token/refresh/')
       return response.data
     } catch (error) {
       console.warn('Failed to refresh JWT token:', error)
@@ -151,12 +157,21 @@ const jwtManager = {
 // API service object with all endpoint methods
 export const apiService = {
   // Initialize JWT system
+  /**
+   * Инициализация JWT-слоя
+   * @returns {Promise<void>}
+   */
   async initialize() {
     // No client-side initialization needed for JWT with httpOnly cookies
     console.log('JWT API service initialized')
   },
 
   // Authentication endpoints using JWT with httpOnly cookies
+  /**
+   * Вход по email и паролю
+   * @param {Credentials|string} credentials
+   * @returns {Promise<import('axios').AxiosResponse<any>>}
+   */
   async login(credentials) {
     try {
       // Ensure credentials is an object
@@ -182,10 +197,18 @@ export const apiService = {
     }
   },
 
+  /**
+   * Обновление access токена по refresh-cookie
+   * @returns {Promise<any>}
+   */
   async refreshToken() {
     return await jwtManager.refreshAccessToken()
   },
 
+  /**
+   * Выход и очистка httpOnly cookies
+   * @returns {Promise<void>}
+   */
   async logout() {
     try {
       // Call server logout endpoint that clears cookies
@@ -198,34 +221,66 @@ export const apiService = {
     }
   },
 
+  /**
+   * Проверка авторизации
+   * @returns {Promise<import('axios').AxiosResponse<any>>}
+   */
   async checkAuth() {
     return apiClient.get('/auth/check/')
   },
 
   // Room management endpoints (no CSRF needed for JWT)
+  /**
+   * Создание комнаты
+   * @returns {Promise<import('axios').AxiosResponse<any>>}
+   */
   async createRoom() {
     return apiClient.post('/rooms/create/')
   },
 
+  /**
+   * Получение информации о комнате
+   * @param {string} roomId
+   * @returns {Promise<import('axios').AxiosResponse<any>>}
+   */
   async getRoomInfo(roomId) {
     return apiClient.get(`/rooms/${roomId}/`)
   },
 
+  /**
+   * Присоединение к комнате
+   * @param {string} roomIdentifier
+   * @returns {Promise<import('axios').AxiosResponse<any>>}
+   */
   async joinRoom(roomIdentifier) {
     return apiClient.post('/rooms/join/', {
       room_identifier: roomIdentifier,
     })
   },
 
+  /**
+   * Выход из комнаты
+   * @param {string} roomId
+   * @returns {Promise<import('axios').AxiosResponse<any>>}
+   */
   async leaveRoom(roomId) {
     return apiClient.post(`/rooms/${roomId}/leave/`)
   },
 
+  /**
+   * Удаление комнаты
+   * @param {string} roomId
+   * @returns {Promise<import('axios').AxiosResponse<any>>}
+   */
   async deleteRoom(roomId) {
     return apiClient.delete(`/rooms/${roomId}/delete/`)
   },
 
   // System endpoints
+  /**
+   * Проверка здоровья API
+   * @returns {Promise<import('axios').AxiosResponse<any>>}
+   */
   async healthCheck() {
     return apiClient.get('/health/')
   },
@@ -323,4 +378,3 @@ export const apiUtils = {
     }
   },
 }
-

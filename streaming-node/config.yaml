@@ -49,7 +49,8 @@ security:
   token_expiry_hours: 24
 
 django:
-  url: "ws://backend:8000/ws/sfu/"
+  # Host:port for Django backend (WS URL constructed by client)
+  url: "backend:8000"
   enable_websocket: true
   reconnect_interval: "5s"
   max_reconnects: 10

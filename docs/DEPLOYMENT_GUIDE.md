@@ -756,7 +756,7 @@ docker-compose exec sfu wget -q -O- https://api.ipify.org
 docker-compose logs backend
 
 # Test WebSocket endpoint
-websocat ws://localhost:8000/ws/test-room/
+ websocat ws://localhost:8000/ws/room/test-room/
 ```
 
 #### 3. SSL Certificate Issues
