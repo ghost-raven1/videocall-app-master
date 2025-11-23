@@ -144,9 +144,21 @@ const startRecording = async () => {
   try {
     isProcessing.value = true
 
-    const response = await axios.post('/api/recordings/start/', {
+    // Validate required props
+    if (!props.roomCode) {
+      console.error('Room code is missing:', props)
+      alert('Room code is required to start recording')
+      return
+    }
+
+    console.log('Starting recording with:', {
       room_code: props.roomCode,
-      participant_id: props.participantId,
+      participant_id: props.participantId
+    })
+
+    const response = await axios.post('/api/rooms/recordings/start/', {
+      room_code: props.roomCode,
+      participant_id: props.participantId || 'unknown',
       include_audio: true,
       include_video: true,
       include_screen_share: true
@@ -176,7 +188,14 @@ const stopRecording = async () => {
   try {
     isProcessing.value = true
 
-    const response = await axios.post(`/api/recordings/${currentRecordingId.value}/stop/`)
+    if (!currentRecordingId.value) {
+      console.error('No recording ID available to stop')
+      alert('No active recording to stop')
+      return
+    }
+
+    console.log('Stopping recording:', currentRecordingId.value)
+    const response = await axios.post(`/api/rooms/recordings/${currentRecordingId.value}/stop/`)
 
     if (response.data.success) {
       isRecording.value = false
@@ -200,7 +219,7 @@ const stopRecording = async () => {
 
 const loadRecordings = async () => {
   try {
-    const response = await axios.get('/api/recordings/list_by_room/', {
+    const response = await axios.get('/api/rooms/recordings/list_by_room/', {
       params: { room_code: props.roomCode }
     })
 
@@ -214,9 +233,49 @@ const loadRecordings = async () => {
 
 const downloadRecording = async (recordingId) => {
   try {
-    window.open(`/api/recordings/${recordingId}/download/`, '_blank')
+    console.log('Downloading recording:', recordingId)
+    
+    // Create a temporary anchor element to trigger download
+    const downloadUrl = `/api/rooms/recordings/${recordingId}/download/`
+    
+    // Use fetch to check if file exists and trigger download
+    const response = await fetch(downloadUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': '*/*'
+      }
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: 'Failed to download recording' }))
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
+    }
+    
+    // Get filename from Content-Disposition header or generate one
+    const contentDisposition = response.headers.get('Content-Disposition')
+    let filename = `recording_${recordingId}.webm`
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
+      if (filenameMatch && filenameMatch[1]) {
+        filename = filenameMatch[1].replace(/['"]/g, '')
+      }
+    }
+    
+    // Create blob and download
+    const blob = await response.blob()
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+    
+    console.log('Recording downloaded successfully:', filename)
   } catch (error) {
     console.error('Failed to download recording:', error)
+    alert('Failed to download recording: ' + (error.message || 'Unknown error'))
   }
 }
 

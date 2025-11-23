@@ -111,9 +111,17 @@ export function useCallStateController(
    * Start call - initialize call state and start duration timer
    */
   const startCall = () => {
-    isConnecting.value = true
-    callStartTime.value = new Date()
-    callDuration.value = 0
+    // Only set isConnecting to true if connection state is not 'connected'
+    // If already connected, just start duration tracking
+    if (connectionState.value !== 'connected') {
+      isConnecting.value = true
+    }
+    
+    // Initialize start time if not already set
+    if (!callStartTime.value) {
+      callStartTime.value = new Date()
+      callDuration.value = 0
+    }
     
     // Start duration update interval (update every second)
     if (durationInterval) {

@@ -38,7 +38,7 @@
     <!-- Attachments Panel -->
     <div v-if="showAttachments" class="attachments-panel p-4 border-b border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto">
       <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Shared Files</h4>
-      <div v-if="attachments.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+      <div v-if="!attachments || attachments.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
         No files shared yet
       </div>
       <div v-else class="space-y-2">
@@ -75,12 +75,12 @@
 
     <!-- Messages Container -->
     <div ref="messagesContainer" class="messages-container flex-1 overflow-y-auto p-4 space-y-3">
-      <div v-if="messages.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-8">
+      <div v-if="!messages || messages.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-8">
         No messages yet. Start the conversation!
       </div>
       
       <div
-        v-for="message in messages"
+        v-for="message in messages || []"
         :key="message.id"
         class="message"
         :class="{ 'message-own': isOwnMessage(message) }"
@@ -114,7 +114,7 @@
                 : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-bl-none'"
             >
               <!-- File attachment -->
-              <div v-if="message.message_type === 'file' && message.attachments.length > 0" class="space-y-2">
+              <div v-if="message.message_type === 'file' && message.attachments && message.attachments.length > 0" class="space-y-2">
                 <div
                   v-for="attachment in message.attachments"
                   :key="attachment.id"
@@ -219,13 +219,14 @@
         <div class="flex-1 relative">
           <textarea
             ref="messageInput"
-            v-model="newMessage"
+            :value="newMessage"
+            @input="handleMessageInput"
             @keydown.enter.exact.prevent="sendMessage"
-            @keydown.shift.enter.exact="newMessage += '\n'"
+            @keydown.enter.shift.exact.stop
             placeholder="Type a message..."
             rows="1"
             class="w-full px-4 py-2 pr-12 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            style="max-height: 120px;"
+            style="max-height: 120px; overflow-y: auto;"
           ></textarea>
           
           <!-- Emoji button (placeholder) -->
@@ -242,7 +243,7 @@
         <!-- Send button -->
         <button
           @click="sendMessage"
-          :disabled="!newMessage.trim() && !selectedFile"
+          :disabled="(!newMessage || !newMessage.trim()) && !(selectedFile && selectedFile?.name)"
           class="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           title="Send message (Enter)"
         >
@@ -260,8 +261,8 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
             </svg>
             <div class="flex-1 min-w-0">
-              <span class="text-sm text-gray-900 dark:text-white block truncate">{{ selectedFile.name }}</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">({{ formatFileSize(selectedFile.size) }})</span>
+              <span class="text-sm text-gray-900 dark:text-white block truncate">{{ selectedFile?.name || '' }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">({{ selectedFile?.size ? formatFileSize(selectedFile.size) : '' }})</span>
             </div>
           </div>
           <button
@@ -322,6 +323,7 @@ export default {
     }
   },
   data() {
+    // Ensure reactive data object
     return {
       messages: [],
       attachments: [],
@@ -347,12 +349,15 @@ export default {
       try {
         const response = await fetch(`/api/rooms/chat/messages/history/?room_code=${this.roomCode}&limit=100`)
         const data = await response.json()
-        if (data.success) {
-          this.messages = data.messages
+        if (data.success && data.messages) {
+          this.messages = Array.isArray(data.messages) ? data.messages : []
           this.$nextTick(() => this.scrollToBottom())
+        } else {
+          this.messages = []
         }
       } catch (error) {
         console.error('Failed to load chat history:', error)
+        this.messages = []
       }
     },
     
@@ -360,11 +365,14 @@ export default {
       try {
         const response = await fetch(`/api/rooms/chat/attachments/list_by_room/?room_code=${this.roomCode}`)
         const data = await response.json()
-        if (data.success) {
-          this.attachments = data.attachments
+        if (data.success && data.attachments) {
+          this.attachments = Array.isArray(data.attachments) ? data.attachments : []
+        } else {
+          this.attachments = []
         }
       } catch (error) {
         console.error('Failed to load attachments:', error)
+        this.attachments = []
       }
     },
     
@@ -400,8 +408,31 @@ export default {
       }
     },
     
+    handleMessageInput(event) {
+      // Handle input event to update newMessage
+      const value = event.target.value || ''
+      this.newMessage = value
+      
+      // Auto-resize textarea
+      this.$nextTick(() => {
+        if (this.$refs.messageInput) {
+          this.$refs.messageInput.style.height = 'auto'
+          this.$refs.messageInput.style.height = Math.min(this.$refs.messageInput.scrollHeight, 120) + 'px'
+        }
+      })
+    },
+    
+    handleShiftEnter(event) {
+      // Shift+Enter should allow newline - let default behavior happen
+      // No need to prevent default
+    },
+    
     async sendMessage() {
-      if (!this.newMessage.trim() && !this.selectedFile) return
+      // Ensure newMessage is a string before checking
+      const messageText = (this.newMessage && typeof this.newMessage === 'string') ? this.newMessage.trim() : ''
+      if (!messageText && !this.selectedFile) {
+        return
+      }
       
       try {
         if (this.selectedFile) {
@@ -413,28 +444,52 @@ export default {
             body: JSON.stringify({
               room_code: this.roomCode,
               participant_id: this.participantId,
-              content: this.newMessage,
+              content: messageText,
               message_type: 'text',
               reply_to: this.replyingTo?.id
             })
           })
           
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`)
+          }
+          
           const data = await response.json()
-          if (data.success) {
+          if (data.success || response.status === 201 || response.status === 200) {
+            // Add message to local list immediately for better UX
+            if (data.message) {
+              this.messages.push(data.message)
+            }
+            
             // Broadcast via WebSocket
             if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
               this.websocket.send(JSON.stringify({
                 type: 'chat_message',
-                message: data.message
+                message: data.message || { content: messageText, sender_id: this.participantId }
               }))
             }
             
+            // Clear message input after successful send
             this.newMessage = ''
             this.replyingTo = null
+            
+            // Clear textarea and reset height
+            this.$nextTick(() => {
+              if (this.$refs.messageInput) {
+                this.$refs.messageInput.value = ''
+                this.$refs.messageInput.style.height = 'auto'
+              }
+              // Scroll to bottom to show new message
+              this.scrollToBottom()
+            })
+          } else {
+            console.error('Failed to send message:', data.error || 'Unknown error')
+            alert('Failed to send message: ' + (data.error || 'Unknown error'))
           }
         }
       } catch (error) {
         console.error('Failed to send message:', error)
+        alert('Failed to send message. Please check your connection and try again.')
       }
     },
     
@@ -472,7 +527,12 @@ export default {
           if (xhr.status === 200 || xhr.status === 201) {
             try {
               const data = JSON.parse(xhr.responseText)
-              if (data.success) {
+              if (data.success || data.message) {
+                // Add message to local list immediately for better UX
+                if (data.message) {
+                  this.messages.push(data.message)
+                }
+                
                 // Broadcast via WebSocket
                 if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
                   this.websocket.send(JSON.stringify({
@@ -485,11 +545,15 @@ export default {
                 this.clearFileSelection()
                 this.newMessage = ''
                 this.uploadProgress = 0
+                this.uploadError = null
               } else {
                 this.uploadError = data.error || 'Upload failed'
+                this.isUploading = false
               }
             } catch (error) {
+              console.error('Failed to parse server response:', error)
               this.uploadError = 'Failed to parse server response'
+              this.isUploading = false
             }
           } else {
             try {
@@ -498,8 +562,8 @@ export default {
             } catch {
               this.uploadError = `Upload failed with status ${xhr.status}`
             }
+            this.isUploading = false
           }
-          this.isUploading = false
         })
         
         // Handle errors

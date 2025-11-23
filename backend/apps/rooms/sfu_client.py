@@ -12,13 +12,20 @@ class SFUClient:
     """Client for communicating with Go SFU server"""
 
     def __init__(self):
-        self.base_url = getattr(settings, 'SFU_API_BASE_URL', 'http://localhost:8080/api')
-        self.ws_base_url = getattr(settings, 'SFU_WS_BASE_URL', 'ws://localhost:8080/ws')
+        # Base URL for SFU server (without /api prefix)
+        sfu_host = getattr(settings, 'SFU_HOST', 'localhost')
+        sfu_port = getattr(settings, 'SFU_PORT', 8080)
+        self.server_base_url = f'http://{sfu_host}:{sfu_port}'
+        self.base_url = f'{self.server_base_url}/api/v1'  # API endpoints use /api/v1
+        self.ws_base_url = getattr(settings, 'SFU_WS_BASE_URL', f'ws://{sfu_host}:{sfu_port}/ws')
         self.timeout = 10
 
     def _make_request(self, method, endpoint, data=None, params=None, max_retries=3):
         """Make HTTP request to SFU server with retry logic"""
-        url = urljoin(self.base_url, endpoint)
+        # Ensure proper URL joining - remove leading slash from endpoint if present
+        endpoint = endpoint.lstrip('/')
+        base = self.base_url.rstrip('/')
+        url = f'{base}/{endpoint}'
         headers = {
             'Content-Type': 'application/json',
             'User-Agent': 'Django-VideoCall/1.0'
@@ -86,16 +93,27 @@ class SFUClient:
         }
 
         response = self._make_request('POST', endpoint, data=data)
-
-        if response.get('success'):
+        
+        # SFU server returns {"room_id": "...", "status": "created"}
+        # Check for success indicators
+        if response.get('status') == 'created' or response.get('room_id'):
+            sfu_room_id = response.get('room_id', room_id)
+            # Generate WebSocket URL for SFU
+            ws_url = f'{self.ws_base_url}?room={sfu_room_id}'
+            
             return {
                 'success': True,
-                'room_id': response.get('room_id'),
-                'ws_url': response.get('ws_url'),
+                'room_id': sfu_room_id,
+                'ws_url': ws_url,
                 'created_at': response.get('created_at')
             }
 
-        return response
+        # If response has error, return it
+        if 'error' in response:
+            return response
+            
+        # Default failure
+        return {'success': False, 'error': 'Failed to create SFU room', 'response': response}
 
     def get_room(self, sfu_room_id):
         """Get SFU room information"""
@@ -129,12 +147,35 @@ class SFUClient:
 
     def health_check(self):
         """Check SFU server health with shorter timeout"""
-        endpoint = 'health'
+        # Health endpoint is at /health (not in /api)
+        url = f'{self.server_base_url}/health'
+        headers = {
+            'Content-Type': 'application/json',
+            'User-Agent': 'Django-VideoCall/1.0'
+        }
+        
         # Use shorter timeout for health check (5 seconds)
         original_timeout = self.timeout
         self.timeout = 5
+        
         try:
-            return self._make_request('GET', endpoint)
+            response = requests.get(url, headers=headers, timeout=self.timeout)
+            response.raise_for_status()
+            data = response.json()
+            # Return in expected format
+            if data.get('status') == 'healthy':
+                return {'success': True, 'status': 'healthy', 'data': data}
+            else:
+                return {'success': False, 'error': 'SFU server unhealthy', 'data': data}
+        except requests.exceptions.ConnectionError:
+            logger.error(f"SFU health check connection error: {url}")
+            return {'success': False, 'error': 'SFU server unavailable'}
+        except requests.exceptions.Timeout:
+            logger.error(f"SFU health check timeout: {url}")
+            return {'success': False, 'error': 'SFU server timeout'}
+        except requests.exceptions.RequestException as e:
+            logger.error(f"SFU health check failed: {e}")
+            return {'success': False, 'error': f'SFU health check failed: {str(e)}'}
         finally:
             self.timeout = original_timeout
 

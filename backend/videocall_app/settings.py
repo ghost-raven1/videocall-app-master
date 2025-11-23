@@ -533,7 +533,8 @@ SHORT_CODE_LENGTH = 6
 # SFU (Selective Forwarding Unit) Configuration
 SFU_HOST = config('SFU_HOST', default='localhost')
 SFU_PORT = config('SFU_PORT', default='8080', cast=int)
-SFU_API_BASE_URL = f'http://{SFU_HOST}:{SFU_PORT}/api'
+# Note: API endpoints use /api/v1, but health check is at /health
+SFU_API_BASE_URL = f'http://{SFU_HOST}:{SFU_PORT}/api/v1'
 SFU_WS_BASE_URL = f'ws://{SFU_HOST}:{SFU_PORT}/ws'
 
 # Enforce correct SFU host configuration in production (no localhost)

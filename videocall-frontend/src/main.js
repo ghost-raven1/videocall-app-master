@@ -32,6 +32,21 @@ app.use(router)
 app.use(i18n)
 app.use(ErrorReportingPlugin)
 
+// Register global directives
+app.directive('click-outside', {
+  mounted(el, binding) {
+    el._clickOutside = (event) => {
+      if (!(el === event.target || el.contains(event.target))) {
+        binding.value(event)
+      }
+    }
+    document.addEventListener('click', el._clickOutside)
+  },
+  unmounted(el) {
+    document.removeEventListener('click', el._clickOutside)
+  },
+})
+
 // Initialize the global store after Pinia is installed
 let globalStore = null
 try {

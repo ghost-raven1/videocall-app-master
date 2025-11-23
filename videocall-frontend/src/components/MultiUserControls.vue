@@ -18,7 +18,7 @@
           </button>
 
           <!-- Layout options dropdown -->
-          <div v-if="showLayoutOptions" class="dropdown layout-dropdown">
+          <div v-if="showLayoutOptions" v-click-outside="closeLayoutDropdown" class="dropdown layout-dropdown">
             <button
               v-for="layout in availableLayouts"
               :key="layout.id"
@@ -338,6 +338,10 @@ const toggleLayout = () => {
   showLayoutOptions.value = !showLayoutOptions.value
 }
 
+const closeLayoutDropdown = () => {
+  showLayoutOptions.value = false
+}
+
 const selectLayout = (layoutId) => {
   currentLayout.value = layoutId
   showLayoutOptions.value = false
@@ -368,6 +372,19 @@ const toggleQualitySettings = () => {
 
 const closeQualitySettings = () => {
   showQualitySettings.value = false
+}
+
+const toggleMoreOptions = () => {
+  // Toggle between showing participants sidebar or quality settings
+  if (showParticipantsSidebar.value) {
+    showParticipantsSidebar.value = false
+    showQualitySettings.value = true
+  } else if (showQualitySettings.value) {
+    showQualitySettings.value = false
+    showParticipantsSidebar.value = true
+  } else {
+    showParticipantsSidebar.value = true
+  }
 }
 
 const toggleLocalVideo = () => {

@@ -28,10 +28,25 @@ class RecordingViewSet(viewsets.ModelViewSet):
         """Start recording a room"""
         try:
             room_id = request.data.get('room_id')
+            room_code = request.data.get('room_code')
             participant_id = request.data.get('participant_id')
             
+            logger.info(f"Recording start request: room_id={room_id}, room_code={room_code}, participant_id={participant_id}")
+            
+            # If room_code provided, convert to room_id
+            if not room_id and room_code:
+                from apps.rooms.models import RoomManager
+                logger.info(f"Converting room_code to room_id: {room_code}")
+                room_data = RoomManager.get_room_by_code(room_code)
+                if not room_data:
+                    logger.warning(f"Room not found for room_code: {room_code}")
+                    return Response({'error': 'Room not found'}, status=404)
+                room_id = room_data.get('room_id')
+                logger.info(f"Room found: room_id={room_id} for room_code={room_code}")
+            
             if not room_id:
-                return Response({'error': 'room_id is required'}, status=400)
+                logger.error(f"Missing room_id: room_id={room_id}, room_code={room_code}")
+                return Response({'error': 'room_id or room_code is required'}, status=400)
             
             # Check if already recording
             active_recording = Recording.objects.filter(
@@ -99,30 +114,68 @@ class RecordingViewSet(viewsets.ModelViewSet):
             
             recording.increment_download_count()
             
+            # Get room code from RoomManager if available
+            room_code = recording.room_id
+            try:
+                from .models import RoomManager
+                room_data = RoomManager.get_room_by_id(recording.room_id)
+                if room_data and room_data.get('short_code'):
+                    room_code = room_data['short_code']
+            except Exception:
+                pass  # Use room_id if RoomManager fails
+            
+            # Generate filename
+            filename = f"recording_{room_code}_{recording.started_at.strftime('%Y%m%d_%H%M%S')}.webm"
+            
             response = FileResponse(
                 recording.file.open('rb'),
                 content_type='video/webm'
             )
-            response['Content-Disposition'] = f'attachment; filename="recording_{recording.room.code}_{recording.started_at.strftime("%Y%m%d_%H%M%S")}.webm"'
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
             
             return response
             
         except Exception as e:
             logger.error(f"Failed to download recording: {e}")
-            raise Http404("Recording file not found")
+            import traceback
+            logger.error(traceback.format_exc())
+            return Response({'error': str(e)}, status=404)
     
     @action(detail=False, methods=['get'])
     def list_by_room(self, request):
         """List all recordings for a room"""
+        from .models import RoomManager
+        
         room_code = request.query_params.get('room_code')
         
         if not room_code:
             return Response({'error': 'room_code is required'}, status=400)
         
-        recordings = Recording.objects.filter(room__code=room_code).order_by('-started_at')
-        
-        return Response({
-            'success': True,
-            'recordings': [rec.to_dict() for rec in recordings],
-            'count': recordings.count()
-        })
+        try:
+            # Get room data by code to find room_id
+            room_data = RoomManager.get_room_by_code(room_code)
+            
+            if not room_data:
+                return Response({
+                    'success': True,
+                    'recordings': [],
+                    'count': 0,
+                    'message': 'Room not found'
+                })
+            
+            room_id = room_data.get('room_id')
+            
+            # Filter recordings by room_id
+            recordings = Recording.objects.filter(room_id=room_id).order_by('-started_at')
+            
+            return Response({
+                'success': True,
+                'recordings': [rec.to_dict() for rec in recordings],
+                'count': recordings.count()
+            })
+        except Exception as e:
+            logger.error(f"Failed to list recordings by room code: {e}")
+            return Response({
+                'success': False,
+                'error': str(e)
+            }, status=500)

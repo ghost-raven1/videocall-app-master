@@ -12,7 +12,7 @@
       :is-screen-sharing="isScreenSharing"
       :is-recording="isRecording"
       :show-menu="showMenu"
-      @toggle-chat="showChat = !showChat"
+      @toggle-chat="chat.toggleChat()"
       @toggle-screen-share="handleToggleScreenShare"
       @audio-settings-changed="onAudioSettingsChanged"
       @toggle-menu="showMenu = !showMenu"
@@ -34,17 +34,49 @@
         @close="chat.closeChat()"
         @new-message="onNewChatMessage"
       />
+      <!-- Screen Share Display (overlay) - local or remote -->
+      <div
+        v-show="activeScreenShareStream && activeScreenShareStream.active"
+        class="absolute inset-0 z-30 bg-black"
+      >
+        <video
+          ref="screenShareVideoRef"
+          autoplay
+          playsinline
+          muted
+          class="w-full h-full object-contain"
+        ></video>
+        <div class="absolute top-4 left-4 px-4 py-2 bg-gray-900 bg-opacity-75 text-white rounded-lg z-10">
+          <p class="text-sm font-medium">
+            {{ activeScreenShareParticipant && activeScreenShareParticipant.id === currentParticipantId ? 'Your Screen' : (activeScreenShareParticipant?.name || 'Someone') + "'s Screen" }}
+          </p>
+        </div>
+        <!-- Close button for screen share -->
+        <button
+          v-if="screenShare.isScreenSharing.value"
+          @click="handleToggleScreenShare"
+          class="absolute top-4 right-4 z-10 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-2"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+          Stop Sharing
+        </button>
+      </div>
+
       <!-- Multi-user call (3+ participants) -->
       <ParticipantGrid
         v-if="webrtcStore?.isMultiUserCall"
         :room-code="roomInfo?.short_code"
         :waiting-message="waitingMessage"
         :show-participants-count="true"
+        :layout="currentLayout"
         @participant-count-changed="onParticipantCountChanged"
       />
 
       <!-- Two-user call (existing layout for backward compatibility) -->
-      <div v-else-if="webrtcStore.participantCount === 2" class="two-user-layout">
+      <template v-else-if="webrtcStore.participantCount === 2">
+      <div class="two-user-layout">
         <!-- Remote Video (main) -->
         <div v-if="webrtcStore.hasRemoteVideo" class="absolute inset-0">
           <video
@@ -113,7 +145,7 @@
 
         <!-- Local Video (picture-in-picture) -->
         <div
-          v-if="webrtcStore.hasLocalVideo"
+          v-if="webrtcStore.localStream && webrtcStore.hasLocalVideo"
           :class="[
             'absolute z-20 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 cursor-pointer border-2',
             localVideoSize === 'small'
@@ -199,9 +231,11 @@
           </div>
         </div>
       </div>
+      </template>
 
       <!-- Single participant waiting state -->
-      <div v-else class="single-user-layout">
+      <template v-else>
+      <div class="single-user-layout">
         <div class="text-center text-white max-w-md mx-auto p-8">
           <div
             class="w-32 h-32 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce-gentle"
@@ -243,6 +277,7 @@
           </button>
         </div>
       </div>
+      </template>
     </div>
 
     <!-- Controls -->
@@ -268,8 +303,9 @@
     <!-- Screen Share Controls -->
     <div v-if="roomInfo" class="bg-gray-900 px-4 pb-4">
       <ScreenShareControls
+        v-if="currentParticipantId"
         :room-code="roomInfo.short_code"
-        :participant-id="currentParticipantId"
+        :participant-id="currentParticipantId || ''"
         :peer-connection="peerConnection"
         @screen-share-started="onScreenShareStarted"
         @screen-share-stopped="onScreenShareStopped"
@@ -530,7 +566,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, nextTick, shallowRef } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWebRTCStore } from '@/stores/webrtc'
 import { useRoomsStore } from '@/stores/rooms'
@@ -559,9 +595,10 @@ const globalStore = useGlobalStore()
 const videoCall = useVideoCallController(route.params.roomId)
 const { callState, media, screenShare, recording } = videoCall
 
-// Template refs - use shallowRef for better performance
-const localVideoRef = shallowRef<HTMLVideoElement | null>(null)
-const remoteVideoRef = shallowRef<HTMLVideoElement | null>(null)
+// Template refs - use ref for template refs (not shallowRef)
+const localVideoRef = ref<HTMLVideoElement | null>(null)
+const remoteVideoRef = ref<HTMLVideoElement | null>(null)
+const screenShareVideoRef = ref<HTMLVideoElement | null>(null)
 
 // UI state (not business logic)
 const localVideoSize = ref('medium')
@@ -573,6 +610,7 @@ const roomLinkCopied = ref(false)
 const shouldMirrorLocal = ref(true)
 const showVideoInfo = ref(false)
 const showConnectionQuality = ref(true)
+const currentLayout = ref('auto') // 'auto', 'grid', 'focus', 'sidebar'
 
 // Connection monitoring
 const connectionStats = ref(null)
@@ -647,6 +685,66 @@ const connectionMessage = computed(() => {
 
 // Use screen share state from controller
 const isScreenSharing = computed(() => screenShare.isScreenSharing.value)
+
+// Find active screen share from remote participants
+const activeScreenShareStream = computed(() => {
+  // First check local screen share
+  if (screenShare.isScreenSharing.value && screenShare.screenShareStream.value) {
+    const localStream = screenShare.screenShareStream.value
+    const videoTracks = localStream.getVideoTracks()
+    // Only return stream if it's active and has live video tracks
+    if (localStream.active && videoTracks.length > 0 && videoTracks[0].readyState === 'live') {
+      console.log('Active local screen share stream found', {
+        streamId: localStream.id,
+        videoTracks: videoTracks.length,
+        videoTrackEnabled: videoTracks[0].enabled,
+        videoTrackReadyState: videoTracks[0].readyState
+      })
+      return localStream
+    }
+  }
+  
+  // Then check remote screen shares
+  const remoteScreenShares = webrtcStore.remoteScreenShareStreams || new Map()
+  if (remoteScreenShares.size > 0) {
+    // Find the first active screen share with live video tracks
+    for (const stream of remoteScreenShares.values()) {
+      if (stream && stream.active) {
+        const videoTracks = stream.getVideoTracks()
+        if (videoTracks.length > 0 && videoTracks[0].readyState === 'live') {
+          console.log('Active remote screen share stream found', {
+            streamId: stream.id,
+            videoTracks: videoTracks.length
+          })
+          return stream
+        }
+      }
+    }
+  }
+  
+  return null
+})
+
+const activeScreenShareParticipant = computed(() => {
+  // Check local screen share
+  if (screenShare.isScreenSharing.value && screenShare.screenShareStream.value) {
+    return {
+      id: currentParticipantId.value,
+      name: 'You'
+    }
+  }
+  
+  // Find remote participant with active screen share
+  const remoteScreenShares = webrtcStore.remoteScreenShareStreams || new Map()
+  for (const [participantId, stream] of remoteScreenShares.entries()) {
+    const participant = webrtcStore.remoteParticipants.find(p => p.id === participantId)
+    if (participant && participant.isScreenSharing) {
+      return participant
+    }
+  }
+  
+  return null
+})
 
 // Use recording state from controller
 const isRecording = computed(() => recording.isRecording.value)
@@ -825,7 +923,11 @@ const onParticipantCountChanged = (data) => {
 
 const onLayoutChanged = (layout) => {
   console.log('Layout changed to:', layout)
-  // Handle layout changes if needed
+  currentLayout.value = layout
+  // Force re-render of ParticipantGrid by triggering reactivity
+  nextTick(() => {
+    console.log('Layout updated in VideoCall:', currentLayout.value)
+  })
 }
 
 const onScreenShareToggled = (isSharing) => {
@@ -932,7 +1034,72 @@ const onNewChatMessage = (message) => {
 
 // Use controller's screen share methods
 const handleToggleScreenShare = async () => {
+  const wasSharing = screenShare.isScreenSharing.value
   await screenShare.toggleScreenShare()
+  
+  // Store screen share stream in webrtc store for adding to new peer connections
+  if (screenShare.isScreenSharing.value && screenShare.screenShareStream.value) {
+    webrtcStore.localScreenShareStream = screenShare.screenShareStream.value
+  } else {
+    webrtcStore.localScreenShareStream = null
+  }
+  
+  // After toggling, if screen share started, add stream to existing peer connections
+  if (screenShare.isScreenSharing.value && !wasSharing && screenShare.screenShareStream.value) {
+    const stream = screenShare.screenShareStream.value
+    console.log('Adding screen share stream to peer connections:', stream)
+    
+    // Add tracks to peer connections (P2P or SFU)
+    try {
+      if (webrtcStore.sfuMode && webrtcStore.sfuPeerConnection) {
+        // SFU mode: add to SFU peer connection
+        const sfuPc = webrtcStore.sfuPeerConnection
+        stream.getTracks().forEach(track => {
+          // Remove old screen share track if exists
+          const senders = sfuPc.getSenders()
+          const sender = senders.find(s => 
+            s.track && s.track.kind === track.kind && (s.track.label || '').includes('screen')
+          )
+          if (sender) {
+            sfuPc.removeTrack(sender)
+          }
+          // Add new screen share track
+          sfuPc.addTrack(track, stream)
+        })
+        console.log('Screen share track added to SFU peer connection')
+      } else if (!webrtcStore.sfuMode && webrtcStore.peerConnections && webrtcStore.peerConnections.size > 0) {
+        // P2P mode: add to all existing peer connections
+        webrtcStore.peerConnections.forEach((pc, participantId) => {
+          try {
+            stream.getTracks().forEach(track => {
+              // Remove old screen share track if exists
+              const senders = pc.getSenders()
+              const sender = senders.find(s => 
+                s.track && s.track.kind === track.kind && (s.track.label || '').includes('screen')
+              )
+              if (sender) {
+                pc.removeTrack(sender)
+              }
+              // Add new screen share track
+              pc.addTrack(track, stream)
+            })
+            console.log(`Screen share track added to peer connection for ${participantId}`)
+          } catch (error) {
+            console.error(`Failed to add screen share track to peer ${participantId}:`, error)
+          }
+        })
+      } else {
+        // No peer connections yet - stream is stored in webrtcStore.localScreenShareStream
+        // and will be added automatically when peer connections are created
+        console.log('No peer connections yet. Screen share stream stored and will be added when connections are created.')
+      }
+    } catch (error) {
+      console.error('Failed to add screen share to peer connections:', error)
+    }
+  } else if (!screenShare.isScreenSharing.value && wasSharing) {
+    // Screen share stopped - remove from all peer connections
+    webrtcStore.localScreenShareStream = null
+  }
 }
 
 const onScreenShareStarted = async ({ session, stream }) => {
@@ -948,6 +1115,15 @@ const onScreenShareStarted = async ({ session, stream }) => {
 const onScreenShareStopped = async ({ session }) => {
   console.log('Screen share stopped:', session)
   // Controller already handles stopping
+}
+
+// Toggle handlers for VideoCallControls
+const handleToggleAudio = () => {
+  webrtcStore.toggleAudio()
+}
+
+const handleToggleVideo = () => {
+  webrtcStore.toggleVideo()
 }
 
 // Recording handlers - use controller
@@ -1011,17 +1187,56 @@ watch(showChat, (isVisible) => {
   }
 })
 
-// Watch for stream changes
+// Watch for stream changes and video enabled state
 watch(
-  () => webrtcStore.localStream,
-  (newStream) => {
+  () => [webrtcStore.localStream, webrtcStore.isVideoEnabled],
+  ([newStream, isVideoEnabled]) => {
     nextTick(() => {
-      if (localVideoRef.value && newStream) {
-        localVideoRef.value.srcObject = newStream
+      if (!localVideoRef.value) {
+        // Ref not available yet, will be set when element is mounted
+        return
+      }
+      
+      // Check if stream has active video tracks
+      if (newStream && newStream.active) {
+        const videoTracks = newStream.getVideoTracks()
+        const hasActiveVideo = videoTracks.length > 0 && videoTracks.some(track => track.enabled && track.readyState === 'live')
+        
+        if (hasActiveVideo && isVideoEnabled) {
+          localVideoRef.value.srcObject = newStream
+          console.log('Local video stream attached to video element', {
+            stream: newStream,
+            videoTracks: videoTracks.length,
+            videoEnabled: videoTracks[0]?.enabled,
+            videoReadyState: videoTracks[0]?.readyState,
+            isVideoEnabled
+          })
+          
+          // Ensure video plays
+          localVideoRef.value.play().catch(err => {
+            console.warn('Failed to autoplay local video:', err)
+          })
+        } else {
+          // Stream exists but video track is disabled or not live
+          localVideoRef.value.srcObject = null
+          console.log('Local video stream exists but video track is disabled or not live', {
+            hasTracks: videoTracks.length > 0,
+            trackEnabled: videoTracks[0]?.enabled,
+            trackReadyState: videoTracks[0]?.readyState,
+            isVideoEnabled
+          })
+        }
+      } else {
+        localVideoRef.value.srcObject = null
+        console.log('Local video stream removed or not active', {
+          hasStream: !!newStream,
+          streamActive: newStream?.active,
+          isVideoEnabled
+        })
       }
     })
   },
-  { immediate: true },
+  { immediate: true, deep: false },
 )
 
 watch(
@@ -1030,8 +1245,88 @@ watch(
     nextTick(() => {
       if (remoteVideoRef.value && newStream) {
         remoteVideoRef.value.srcObject = newStream
+        console.log('Remote video stream attached to video element', {
+          hasVideoTracks: newStream.getVideoTracks().length > 0,
+          hasAudioTracks: newStream.getAudioTracks().length > 0,
+          streamActive: newStream.active
+        })
+        
+        // Ensure video plays
+        remoteVideoRef.value.play().catch(err => {
+          console.warn('Failed to autoplay remote video:', err)
+        })
+      } else if (remoteVideoRef.value && !newStream) {
+        remoteVideoRef.value.srcObject = null
+        console.log('Remote video stream removed')
       }
     })
+  },
+  { immediate: true },
+)
+
+// Watch for screen share stream changes (local or remote)
+watch(
+  () => activeScreenShareStream.value,
+  (newStream) => {
+    // Retry logic to ensure ref is available
+    const attachStreamToVideo = (retries = 0) => {
+      nextTick(() => {
+        if (!screenShareVideoRef.value) {
+          // Retry a few times if ref is not available yet
+          if (retries < 5) {
+            setTimeout(() => attachStreamToVideo(retries + 1), 100)
+            return
+          }
+          console.warn('Screen share video ref not available after retries')
+          return
+        }
+        
+        if (newStream && newStream.active) {
+          const videoTracks = newStream.getVideoTracks()
+          const hasLiveVideo = videoTracks.length > 0 && videoTracks.some(track => track.readyState === 'live')
+          
+          if (hasLiveVideo) {
+            screenShareVideoRef.value.srcObject = newStream
+            console.log('Screen share stream attached to video element (local or remote)', {
+              stream: newStream,
+              streamId: newStream.id,
+              videoTracks: videoTracks.length,
+              videoTrackId: videoTracks[0]?.id,
+              videoTrackEnabled: videoTracks[0]?.enabled,
+              videoTrackReadyState: videoTracks[0]?.readyState,
+              streamActive: newStream.active
+            })
+            
+            // Force play and wait a bit for stream to be ready
+            setTimeout(() => {
+              if (screenShareVideoRef.value && screenShareVideoRef.value.srcObject) {
+                screenShareVideoRef.value.play().catch(err => {
+                  console.warn('Failed to autoplay screen share video:', err)
+                })
+              }
+            }, 100)
+          } else {
+            console.warn('Screen share stream has no live video tracks', {
+              videoTracks: videoTracks.length,
+              readyStates: videoTracks.map(t => t.readyState)
+            })
+            if (screenShareVideoRef.value) {
+              screenShareVideoRef.value.srcObject = null
+            }
+          }
+        } else {
+          if (screenShareVideoRef.value) {
+            screenShareVideoRef.value.srcObject = null
+          }
+          console.log('Screen share stream removed or not active', {
+            hasStream: !!newStream,
+            streamActive: newStream?.active
+          })
+        }
+      })
+    }
+    
+    attachStreamToVideo()
   },
   { immediate: true },
 )
@@ -1074,19 +1369,6 @@ onMounted(async () => {
   if (roomInfo.value) {
     await recording.loadRecordings(roomInfo.value.short_code)
   }
-  
-  // Setup video refs when streams are available
-  watch(() => media.localStream.value, (stream) => {
-    if (stream && localVideoRef.value) {
-      localVideoRef.value.srcObject = stream
-    }
-  }, { immediate: true })
-  
-  watch(() => webrtcStore.remoteStream, (stream) => {
-    if (stream && remoteVideoRef.value) {
-      remoteVideoRef.value.srcObject = stream
-    }
-  }, { immediate: true })
   
   // Watch for room info changes to load recordings
   watch(() => roomInfo.value, async (newRoomInfo) => {

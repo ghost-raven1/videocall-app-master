@@ -51,7 +51,7 @@ export function useVideoCallController(roomId?: string): VideoCallController {
   // Create sub-controllers
   // Pass connectionState from store to callState controller
   const callState = useCallStateController(
-    computed(() => webrtcStore.connectionState as ConnectionState)
+    computed(() => (webrtcStore as any).connectionState as ConnectionState)
   )
   const media = useMediaController()
   const screenShare = useScreenShareController()
@@ -84,6 +84,18 @@ export function useVideoCallController(roomId?: string): VideoCallController {
       }
 
       roomInfo.value = roomResult.room
+      
+      // Set current room in roomsStore for SFU mode switching
+      if (!roomsStore.currentRoom || roomsStore.currentRoom.room_id !== targetRoomId) {
+        roomsStore.currentRoom = {
+          room_id: roomResult.room.room_id,
+          short_code: roomResult.room.short_code,
+          participant_count: roomResult.room.participant_count || 0,
+          participant_id: null, // Will be set when participant joins
+          joined_at: new Date().toISOString(),
+        }
+      }
+      
       callState.setConnectingMessage('Accessing camera and microphone...', 'Step 2/4: Setting up media devices')
       callState.setConnectionProgress('Step 2/4: Setting up media devices')
 
@@ -103,7 +115,7 @@ export function useVideoCallController(roomId?: string): VideoCallController {
 
       // Connect WebSocket with timeout
       try {
-        await webrtcStore.connectWebSocket(targetRoomId)
+        await (webrtcStore as any).connectWebSocket(targetRoomId)
       } catch (error) {
         console.error('WebSocket connection failed:', error)
         globalStore.addNotification('Failed to connect to room. Please try again.', 'error')
@@ -111,10 +123,78 @@ export function useVideoCallController(roomId?: string): VideoCallController {
         return { success: false, error: 'WebSocket connection failed' }
       }
 
-      // Update connection state
+      // Immediately try to create SFU room and switch to SFU mode
+      callState.setConnectingMessage('Setting up SFU connection...', 'Initializing SFU')
+      try {
+        console.log('Creating SFU room immediately for all calls, roomId:', targetRoomId)
+        // room_id is passed in URL path, not in body
+        const sfuResponse = await fetch(`/api/rooms/${targetRoomId}/sfu/create/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        })
+        
+        // Check if SFU room creation was successful
+        // Status 201 = SFU created successfully
+        // Status 200 = P2P fallback (SFU unavailable, but OK to use P2P)
+        if (sfuResponse.ok) {
+          const contentType = sfuResponse.headers.get('content-type')
+          if (contentType && contentType.includes('application/json')) {
+            const sfuData = await sfuResponse.json()
+            console.log('SFU room creation response:', sfuData, 'status:', sfuResponse.status)
+            
+            // Only switch to SFU if status is 201 (SFU created) and mode is 'sfu'
+            // Status 200 means P2P fallback, which is fine - we'll use P2P mode
+            if (sfuResponse.status === 201 && sfuData.success && sfuData.mode === 'sfu' && sfuData.sfu_ws_url) {
+              // Refresh room info to get SFU details
+              const updatedRoomResult = await roomsStore.getRoomInfo(targetRoomId)
+              if (updatedRoomResult.success) {
+                roomInfo.value = updatedRoomResult.room
+                
+                // Double-check if SFU is actually enabled in room info
+                if (roomInfo.value.sfu_enabled && roomInfo.value.sfu_ws_url) {
+                  // Switch to SFU mode immediately
+                  const sfuResult = await (webrtcStore as any).switchToSFUMode(roomInfo.value)
+                  if (sfuResult.success) {
+                    console.log('Successfully switched to SFU mode')
+                  } else {
+                    console.warn('Failed to switch to SFU mode, using P2P fallback:', sfuResult.error)
+                  }
+                } else {
+                  console.warn('SFU room created but not enabled in room info, using P2P fallback')
+                }
+              }
+            } else {
+              console.warn('SFU room creation returned fallback to P2P mode:', sfuData)
+            }
+          } else {
+            const text = await sfuResponse.text()
+            console.warn('SFU response is not JSON, got:', text.substring(0, 200))
+          }
+        } else {
+          // Try to parse error response
+          const contentType = sfuResponse.headers.get('content-type')
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await sfuResponse.json()
+            console.warn('Failed to create SFU room, using P2P fallback:', errorData)
+          } else {
+            const text = await sfuResponse.text()
+            console.warn(`Failed to create SFU room (${sfuResponse.status}), using P2P fallback. Response:`, text.substring(0, 200))
+          }
+        }
+      } catch (error) {
+        console.warn('SFU setup failed, using P2P fallback:', error)
+        // Don't block call initialization if SFU fails
+      }
+
+      // Update connection state to connected - this will hide the connecting overlay
+      // updateConnectionState('connected') automatically sets isConnecting = false
       callState.updateConnectionState('connected')
-      callState.endCall() // This will stop the connecting state but keep duration timer
-      callState.startCall() // Restart to begin duration tracking
+      
+      // startCall() was already called at the beginning of initializeCall()
+      // so duration timer should already be running
+      // No need to call endCall() or startCall() again
       
       isInitialized.value = true
       
@@ -135,13 +215,13 @@ export function useVideoCallController(roomId?: string): VideoCallController {
   const handleEndCall = async (): Promise<void> => {
     try {
       // Show confirmation if call is active
-      if (webrtcStore.isConnected) {
+      if ((webrtcStore as any).isConnected) {
         const confirmed = window.confirm('Are you sure you want to end this call?')
         if (!confirmed) return
       }
 
       // End call in store
-      await webrtcStore.endCall()
+      await (webrtcStore as any).endCall()
 
       // Leave room
       if (roomInfo.value) {
@@ -183,7 +263,7 @@ export function useVideoCallController(roomId?: string): VideoCallController {
       callState.setConnectingMessage('Refreshing connection...', 'Please wait')
       
       // Disconnect current connection
-      await webrtcStore.endCall()
+      await (webrtcStore as any).endCall()
       
       // Reinitialize
       if (roomInfo.value) {

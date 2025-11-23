@@ -89,6 +89,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   // State
   const localStream = ref(null)
   const remoteStreams = ref(new Map()) // Map<participantId, MediaStream>
+  const remoteScreenShareStreams = ref(new Map()) // Map<participantId, MediaStream> - для screen share от других участников
+  const localScreenShareStream = ref<MediaStream | null>(null) // Local screen share stream to add to new peer connections
   const peerConnections = ref(new Map()) // Map<participantId, RTCPeerConnection>
   const websocket = ref(null)
   const isConnected = ref(false)
@@ -101,6 +103,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   const sfuWebSocket = ref(null) // SFU WebSocket connection
   const sfuPeerConnection = ref(null) // WebRTC connection to SFU server
   const sfuRoomId = ref(null) // SFU room ID
+  const isSwitchingToSFU = ref(false) // Flag to prevent multiple simultaneous SFU switch attempts
 
   // Retry and recovery state
   const retryOperations = ref(new Map()) // Map<operationId, retryInfo>
@@ -126,7 +129,11 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   })
 
   // Computed
-  const hasLocalVideo = computed(() => localStream.value !== null)
+  const hasLocalVideo = computed(() => {
+    if (!localStream.value) return false
+    const videoTracks = localStream.value.getVideoTracks()
+    return videoTracks.length > 0 && videoTracks[0].enabled && isVideoEnabled.value
+  })
   const hasRemoteVideo = computed(() => remoteStreams.value.size > 0)
   const hasAnyRemoteStream = computed(() => remoteStreams.value.size > 0)
   const remoteStream = computed(() => {
@@ -300,12 +307,65 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       // Handle remote stream for this participant
       peerConnection.ontrack = (event) => {
         console.log(`Received remote track from participant ${participantId}:`, event)
-        remoteStreams.value.set(participantId, event.streams[0])
+        
+        // Check if this is a screen share track
+        const track = event.track
+        const isScreenShare = track && (
+          track.kind === 'video' && (
+            track.label?.toLowerCase().includes('screen') ||
+            track.label?.toLowerCase().includes('display') ||
+            track.label?.toLowerCase().includes('window') ||
+            track.getSettings?.()?.displaySurface
+          )
+        )
+        
+        if (isScreenShare) {
+          // This is a screen share track - store separately
+          console.log(`Received screen share track from participant ${participantId}`)
+          
+          // Create or update screen share stream for this participant
+          let screenShareStream = remoteScreenShareStreams.value.get(participantId)
+          if (!screenShareStream) {
+            screenShareStream = new MediaStream()
+            remoteScreenShareStreams.value.set(participantId, screenShareStream)
+          }
+          
+          // Add the track to the screen share stream
+          screenShareStream.addTrack(track)
+          
+          // Update participant screen sharing state
+          const participant = remoteParticipants.value.find(p => p.id === participantId)
+          if (participant) {
+            participant.isScreenSharing = true
+            participant.screenShareStream = screenShareStream
+          }
+          
+          // Listen for track ended
+          track.onended = () => {
+            console.log(`Screen share track ended for participant ${participantId}`)
+            screenShareStream.removeTrack(track)
+            if (screenShareStream.getTracks().length === 0) {
+              remoteScreenShareStreams.value.delete(participantId)
+            }
+            
+            const participant = remoteParticipants.value.find(p => p.id === participantId)
+            if (participant) {
+              participant.isScreenSharing = false
+              participant.screenShareStream = null
+            }
+          }
+        } else {
+          // Regular video/audio track - store in remoteStreams
+          const stream = event.streams[0]
+          if (stream) {
+            remoteStreams.value.set(participantId, stream)
 
         // Update participant stream reference
         const participant = remoteParticipants.value.find(p => p.id === participantId)
         if (participant) {
-          participant.stream = event.streams[0]
+              participant.stream = stream
+            }
+          }
         }
       }
 
@@ -525,6 +585,34 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   }
 
   const switchToSFUMode = async (roomInfo = null) => {
+    // Prevent multiple simultaneous SFU switch attempts
+    if (sfuMode.value) {
+      console.log('Already in SFU mode, skipping switch', {
+        hasWebSocket: !!sfuWebSocket.value,
+        wsState: sfuWebSocket.value?.readyState,
+        hasPeerConnection: !!sfuPeerConnection.value,
+        pcState: sfuPeerConnection.value?.connectionState
+      })
+      return { success: true, alreadyInSFUMode: true }
+    }
+    
+    // Prevent concurrent switch attempts
+    if (isSwitchingToSFU.value) {
+      console.log('SFU switch already in progress, skipping duplicate request', {
+        stackTrace: new Error().stack?.split('\n').slice(1, 4).join('\n')
+      })
+      return { success: false, error: 'SFU switch already in progress' }
+    }
+    
+    // Check if SFU WebSocket is already connected
+    if (sfuWebSocket.value && sfuWebSocket.value.readyState === WebSocket.OPEN) {
+      console.log('SFU WebSocket already connected, skipping switch')
+      sfuMode.value = true
+      return { success: true, alreadyConnected: true }
+    }
+    
+    isSwitchingToSFU.value = true
+
     // If roomInfo not provided, try to get it from current room
     if (!roomInfo) {
       try {
@@ -542,10 +630,30 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       }
     }
 
-    if (!roomInfo || !roomInfo.sfu_ws_url || !roomInfo.sfu_enabled) {
-      console.warn('SFU mode requested but room info missing or SFU not enabled')
+    if (!roomInfo) {
+      console.warn('SFU mode requested but room info is null')
       globalStore.addNotification('SFU mode not available, using P2P', 'warning', 5000)
-      return { success: false, error: 'SFU not available' }
+      return { success: false, error: 'SFU not available - no room info' }
+    }
+    
+    console.log('Checking SFU availability:', {
+      hasRoomInfo: !!roomInfo,
+      sfu_enabled: roomInfo.sfu_enabled,
+      sfu_ws_url: roomInfo.sfu_ws_url,
+      sfu_room_id: roomInfo.sfu_room_id,
+      alreadyInSFUMode: sfuMode.value,
+      isSwitching: isSwitchingToSFU.value,
+      stackTrace: new Error().stack?.split('\n').slice(1, 5).join('\n')
+    })
+    
+    if (!roomInfo.sfu_ws_url || !roomInfo.sfu_enabled) {
+      console.warn('SFU mode requested but SFU not enabled or missing URL:', {
+        sfu_enabled: roomInfo.sfu_enabled,
+        sfu_ws_url: roomInfo.sfu_ws_url,
+        roomInfo
+      })
+      globalStore.addNotification('SFU mode not available, using P2P', 'warning', 5000)
+      return { success: false, error: 'SFU not available - not enabled or missing URL' }
     }
 
     // Check SFU server health before switching
@@ -571,6 +679,11 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       
       await sfuManager.connectToSFUWebSocket(sfuWsUrl, sfuRoomId.value, peerId)
       
+      // Ensure WebSocket is fully connected before proceeding
+      if (!sfuWebSocket.value || sfuWebSocket.value.readyState !== WebSocket.OPEN) {
+        throw new Error('SFU WebSocket connection failed or not ready')
+      }
+      
       // Set up message handler
       if (sfuWebSocket.value) {
         sfuWebSocket.value.onmessage = async (event) => {
@@ -583,23 +696,40 @@ export const useWebRTCStore = defineStore('webrtc', () => {
         }
         
         sfuWebSocket.value.onclose = (event) => {
-          if (event.code !== 1000) {
+          // Only reconnect if not a normal closure (1000) and we're still in SFU mode
+          // Don't reconnect if we're already switching (code 1000 = normal closure)
+          if (event.code !== 1000 && sfuMode.value && !isSwitchingToSFU.value) {
+            console.warn('SFU WebSocket closed unexpectedly, attempting reconnection...', event.code, event.reason)
             globalStore.addNotification('SFU connection lost, attempting reconnection...', 'warning', 5000)
             setTimeout(() => {
-              if (sfuMode.value) {
+              // Double-check we're still in SFU mode and not already switching
+              if (sfuMode.value && !isSwitchingToSFU.value) {
                 switchToSFUMode(roomInfo).catch(console.error)
               }
             }, 3000)
+          } else if (event.code === 1000) {
+            console.log('SFU WebSocket closed normally:', event.reason)
           }
         }
       }
 
       // Create WebRTC connection to SFU server
+      // Close existing SFU peer connection if any
+      if (sfuPeerConnection.value) {
+        try {
+          sfuPeerConnection.value.close()
+        } catch (e) {
+          console.warn('Error closing existing SFU peer connection:', e)
+        }
+        sfuPeerConnection.value = null
+      }
+      
       const sfuPC = sfuManager.createSFUPeerConnection()
       
       // Handle connection state
       sfuPC.onconnectionstatechange = () => {
-        if (sfuPC.connectionState === 'failed') {
+        if (sfuPC.connectionState === 'failed' && sfuMode.value && !isSwitchingToSFU.value) {
+          console.warn('SFU peer connection failed, falling back to P2P')
           globalStore.addNotification('SFU connection failed, falling back to P2P', 'error', 5000)
           switchToP2PMode()
         }
@@ -609,11 +739,14 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       await sfuManager.createAndSendOffer()
 
       globalStore.addNotification('Switched to SFU mode successfully', 'success', 3000)
+      isSwitchingToSFU.value = false
+      console.log('✅ SFU mode switch completed successfully')
       return { success: true }
     } catch (error) {
       console.error('Failed to switch to SFU mode:', error)
       globalStore.addNotification('Failed to switch to SFU mode, using P2P', 'error', 5000)
       sfuMode.value = false
+      isSwitchingToSFU.value = false
       const errorObj = error instanceof Error ? error : new Error(String(error))
       return { success: false, error: errorObj.message }
     }
@@ -720,7 +853,13 @@ export const useWebRTCStore = defineStore('webrtc', () => {
               // WebSocket должен подключаться к бэкенду/домену (nginx), поддерживаем VITE_WS_BASE_URL
               const wsUrl = buildWebSocketUrl(roomId)
 
-              console.log('Connecting to WebSocket:', wsUrl)
+              console.log('🔌 Connecting to WebSocket:', wsUrl)
+              if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.log('💡 Tip: Make sure backend is running with: cd backend && python run_server.py')
+                console.log('📡 Backend should be at: http://localhost:8000')
+                console.log('🔄 Vite will proxy /ws requests from port 3000 to backend on port 8000')
+              }
+              
               websocket.value = new WebSocket(wsUrl)
 
               websocket.value.onopen = () => {
@@ -751,26 +890,87 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
                 if (event.code !== 1000) {
                   // Not a normal closure - attempt to reconnect
-                  const errorMessage = webrtcRetryService.getErrorMessage(
-                    new Error(`WebSocket closed unexpectedly: ${event.reason}`),
-                    'Connection'
-                  )
-                  globalStore.addNotification(errorMessage, 'warning', 5000)
+                  let closeMessage = `WebSocket closed unexpectedly (code: ${event.code})`
+                  if (event.reason) {
+                    closeMessage += `: ${event.reason}`
+                  }
+                  
+                  // Provide helpful message for common error codes
+                  if (event.code === 1006) {
+                    closeMessage = 'WebSocket connection failed. Please ensure the backend server is running with Daphne (WebSocket support).'
+                    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                      closeMessage += ' Run: cd backend && python run_server.py'
+                    }
+                    
+                    // Log to console for debugging
+                    console.error('❌ WebSocket connection failed (code 1006)')
+                    console.error('📡 Tried to connect to:', buildWebSocketUrl(roomId))
+                    console.error('💡 Make sure backend is running with: cd backend && python run_server.py')
+                  }
+                  
+                  try {
+                    globalStore.addNotification(closeMessage, 'warning', 8000)
+                  } catch (notifError) {
+                    console.error('Failed to show notification:', notifError)
+                    // Fallback: only show once per connection attempt
+                    if (event.code === 1006 && !(window as any).__ws_error_shown) {
+                      (window as any).__ws_error_shown = true
+                      setTimeout(() => {
+                        (window as any).__ws_error_shown = false
+                      }, 5000)
+                      console.warn('⚠️', closeMessage)
+                    }
+                  }
 
-                  // Schedule reconnection attempt
+                  // Schedule reconnection attempt only if not error code 1006 (connection refused)
+                  if (event.code !== 1006) {
                   setTimeout(() => {
                     if (!websocket.value || websocket.value.readyState === WebSocket.CLOSED) {
                       console.log('Attempting WebSocket reconnection...')
                       connectWebSocket(roomId).catch(console.error)
                     }
                   }, 3000)
+                  }
                 }
               }
 
               websocket.value.onerror = (error) => {
                 console.error('WebSocket error:', error)
-                const errorMessage = webrtcRetryService.getErrorMessage(error, 'WebSocket')
-                globalStore.addNotification(errorMessage, 'error', 5000)
+                const wsUrl = buildWebSocketUrl(roomId)
+                
+                // Determine actual backend URL (Vite proxies to port 8000 in dev)
+                let backendUrl = 'localhost:8000'
+                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                  // In dev mode, Vite proxies /ws to backend:8000
+                  backendUrl = 'localhost:8000'
+                } else {
+                  // In production, use the same host
+                  backendUrl = window.location.host
+                }
+                
+                let errorMessage = `WebSocket connection failed. `
+                if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                  errorMessage += `Please ensure the backend server is running on http://${backendUrl} with Daphne (WebSocket support). `
+                  errorMessage += `Run: cd backend && python run_server.py`
+                } else {
+                  errorMessage += `Cannot connect to ${backendUrl}. Please check server status.`
+                }
+                
+                // Log to console for debugging
+                console.error('❌', errorMessage)
+                console.error('📡 WebSocket URL (via Vite proxy):', wsUrl)
+                console.error('🔗 Backend should be at:', `http://${backendUrl}`)
+                console.error('💡 Vite proxies /ws to backend, but backend must be running first')
+                
+                // Show notification to user
+                try {
+                  globalStore.addNotification(errorMessage, 'error', 8000)
+                } catch (notifError) {
+                  console.error('Failed to show notification:', notifError)
+                  // Fallback: alert if notification system fails
+                  alert(errorMessage)
+                }
+                
                 reject(error)
               }
 
@@ -850,10 +1050,23 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   /**
    * @param {BaseWsMessage} data
    */
-  const handleUserJoined = (data) => {
+  const handleUserJoined = async (data) => {
     const participantId = data.participant_id
 
-    if (!remoteParticipants.value.find((p) => p.id === participantId)) {
+    // Skip if this is our own participant ID
+    if (participantId === localParticipantId.value) {
+      console.log('Ignoring user_joined for own participant:', participantId)
+      return
+    }
+
+    // Check if participant already exists
+    const existingParticipant = remoteParticipants.value.find((p) => p.id === participantId)
+    if (existingParticipant) {
+      console.log('Participant already exists, ignoring duplicate user_joined:', participantId)
+      return
+    }
+    
+    console.log('Adding new remote participant:', participantId, 'Total:', remoteParticipants.value.length + 1)
       remoteParticipants.value.push({
         id: participantId,
         joined_at: data.timestamp,
@@ -867,16 +1080,89 @@ export const useWebRTCStore = defineStore('webrtc', () => {
         isRecording: false,
       })
 
-      // Check if we should switch to SFU mode
-      if (participantCount.value >= 3 && !sfuMode.value) {
-        switchToSFUMode()
+    // Note: SFU mode is now enabled immediately when joining a room
+    // This check is kept as a fallback in case SFU wasn't enabled during initialization
+    if (!sfuMode.value && participantCount.value >= 2) {
+        // Try to get current room info and pass it to switchToSFUMode
+        const { useRoomsStore } = await import('./rooms')
+        const roomsStore = useRoomsStore()
+        let roomInfoForSFU = null
+        
+        // Try to get room ID from current room or from WebSocket room_id
+        let targetRoomId = roomsStore.currentRoomId
+        if (!targetRoomId && websocket.value) {
+          // Try to extract room ID from WebSocket URL
+          const wsUrl = websocket.value.url
+          const match = wsUrl.match(/\/room\/([a-f0-9-]+)/)
+          if (match) {
+            targetRoomId = match[1]
+          }
+        }
+        
+        if (targetRoomId) {
+          try {
+            console.log('Getting room info for SFU switch, roomId:', targetRoomId)
+            const roomResult = await roomsStore.getRoomInfo(targetRoomId)
+            if (roomResult.success) {
+              roomInfoForSFU = roomResult.room
+              console.log('Room info for SFU:', {
+                sfu_enabled: roomInfoForSFU.sfu_enabled,
+                sfu_ws_url: roomInfoForSFU.sfu_ws_url,
+                sfu_room_id: roomInfoForSFU.sfu_room_id
+              })
+              
+              // If SFU is not enabled yet, try to create SFU room first
+              if (!roomInfoForSFU.sfu_enabled && !roomInfoForSFU.sfu_ws_url) {
+                console.log('Creating SFU room for multi-user call...')
+                try {
+                  // room_id is passed in URL path, not in body
+                  const sfuResponse = await fetch(`/api/rooms/${targetRoomId}/sfu/create/`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    }
+                  })
+                  if (sfuResponse.ok) {
+                    const sfuData = await sfuResponse.json()
+                    console.log('SFU room created:', sfuData)
+                    // Refresh room info to get SFU details
+                    const updatedRoomResult = await roomsStore.getRoomInfo(targetRoomId)
+                    if (updatedRoomResult.success) {
+                      roomInfoForSFU = updatedRoomResult.room
+                      console.log('Updated room info with SFU:', roomInfoForSFU)
+                    }
+                  } else {
+                    const errorData = await sfuResponse.json()
+                    console.warn('Failed to create SFU room:', errorData)
+                  }
+                } catch (error) {
+                  console.warn('Failed to create SFU room:', error)
+                }
+              }
+            } else {
+              console.warn('Failed to get room info:', roomResult.error)
+            }
+          } catch (error) {
+            console.warn('Failed to get room info for SFU switch:', error)
+          }
+        } else {
+          console.warn('No room ID available for SFU switch')
+        }
+        
+      // Only switch to SFU if not already in SFU mode and not already switching
+      if (!sfuMode.value && !isSwitchingToSFU.value && roomInfoForSFU && roomInfoForSFU.sfu_enabled && roomInfoForSFU.sfu_ws_url) {
+        await switchToSFUMode(roomInfoForSFU)
+      } else if (sfuMode.value) {
+        console.log('Already in SFU mode, skipping switch in handleUserJoined')
+      } else if (isSwitchingToSFU.value) {
+        console.log('SFU switch already in progress, skipping duplicate request in handleUserJoined')
       }
     }
 
     globalStore.addNotification(`${data.participant_name || 'Someone'} joined the call`, 'info', 3000)
 
-    // If we are already in the room, create peer connection for the new participant
-    if (localStream.value) {
+    // If we are already in the room and not in SFU mode, create peer connection for the new participant
+    if (localStream.value && !sfuMode.value) {
       createPeerConnectionForParticipant(participantId)
     }
   }
@@ -1164,6 +1450,14 @@ export const useWebRTCStore = defineStore('webrtc', () => {
         })
       })
       remoteStreams.value.clear()
+      
+      // Clear screen share streams
+      remoteScreenShareStreams.value.forEach((stream) => {
+        stream.getTracks().forEach((track) => {
+          track.stop()
+        })
+      })
+      remoteScreenShareStreams.value.clear()
 
       // Reset state
       isConnected.value = false
@@ -1236,6 +1530,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     localStream,
     remoteStream,
     remoteStreams,
+    remoteScreenShareStreams,
+    localScreenShareStream,
     peerConnections,
     websocket,
     isConnected,
@@ -1246,6 +1542,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     localParticipantId,
     mediaConstraints,
     sfuMode,
+    sfuPeerConnection,
     retryOperations,
     connectionMonitors,
     qualityMonitors,

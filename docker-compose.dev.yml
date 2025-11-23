@@ -86,10 +86,10 @@ services:
         condition: service_healthy
     command: >
       sh -c "
-        echo '🌐 Starting Django backend in DEV mode...' &&
+        echo '🌐 Starting Django backend in DEV mode with Daphne (WebSocket support)...' &&
         python manage.py migrate &&
         python manage.py collectstatic --noinput &&
-        python manage.py runserver 0.0.0.0:8000
+        daphne -b 0.0.0.0 -p 8000 videocall_app.asgi:application
       "
     restart: unless-stopped
     networks:

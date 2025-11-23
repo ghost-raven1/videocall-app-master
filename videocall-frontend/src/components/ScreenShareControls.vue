@@ -28,7 +28,7 @@
     </button>
 
     <!-- Active Screen Shares List -->
-    <div v-if="activeSessions.length > 0" class="mt-4 space-y-2">
+    <div v-if="hasActiveSessions" class="mt-4 space-y-2">
       <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Active Screen Shares:</h4>
       <div
         v-for="session in activeSessions"
@@ -97,7 +97,7 @@ export default {
     },
     participantId: {
       type: String,
-      required: true
+      default: ''
     },
     peerConnection: {
       type: Object,
@@ -111,6 +111,11 @@ export default {
       currentSession: null,
       activeSessions: [],
       viewingSession: null
+    }
+  },
+  computed: {
+    hasActiveSessions() {
+      return Array.isArray(this.activeSessions) && this.activeSessions.length > 0
     }
   },
   mounted() {
@@ -215,11 +220,14 @@ export default {
       try {
         const response = await fetch(`/api/rooms/screen-share/active_sessions/?room_code=${this.roomCode}`)
         const data = await response.json()
-        if (data.success) {
+        if (data.success && Array.isArray(data.sessions)) {
           this.activeSessions = data.sessions
+        } else {
+          this.activeSessions = []
         }
       } catch (error) {
         console.error('Failed to load active sessions:', error)
+        this.activeSessions = []
       }
     },
 

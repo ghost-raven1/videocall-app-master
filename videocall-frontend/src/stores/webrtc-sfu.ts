@@ -111,11 +111,54 @@ export class SFUConnectionManager {
   async connectToSFUWebSocket(sfuWsUrl: string, roomId: string, peerId: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
+        // Close existing WebSocket connection if any
+        if (this.sfuWebSocket.value) {
+          // Remove event handlers to prevent triggering onclose reconnection
+          this.sfuWebSocket.value.onclose = null
+          this.sfuWebSocket.value.onerror = null
+          this.sfuWebSocket.value.onmessage = null
+          // Close with normal closure code to indicate intentional close
+          if (this.sfuWebSocket.value.readyState === WebSocket.OPEN || 
+              this.sfuWebSocket.value.readyState === WebSocket.CONNECTING) {
+            this.sfuWebSocket.value.close(1000, 'Switching to new SFU connection')
+          }
+          this.sfuWebSocket.value = null
+        }
+
+        // Convert internal Docker hostname to browser-accessible hostname
+        // Backend returns ws://streaming-node:8080/ws, but browser needs ws://localhost:8080/ws
+        let browserWsUrl = sfuWsUrl
+        
+        // Check for environment variable override first
+        const envWsUrl = import.meta.env.VITE_SFU_WS_URL
+        if (envWsUrl) {
+          // Use environment variable as base URL
+          browserWsUrl = envWsUrl
+        } else {
+          // Replace internal Docker hostnames with localhost for browser
+          if (browserWsUrl.includes('streaming-node:')) {
+            browserWsUrl = browserWsUrl.replace('streaming-node:', 'localhost:')
+          }
+          // Also try nginx proxy path if using default setup
+          if (browserWsUrl.includes('localhost:8080/ws')) {
+            // Try using nginx proxy: ws://localhost/sfu/ws/
+            const currentProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+            browserWsUrl = `${currentProtocol}//${window.location.host}/sfu/ws/`
+          }
+        }
+        
         // Build SFU WebSocket URL with room and peer parameters
-        const url = new URL(sfuWsUrl)
+        const url = new URL(browserWsUrl)
+        // Preserve existing query params from original URL
+        const originalUrl = new URL(sfuWsUrl)
+        originalUrl.searchParams.forEach((value, key) => {
+          url.searchParams.set(key, value)
+        })
+        // Add/override room and peer parameters
         url.searchParams.set('room', roomId)
         url.searchParams.set('peer', peerId)
 
+        console.log(`🔌 Connecting to SFU WebSocket: ${url.toString()} (converted from ${sfuWsUrl})`)
         this.sfuWebSocket.value = new WebSocket(url.toString())
 
         this.sfuWebSocket.value.onopen = () => {
@@ -168,39 +211,96 @@ export class SFUConnectionManager {
     sfuPC.ontrack = (event) => {
       console.log('Received track from SFU:', event)
       const stream = event.streams[0]
-      if (stream) {
-        // SFU sends tracks with participant ID in track ID or stream ID
-        const participantId = event.track.id || `sfu_${Date.now()}`
+      const track = event.track
+      
+      if (stream && track) {
+        // Try to get participant ID from stream ID or track label
+        // SFU typically sends participant ID in stream ID or track label
+        let participantId: string | null = null
+        
+        // Try to extract participant ID from stream ID
+        if (stream.id) {
+          // Stream ID might contain participant ID
+          const streamIdMatch = stream.id.match(/participant[_-]?([a-f0-9-]+)/i)
+          if (streamIdMatch) {
+            participantId = streamIdMatch[1]
+          }
+        }
+        
+        // Try to get from track label
+        if (!participantId && track.label) {
+          const labelMatch = track.label.match(/participant[_-]?([a-f0-9-]+)/i)
+          if (labelMatch) {
+            participantId = labelMatch[1]
+          }
+        }
+        
+        // If still no participant ID, try to match by checking existing participants
+        // or use a temporary ID that will be updated when peer-joined message arrives
+        if (!participantId) {
+          // For now, use a temporary ID - will be updated when peer-joined arrives
+          participantId = `sfu_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+          console.warn('Could not extract participant ID from SFU track, using temporary ID:', participantId)
+        }
+        
         this.remoteStreams.value.set(participantId, stream)
 
-        // Add participant if not exists
+        // Update or add participant
         const existingParticipant = this.remoteParticipants.value.find(p => p.id === participantId)
-        if (!existingParticipant) {
+        if (existingParticipant) {
+          // Update existing participant's stream
+          existingParticipant.stream = stream
+          existingParticipant.isVideoEnabled = track.kind === 'video' ? track.enabled : existingParticipant.isVideoEnabled
+          existingParticipant.isAudioEnabled = track.kind === 'audio' ? track.enabled : existingParticipant.isAudioEnabled
+          existingParticipant.connectionState = 'connected'
+          console.log(`Updated stream for existing participant ${participantId}`)
+        } else {
+          // Add new participant
           this.remoteParticipants.value.push({
             id: participantId,
             name: `Participant ${participantId.slice(-4)}`,
             stream: stream,
-            isVideoEnabled: true,
-            isAudioEnabled: true,
+            isVideoEnabled: track.kind === 'video' ? track.enabled : false,
+            isAudioEnabled: track.kind === 'audio' ? track.enabled : false,
             connectionState: 'connected',
           })
+          console.log(`Added new participant ${participantId} from SFU track`)
+        }
+        
+        // Listen for track ended
+        track.onended = () => {
+          console.log(`Track ended for participant ${participantId}`, track.kind)
+          const participant = this.remoteParticipants.value.find(p => p.id === participantId)
+          if (participant) {
+            if (track.kind === 'video') {
+              participant.isVideoEnabled = false
+            } else if (track.kind === 'audio') {
+              participant.isAudioEnabled = false
+            }
+          }
         }
       }
     }
 
     // Handle ICE candidates
     sfuPC.onicecandidate = (event) => {
-      if (event.candidate && this.sfuWebSocket.value) {
-        this.sendSFUWebSocketMessage({
-          type: 'ice-candidate',
-          room_id: this.sfuRoomId.value || '',
-          peer_id: this.localParticipantId.value || '',
-          data: {
-            candidate: event.candidate.candidate,
-            sdpMLineIndex: event.candidate.sdpMLineIndex,
-            sdpMid: event.candidate.sdpMid,
-          },
-        })
+      if (event.candidate) {
+        // Only send if WebSocket is connected and ready
+        if (this.sfuWebSocket.value && this.sfuWebSocket.value.readyState === WebSocket.OPEN) {
+          this.sendSFUWebSocketMessage({
+            type: 'ice-candidate',
+            room_id: this.sfuRoomId.value || '',
+            peer_id: this.localParticipantId.value || '',
+            data: {
+              candidate: event.candidate.candidate,
+              sdpMLineIndex: event.candidate.sdpMLineIndex,
+              sdpMid: event.candidate.sdpMid,
+            },
+          })
+        } else {
+          // Queue candidate for later if WebSocket is not ready yet
+          console.debug('ICE candidate generated but WebSocket not ready, will be sent when connected')
+        }
       }
     }
 
@@ -246,9 +346,19 @@ export class SFUConnectionManager {
    */
   sendSFUWebSocketMessage(message: SFUWebSocketMessage): void {
     if (this.sfuWebSocket.value && this.sfuWebSocket.value.readyState === WebSocket.OPEN) {
-      this.sfuWebSocket.value.send(JSON.stringify(message))
+      try {
+        this.sfuWebSocket.value.send(JSON.stringify(message))
+      } catch (error) {
+        console.error('Failed to send SFU WebSocket message:', error, message)
+      }
     } else {
-      console.warn('SFU WebSocket not connected, cannot send message:', message)
+      const state = this.sfuWebSocket.value?.readyState
+      const stateName = state === WebSocket.CONNECTING ? 'CONNECTING' 
+                     : state === WebSocket.OPEN ? 'OPEN'
+                     : state === WebSocket.CLOSING ? 'CLOSING'
+                     : state === WebSocket.CLOSED ? 'CLOSED'
+                     : 'NOT_CREATED'
+      console.warn(`SFU WebSocket not ready (state: ${stateName}), cannot send message:`, message.type)
     }
   }
 
@@ -284,6 +394,35 @@ export class SFUConnectionManager {
 
       case 'peer-joined':
         console.log('Peer joined SFU room:', data.peer_id)
+        
+        // Update participant ID if we have a temporary participant from ontrack
+        // Look for participants without proper ID or with temporary SFU ID
+        if (data.peer_id) {
+          // Check if we have a stream for this peer ID
+          if (this.remoteStreams.value.has(data.peer_id)) {
+            // Update existing participant if exists
+            const existingParticipant = this.remoteParticipants.value.find(p => p.id === data.peer_id)
+            if (existingParticipant) {
+              existingParticipant.connectionState = 'connected'
+              console.log(`Updated participant ${data.peer_id} on peer-joined`)
+            }
+          } else {
+            // Add participant if not exists (stream will come via ontrack)
+            const existingParticipant = this.remoteParticipants.value.find(p => p.id === data.peer_id)
+            if (!existingParticipant) {
+              this.remoteParticipants.value.push({
+                id: data.peer_id,
+                name: `Participant ${data.peer_id.slice(-4)}`,
+                stream: null,
+                isVideoEnabled: false,
+                isAudioEnabled: false,
+                connectionState: 'connecting',
+              })
+              console.log(`Added participant ${data.peer_id} on peer-joined (waiting for stream)`)
+            }
+          }
+        }
+        
         this.globalStore.addNotification('New participant joined', 'info', 3000)
         break
 

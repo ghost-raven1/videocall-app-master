@@ -8,6 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from .chat_models import ChatMessage, ChatAttachment, ScreenShareSession
+from .models import RoomManager
 
 
 class ChatMessageViewSet(viewsets.ModelViewSet):
@@ -25,13 +26,14 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
         
         if room_id:
             queryset = queryset.filter(room_id=room_id)
-        # Note: Room code filtering is not supported as we don't have access to Room model
-        # If needed, we would need to get room_id from room code using RoomManager
-        # elif room_code:
-        #     from .models import RoomManager
-        #     room = RoomManager.get_room_by_code(room_code)
-        #     if room:
-        #         queryset = queryset.filter(room_id=room['room_id'])
+        elif room_code:
+            # Get room_id from room_code using RoomManager
+            room_data = RoomManager.get_room_by_code(room_code)
+            if room_data:
+                queryset = queryset.filter(room_id=room_data['room_id'])
+            else:
+                # Return empty queryset if room not found
+                queryset = queryset.none()
         
         # Filter out deleted messages unless requested
         if not self.request.query_params.get('include_deleted'):
@@ -48,32 +50,40 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
             message_type = request.data.get('message_type', 'text')
             reply_to_id = request.data.get('reply_to')
             
-            # Validate room
-            try:
-                room = Room.objects.get(code=room_code)
-            except Room.DoesNotExist:
+            if not room_code:
+                return Response(
+                    {'error': 'room_code is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not participant_id:
+                return Response(
+                    {'error': 'participant_id is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate room using RoomManager (Redis)
+            room_data = RoomManager.get_room_by_code(room_code)
+            if not room_data:
                 return Response(
                     {'error': 'Room not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Validate participant
-            try:
-                participant = RoomParticipant.objects.get(
-                    id=participant_id,
-                    room=room,
-                    status='active'
-                )
-            except RoomParticipant.DoesNotExist:
+            room_id = room_data['room_id']
+            
+            # Validate participant is in room
+            participants = room_data.get('participants', [])
+            if participant_id not in participants:
                 return Response(
-                    {'error': 'Participant not found or not active'},
+                    {'error': 'Participant not found in room'},
                     status=status.HTTP_404_NOT_FOUND
                 )
             
             # Create message
             message = ChatMessage.objects.create(
-                room=room,
-                participant=participant,
+                room_id=room_id,
+                sender_id=participant_id,
                 content=content,
                 message_type=message_type
             )
@@ -81,7 +91,7 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
             # Handle reply
             if reply_to_id:
                 try:
-                    reply_to = ChatMessage.objects.get(id=reply_to_id, room=room)
+                    reply_to = ChatMessage.objects.get(id=reply_to_id, room_id=room_id)
                     message.reply_to = reply_to
                     message.save()
                 except ChatMessage.DoesNotExist:
@@ -96,8 +106,9 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
             )
             
         except Exception as e:
+            import traceback
             return Response(
-                {'error': str(e)},
+                {'error': str(e), 'traceback': traceback.format_exc()},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -108,15 +119,15 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
             message = self.get_object()
             participant_id = request.data.get('participant_id')
             
-            # Verify participant owns the message
-            if str(message.participant.id) != str(participant_id):
+            # Verify participant owns the message (sender_id is a string)
+            if str(message.sender_id) != str(participant_id):
                 return Response(
                     {'error': 'You can only edit your own messages'},
                     status=status.HTTP_403_FORBIDDEN
                 )
             
             message.content = request.data.get('content', message.content)
-            message.edited_at = timezone.now()
+            message.is_edited = True
             message.save()
             
             return Response({
@@ -137,8 +148,8 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
             message = self.get_object()
             participant_id = request.data.get('participant_id')
             
-            # Verify participant owns the message
-            if str(message.participant.id) != str(participant_id):
+            # Verify participant owns the message (sender_id is a string)
+            if str(message.sender_id) != str(participant_id):
                 return Response(
                     {'error': 'You can only delete your own messages'},
                     status=status.HTTP_403_FORBIDDEN
@@ -171,7 +182,19 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        messages = self.get_queryset().filter(room__code=room_code)[offset:offset+limit]
+        # Get room_id from room_code using RoomManager
+        room_data = RoomManager.get_room_by_code(room_code)
+        if not room_data:
+            return Response({
+                'success': True,
+                'messages': [],
+                'count': 0,
+                'offset': offset,
+                'limit': limit
+            })
+        
+        room_id = room_data['room_id']
+        messages = ChatMessage.objects.filter(room_id=room_id, is_deleted=False).order_by('created_at')[offset:offset+limit]
         
         return Response({
             'success': True,
@@ -202,32 +225,40 @@ class ChatAttachmentViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Validate room
-            try:
-                room = Room.objects.get(code=room_code)
-            except Room.DoesNotExist:
+            if not room_code:
+                return Response(
+                    {'error': 'room_code is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not participant_id:
+                return Response(
+                    {'error': 'participant_id is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate room using RoomManager (Redis)
+            room_data = RoomManager.get_room_by_code(room_code)
+            if not room_data:
                 return Response(
                     {'error': 'Room not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Validate participant
-            try:
-                participant = RoomParticipant.objects.get(
-                    id=participant_id,
-                    room=room,
-                    status='active'
-                )
-            except RoomParticipant.DoesNotExist:
+            room_id = room_data['room_id']
+            
+            # Validate participant is in room
+            participants = room_data.get('participants', [])
+            if participant_id not in participants:
                 return Response(
-                    {'error': 'Participant not found'},
+                    {'error': 'Participant not found in room'},
                     status=status.HTTP_404_NOT_FOUND
                 )
             
             # Get or create message
             if message_id:
                 try:
-                    message = ChatMessage.objects.get(id=message_id, room=room)
+                    message = ChatMessage.objects.get(id=message_id, room_id=room_id)
                 except ChatMessage.DoesNotExist:
                     return Response(
                         {'error': 'Message not found'},
@@ -236,8 +267,8 @@ class ChatAttachmentViewSet(viewsets.ModelViewSet):
             else:
                 # Create new message for file
                 message = ChatMessage.objects.create(
-                    room=room,
-                    participant=participant,
+                    room_id=room_id,
+                    sender_id=participant_id,
                     message_type='file',
                     content=f"Sent a file: {file.name}"
                 )
@@ -258,12 +289,12 @@ class ChatAttachmentViewSet(viewsets.ModelViewSet):
             # Create attachment
             attachment = ChatAttachment.objects.create(
                 message=message,
-                room=room,
+                room_id=room_id,
                 file=file,
                 original_filename=file.name,
                 file_size=file.size,
                 mime_type=mime_type,
-                uploaded_by=participant
+                uploaded_by=participant_id
             )
             
             return Response(
@@ -276,8 +307,9 @@ class ChatAttachmentViewSet(viewsets.ModelViewSet):
             )
             
         except Exception as e:
+            import traceback
             return Response(
-                {'error': str(e)},
+                {'error': str(e), 'traceback': traceback.format_exc()},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -314,7 +346,16 @@ class ChatAttachmentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        attachments = ChatAttachment.objects.filter(room__code=room_code)
+        # Get room_id from room_code using RoomManager
+        room_data = RoomManager.get_room_by_code(room_code)
+        if not room_data:
+            return Response(
+                {'error': 'Room not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        room_id = room_data['room_id']
+        attachments = ChatAttachment.objects.filter(room_id=room_id)
         
         if file_type:
             attachments = attachments.filter(file_type=file_type)
@@ -341,31 +382,40 @@ class ScreenShareViewSet(viewsets.ModelViewSet):
             participant_id = request.data.get('participant_id')
             stream_id = request.data.get('stream_id')
             
-            # Validate room
-            try:
-                room = Room.objects.get(code=room_code)
-            except Room.DoesNotExist:
+            if not room_code:
+                return Response(
+                    {'error': 'room_code is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not participant_id:
+                return Response(
+                    {'error': 'participant_id is required'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Validate room using RoomManager (Redis)
+            room_data = RoomManager.get_room_by_code(room_code)
+            if not room_data:
                 return Response(
                     {'error': 'Room not found'},
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Validate participant
-            try:
-                participant = RoomParticipant.objects.get(
-                    id=participant_id,
-                    room=room,
-                    status='active'
-                )
-            except RoomParticipant.DoesNotExist:
+            room_id = room_data['room_id']
+            
+            # Validate participant is in room
+            participants = room_data.get('participants', [])
+            if participant_id not in participants:
                 return Response(
-                    {'error': 'Participant not found'},
+                    {'error': 'Participant not found in room'},
                     status=status.HTTP_404_NOT_FOUND
                 )
             
             # Check if participant already has active screen share
             existing = ScreenShareSession.objects.filter(
-                participant=participant,
+                room_id=room_id,
+                participant_id=participant_id,
                 status='active'
             ).first()
             
@@ -377,8 +427,8 @@ class ScreenShareViewSet(viewsets.ModelViewSet):
             
             # Create session
             session = ScreenShareSession.objects.create(
-                room=room,
-                participant=participant,
+                room_id=room_id,
+                participant_id=participant_id,
                 stream_id=stream_id,
                 status='active'
             )
@@ -392,8 +442,9 @@ class ScreenShareViewSet(viewsets.ModelViewSet):
             )
             
         except Exception as e:
+            import traceback
             return Response(
-                {'error': str(e)},
+                {'error': str(e), 'traceback': traceback.format_exc()},
                 status=status.HTTP_400_BAD_REQUEST
             )
     
@@ -404,14 +455,16 @@ class ScreenShareViewSet(viewsets.ModelViewSet):
             session = self.get_object()
             participant_id = request.data.get('participant_id')
             
-            # Verify participant owns the session
-            if str(session.participant.id) != str(participant_id):
+            # Verify participant owns the session (participant_id is a string)
+            if str(session.participant_id) != str(participant_id):
                 return Response(
                     {'error': 'You can only stop your own screen share'},
                     status=status.HTTP_403_FORBIDDEN
                 )
             
-            session.stop()
+            session.status = 'stopped'
+            session.stopped_at = timezone.now()
+            session.save()
             
             return Response({
                 'success': True,
@@ -435,10 +488,20 @@ class ScreenShareViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Get room_id from room_code using RoomManager
+        room_data = RoomManager.get_room_by_code(room_code)
+        if not room_data:
+            return Response({
+                'success': True,
+                'sessions': [],
+                'count': 0
+            })
+        
+        room_id = room_data['room_id']
         sessions = ScreenShareSession.objects.filter(
-            room__code=room_code,
+            room_id=room_id,
             status='active'
-        ).select_related('participant', 'room')
+        )
         
         return Response({
             'success': True,

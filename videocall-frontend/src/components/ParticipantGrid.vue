@@ -54,30 +54,122 @@
       class="multi-participants"
       :class="gridClass"
     >
-      <!-- Local participant (always in bottom right if video is enabled) -->
-      <ParticipantCard
-        v-if="webrtcStore.hasLocalVideo"
-        :participant="localParticipant"
-        :is-local="true"
-        :size="'small'"
-        :show-controls="false"
-        class="local-participant"
-        :class="localParticipantPosition"
-      />
+      <!-- Focus layout: One large participant + others small -->
+      <template v-if="layout === 'focus'">
+        <!-- Focused participant (first remote or local if no remotes) -->
+        <div class="focus-main">
+          <ParticipantCard
+            v-if="remoteParticipants.length > 0"
+            :participant="remoteParticipants[0]"
+            :is-local="false"
+            :size="'large'"
+            :show-controls="true"
+            class="grid-item focus-participant"
+            @toggle-video="onToggleParticipantVideo"
+            @toggle-audio="onToggleParticipantAudio"
+          />
+          <ParticipantCard
+            v-else-if="webrtcStore.hasLocalVideo"
+            :participant="localParticipant"
+            :is-local="true"
+            :size="'large'"
+            :show-controls="false"
+            class="grid-item focus-participant"
+          />
+        </div>
+        
+        <!-- Other participants in sidebar -->
+        <div class="focus-sidebar">
+          <ParticipantCard
+            v-if="webrtcStore.hasLocalVideo && remoteParticipants.length > 0"
+            :participant="localParticipant"
+            :is-local="true"
+            :size="'small'"
+            :show-controls="false"
+            class="grid-item"
+          />
+          <ParticipantCard
+            v-for="participant in remoteParticipants.slice(1)"
+            :key="participant.id"
+            :participant="participant"
+            :is-local="false"
+            :size="'small'"
+            :show-controls="true"
+            class="grid-item"
+            @toggle-video="onToggleParticipantVideo"
+            @toggle-audio="onToggleParticipantAudio"
+          />
+        </div>
+      </template>
 
-      <!-- Remote participants -->
-      <ParticipantCard
-        v-for="participant in remoteParticipants"
-        :key="participant.id"
-        :participant="participant"
-        :is-local="false"
-        :size="participantCardSize"
-        :show-controls="true"
-        class="grid-item remote-participant"
-        :class="{ 'dominant-speaker': participant.isDominantSpeaker }"
-        @toggle-video="onToggleParticipantVideo"
-        @toggle-audio="onToggleParticipantAudio"
-      />
+      <!-- Sidebar layout: Grid with sidebar -->
+      <template v-else-if="layout === 'sidebar'">
+        <!-- Main grid area -->
+        <div class="sidebar-main-grid">
+          <ParticipantCard
+            v-for="participant in remoteParticipants.slice(0, Math.min(remoteParticipants.length, 6))"
+            :key="participant.id"
+            :participant="participant"
+            :is-local="false"
+            :size="participantCardSize"
+            :show-controls="true"
+            class="grid-item"
+            @toggle-video="onToggleParticipantVideo"
+            @toggle-audio="onToggleParticipantAudio"
+          />
+        </div>
+        
+        <!-- Sidebar with remaining participants -->
+        <div class="sidebar-participants" v-if="remoteParticipants.length > 6 || webrtcStore.hasLocalVideo">
+          <ParticipantCard
+            v-if="webrtcStore.hasLocalVideo"
+            :participant="localParticipant"
+            :is-local="true"
+            :size="'small'"
+            :show-controls="false"
+            class="grid-item"
+          />
+          <ParticipantCard
+            v-for="participant in remoteParticipants.slice(6)"
+            :key="participant.id"
+            :participant="participant"
+            :is-local="false"
+            :size="'small'"
+            :show-controls="true"
+            class="grid-item"
+            @toggle-video="onToggleParticipantVideo"
+            @toggle-audio="onToggleParticipantAudio"
+          />
+        </div>
+      </template>
+
+      <!-- Grid/Auto layout: Standard grid -->
+      <template v-else>
+        <!-- Local participant (always in bottom right if video is enabled) -->
+        <ParticipantCard
+          v-if="webrtcStore.hasLocalVideo"
+          :participant="localParticipant"
+          :is-local="true"
+          :size="'small'"
+          :show-controls="false"
+          class="local-participant"
+          :class="localParticipantPosition"
+        />
+
+        <!-- Remote participants -->
+        <ParticipantCard
+          v-for="participant in remoteParticipants"
+          :key="participant.id"
+          :participant="participant"
+          :is-local="false"
+          :size="participantCardSize"
+          :show-controls="true"
+          class="grid-item remote-participant"
+          :class="{ 'dominant-speaker': participant.isDominantSpeaker }"
+          @toggle-video="onToggleParticipantVideo"
+          @toggle-audio="onToggleParticipantAudio"
+        />
+      </template>
 
       <!-- Grid overlay for participants count -->
       <div
@@ -111,7 +203,7 @@ import ParticipantCard from './ParticipantCard.vue'
 const webrtcStore = useWebRTCStore()
 
 // Props
-defineProps({
+const props = defineProps({
   roomCode: {
     type: String,
     default: ''
@@ -123,6 +215,11 @@ defineProps({
   showParticipantsCount: {
     type: Boolean,
     default: true
+  },
+  layout: {
+    type: String,
+    default: 'auto', // 'auto', 'grid', 'focus', 'sidebar'
+    validator: (value) => ['auto', 'grid', 'focus', 'sidebar'].includes(value)
   }
 })
 
@@ -148,6 +245,33 @@ const localParticipant = computed(() => ({
 }))
 
 const gridClass = computed(() => {
+  // If layout is explicitly set, use it
+  if (props.layout === 'grid') {
+    const count = participantCount.value
+    if (count <= 4) return 'grid-small'
+    if (count <= 9) return 'grid-medium'
+    return 'grid-large'
+  }
+  
+  // Auto layout - calculate based on participant count
+  if (props.layout === 'auto') {
+    const count = participantCount.value
+    if (count <= 4) return 'grid-small'
+    if (count <= 9) return 'grid-medium'
+    return 'grid-large'
+  }
+  
+  // Focus layout - show one participant large, others small
+  if (props.layout === 'focus') {
+    return 'focus-layout'
+  }
+  
+  // Sidebar layout
+  if (props.layout === 'sidebar') {
+    return 'sidebar-layout'
+  }
+  
+  // Default to auto
   const count = participantCount.value
   if (count <= 4) return 'grid-small'
   if (count <= 9) return 'grid-medium'
@@ -202,6 +326,15 @@ watch(participantCount, () => {
   updateGridLayout()
 })
 
+// Watch for layout changes to trigger re-render
+watch(() => props.layout, (newLayout, oldLayout) => {
+  console.log('Layout prop changed in ParticipantGrid:', { old: oldLayout, new: newLayout })
+  isTransitioning.value = true
+  setTimeout(() => {
+    isTransitioning.value = false
+  }, 300)
+}, { immediate: false })
+
 // Lifecycle
 onMounted(() => {
   updateGridLayout()
@@ -248,6 +381,39 @@ onUnmounted(() => {
   @apply grid gap-1 p-1;
   grid-template-columns: repeat(4, 1fr);
   grid-template-rows: repeat(4, 1fr);
+}
+
+/* Focus layout */
+.focus-layout {
+  @apply flex gap-2 p-2;
+}
+
+.focus-main {
+  @apply flex-1;
+  min-width: 0;
+}
+
+.focus-participant {
+  @apply w-full h-full;
+}
+
+.focus-sidebar {
+  @apply w-64 flex flex-col gap-2 overflow-y-auto;
+}
+
+/* Sidebar layout */
+.sidebar-layout {
+  @apply flex gap-2 p-2;
+}
+
+.sidebar-main-grid {
+  @apply flex-1 grid gap-2;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+
+.sidebar-participants {
+  @apply w-64 flex flex-col gap-2 overflow-y-auto;
 }
 
 .local-participant {

@@ -336,74 +336,85 @@ class RoomManager:
 
         return {'success': False, 'error': 'Room not found for fallback'}
 
-@classmethod
-def cleanup_sfu_room(cls, room_id):
-    """Clean up SFU room when Django room is being deleted"""
-    try:
-        room_data = cls.get_room_by_id(room_id)
-        if not room_data:
-            return {'success': False, 'error': 'Room not found'}
+    @classmethod
+    def cleanup_sfu_room(cls, room_id):
+        """Clean up SFU room when Django room is being deleted"""
+        try:
+            room_data = cls.get_room_by_id(room_id)
+            if not room_data:
+                return {'success': False, 'error': 'Room not found'}
 
-        sfu_room_id = room_data.get('sfu_room_id')
-        if sfu_room_id:
-            from .sfu_client import SFUClient
-            sfu_client = SFUClient()
-
-            # Delete SFU room
-            result = sfu_client.delete_room(sfu_room_id)
-
-            if result.get('success'):
-                logger.info(f"SFU room cleaned up: {sfu_room_id}")
-                return {'success': True, 'message': 'SFU room deleted'}
-            else:
-                logger.error(f"Failed to cleanup SFU room {sfu_room_id}: {result.get('error')}")
-                return {'success': False, 'error': result.get('error')}
-
-        return {'success': True, 'message': 'No SFU room to cleanup'}
-
-    except Exception as e:
-        logger.error(f"SFU room cleanup error for {room_id}: {e}")
-        return {'success': False, 'error': str(e)}
-
-@classmethod
-def monitor_room_health(cls, room_id):
-    """Monitor room health and SFU connectivity"""
-    try:
-        room_data = cls.get_room_by_id(room_id)
-        if not room_data:
-            return {'success': False, 'error': 'Room not found'}
-
-        health_info = {
-            'room_id': room_id,
-            'room_mode': room_data.get('room_mode', 'p2p'),
-            'participant_count': len(room_data.get('participants', [])),
-            'sfu_enabled': room_data.get('sfu_enabled', False),
-            'is_healthy': True,
-            'issues': []
-        }
-
-        # Check SFU health if SFU is enabled
-        if room_data.get('sfu_enabled') and room_data.get('sfu_room_id'):
-            try:
+            sfu_room_id = room_data.get('sfu_room_id')
+            if sfu_room_id:
                 from .sfu_client import SFUClient
                 sfu_client = SFUClient()
 
-                # Check SFU room stats
-                sfu_stats = sfu_client.get_room_stats(room_data['sfu_room_id'])
+                # Delete SFU room
+                result = sfu_client.delete_room(sfu_room_id)
 
-                if not sfu_stats.get('success'):
+                if result.get('success'):
+                    logger.info(f"SFU room cleaned up: {sfu_room_id}")
+                    return {'success': True, 'message': 'SFU room deleted'}
+                else:
+                    logger.error(f"Failed to cleanup SFU room {sfu_room_id}: {result.get('error')}")
+                    return {'success': False, 'error': result.get('error')}
+
+            return {'success': True, 'message': 'No SFU room to cleanup'}
+
+        except Exception as e:
+            logger.error(f"SFU room cleanup error for {room_id}: {e}")
+            return {'success': False, 'error': str(e)}
+
+    @classmethod
+    def monitor_room_health(cls, room_id):
+        """Monitor room health and SFU connectivity"""
+        try:
+            room_data = cls.get_room_by_id(room_id)
+            if not room_data:
+                return {'success': False, 'error': 'Room not found'}
+
+            health_info = {
+                'room_id': room_id,
+                'room_mode': room_data.get('room_mode', 'p2p'),
+                'participant_count': len(room_data.get('participants', [])),
+                'sfu_enabled': room_data.get('sfu_enabled', False),
+                'is_healthy': True,
+                'issues': []
+            }
+
+            # Check SFU health if SFU is enabled
+            if room_data.get('sfu_enabled') and room_data.get('sfu_room_id'):
+                try:
+                    from .sfu_client import SFUClient
+                    sfu_client = SFUClient()
+
+                    # Check if SFU room exists by getting room info
+                    # Use get_room instead of get_room_stats as stats endpoint may not exist
+                    sfu_room_info = sfu_client.get_room(room_data['sfu_room_id'])
+
+                    # Check if we got an error response
+                    if isinstance(sfu_room_info, dict) and 'error' in sfu_room_info:
+                        health_info['is_healthy'] = False
+                        error_msg = sfu_room_info.get('error', 'Unknown error')
+                        health_info['issues'].append(f"SFU room error: {error_msg}")
+                    # Check if room exists - successful response should have room_id
+                    elif not isinstance(sfu_room_info, dict) or not sfu_room_info.get('room_id'):
+                        health_info['is_healthy'] = False
+                        health_info['issues'].append("SFU room exists but missing room_id in response")
+                    # Room exists and is healthy
+                    else:
+                        # SFU room is healthy, no issues
+                        pass
+
+                except Exception as e:
                     health_info['is_healthy'] = False
-                    health_info['issues'].append(f"SFU room error: {sfu_stats.get('error')}")
+                    health_info['issues'].append(f"SFU communication error: {str(e)}")
 
-            except Exception as e:
-                health_info['is_healthy'] = False
-                health_info['issues'].append(f"SFU communication error: {str(e)}")
+            return {'success': True, 'health': health_info}
 
-        return {'success': True, 'health': health_info}
-
-    except Exception as e:
-        logger.error(f"Room health monitoring error for {room_id}: {e}")
-        return {'success': False, 'error': str(e)}
+        except Exception as e:
+            logger.error(f"Room health monitoring error for {room_id}: {e}")
+            return {'success': False, 'error': str(e)}
 
     @classmethod
     def check_sfu_threshold(cls, room_id):

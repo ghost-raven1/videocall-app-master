@@ -173,7 +173,12 @@ export function useRecordingController(): RecordingController {
         return { success: false, error: errorMsg }
       }
     } catch (err: unknown) {
-      const errorMessage = err.response?.data?.error || err.message || 'Unknown error'
+      let errorMessage = 'Unknown error'
+      if (axios.isAxiosError(err)) {
+        errorMessage = err.response?.data?.error || err.message || 'Unknown error'
+      } else if (err instanceof Error) {
+        errorMessage = err.message
+      }
       error.value = errorMessage
       globalStore.addNotification(`Failed to start recording: ${errorMessage}`, 'error', 5000)
       return { success: false, error: errorMessage }
@@ -227,7 +232,12 @@ export function useRecordingController(): RecordingController {
         return { success: false, error: errorMsg }
       }
     } catch (err: unknown) {
-      const errorMessage = err.response?.data?.error || err.message || 'Unknown error'
+      let errorMessage = 'Unknown error'
+      if (axios.isAxiosError(err)) {
+        errorMessage = err.response?.data?.error || err.message || 'Unknown error'
+      } else if (err instanceof Error) {
+        errorMessage = err.message
+      }
       error.value = errorMessage
       globalStore.addNotification(`Failed to stop recording: ${errorMessage}`, 'error', 5000)
       return { success: false, error: errorMessage }
@@ -255,7 +265,7 @@ export function useRecordingController(): RecordingController {
       error.value = null
       
       // Use axios directly for recording endpoints
-      const response = await axios.get('/api/recordings/list_by_room/', {
+      const response = await axios.get('/api/rooms/recordings/list_by_room/', {
         params: { room_code: roomCode }
       })
       
@@ -265,7 +275,7 @@ export function useRecordingController(): RecordingController {
         console.error('Failed to load recordings:', response.data.error || 'Unknown error')
       }
     } catch (err: unknown) {
-      const errorMessage = err.message || 'Failed to load recordings'
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load recordings'
       error.value = errorMessage
       console.error('Failed to load recordings:', err)
     }
@@ -274,13 +284,52 @@ export function useRecordingController(): RecordingController {
   /**
    * Download recording
    */
-  const downloadRecording = (recordingId: string): void => {
+  const downloadRecording = async (recordingId: string): Promise<void> => {
     try {
-      const downloadUrl = `/api/recordings/${recordingId}/download/`
-      window.open(downloadUrl, '_blank')
-    } catch (err) {
+      console.log('Downloading recording:', recordingId)
+      
+      const downloadUrl = `/api/rooms/recordings/${recordingId}/download/`
+      
+      // Use fetch to check if file exists and trigger download
+      const response = await fetch(downloadUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': '*/*'
+        }
+      })
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Failed to download recording' }))
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`)
+      }
+      
+      // Get filename from Content-Disposition header or generate one
+      const contentDisposition = response.headers.get('Content-Disposition')
+      let filename = `recording_${recordingId}.webm`
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
+        if (filenameMatch && filenameMatch[1]) {
+          filename = filenameMatch[1].replace(/['"]/g, '')
+        }
+      }
+      
+      // Create blob and download
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a)
+      
+      console.log('Recording downloaded successfully:', filename)
+      globalStore.addNotification('Recording downloaded successfully', 'success', 2000)
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to download recording'
       console.error('Failed to download recording:', err)
-      globalStore.addNotification('Failed to download recording', 'error', 3000)
+      globalStore.addNotification(`Failed to download recording: ${errorMessage}`, 'error', 3000)
     }
   }
   

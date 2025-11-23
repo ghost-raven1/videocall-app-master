@@ -147,7 +147,7 @@
 <script setup>
 import { computed } from 'vue'
 import AudioSettings from './AudioSettings.vue'
-import * as utils from '@/services/utils'
+import { utils } from '@/services/utils'
 
 const props = defineProps({
   roomCode: {

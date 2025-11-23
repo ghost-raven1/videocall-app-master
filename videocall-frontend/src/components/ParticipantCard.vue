@@ -297,6 +297,21 @@ watch(() => props.participant.stream, (newStream) => {
   nextTick(() => {
     if (videoRef.value && newStream) {
       videoRef.value.srcObject = newStream
+      console.log(`ParticipantCard: Setting stream for ${props.participant.id}`, {
+        hasVideoTracks: newStream.getVideoTracks().length > 0,
+        hasAudioTracks: newStream.getAudioTracks().length > 0,
+        streamActive: newStream.active,
+        videoTrackEnabled: newStream.getVideoTracks()[0]?.enabled,
+        participantName: props.participant.name
+      })
+      
+      // Ensure video plays
+      videoRef.value.play().catch(err => {
+        console.warn(`Failed to autoplay video for participant ${props.participant.id}:`, err)
+      })
+    } else if (videoRef.value && !newStream) {
+      videoRef.value.srcObject = null
+      console.log(`ParticipantCard: Removed stream for ${props.participant.id}`)
     }
   })
 }, { immediate: true })
@@ -305,6 +320,12 @@ watch(() => props.participant.stream, (newStream) => {
 onMounted(() => {
   if (props.participant.stream && videoRef.value) {
     videoRef.value.srcObject = props.participant.stream
+    console.log(`ParticipantCard: Mounted with stream for ${props.participant.id}`)
+    
+    // Ensure video plays
+    videoRef.value.play().catch(err => {
+      console.warn(`Failed to autoplay video on mount for participant ${props.participant.id}:`, err)
+    })
   }
 })
 

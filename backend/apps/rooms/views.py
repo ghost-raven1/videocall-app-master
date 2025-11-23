@@ -301,10 +301,10 @@ def delete_room(request, room_id):
 @permission_classes([AllowAny])
 @csrf_exempt
 @require_auth
-def create_sfu_room(request):
+def create_sfu_room(request, room_id):
     """Create SFU room for multi-user video calls"""
     try:
-        room_id = request.data.get('room_id')
+        # room_id comes from URL path parameter
         if not room_id:
             return Response(
                 {'error': 'Room ID is required'},
@@ -316,14 +316,18 @@ def create_sfu_room(request):
         # Create SFU room using RoomManager
         sfu_result = RoomManager.create_sfu_room(room_id)
 
-        if sfu_result.get('success'):
-            logger.info(f"SFU room created: {room_id}")
+        # Check if SFU mode was successfully enabled (not P2P fallback)
+        # Only return 201 if mode is 'sfu', otherwise return 200 for P2P fallback
+        if sfu_result.get('success') and sfu_result.get('mode') == 'sfu':
+            logger.info(f"SFU room created successfully: {room_id}")
             return Response(sfu_result, status=status.HTTP_201_CREATED)
         else:
-            logger.error(f"Failed to create SFU room: {room_id}, error: {sfu_result.get('error')}")
+            # Fallback to P2P mode - return 200 OK with fallback info
+            # This is not an error, just means we're using P2P instead
+            logger.info(f"SFU unavailable for room {room_id}, using P2P mode. Reason: {sfu_result.get('reason', sfu_result.get('error', 'Unknown'))}")
             return Response(
-                {'error': sfu_result.get('error', 'Failed to create SFU room')},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                sfu_result,  # Return the fallback result which has success: True, mode: 'p2p_fallback'
+                status=status.HTTP_200_OK  # Return 200 to indicate P2P fallback is OK (not an error)
             )
 
     except Exception as e:
