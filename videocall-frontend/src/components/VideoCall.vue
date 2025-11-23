@@ -36,7 +36,7 @@
       />
       <!-- Multi-user call (3+ participants) -->
       <ParticipantGrid
-        v-if="webrtcStore.isMultiUserCall"
+        v-if="webrtcStore?.isMultiUserCall"
         :room-code="roomInfo?.short_code"
         :waiting-message="waitingMessage"
         :show-participants-count="true"
@@ -249,7 +249,7 @@
     <VideoCallControls
       :room-code="roomInfo?.short_code || ''"
       :participant-id="currentParticipantId || ''"
-      :is-multi-user-call="webrtcStore.isMultiUserCall"
+      :is-multi-user-call="webrtcStore?.isMultiUserCall || false"
       :participant-count="webrtcStore.participantCount"
       :is-audio-enabled="webrtcStore.isAudioEnabled"
       :is-video-enabled="webrtcStore.isVideoEnabled"
@@ -530,7 +530,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWebRTCStore } from '@/stores/webrtc'
 import { useRoomsStore } from '@/stores/rooms'
@@ -545,6 +545,7 @@ import VideoCallHeader from '@/components/VideoCallHeader.vue'
 import VideoCallControls from '@/components/VideoCallControls.vue'
 import VideoCallSidebar from '@/components/VideoCallSidebar.vue'
 import { useVideoCallController } from '@/controllers/video-call/useVideoCallController'
+import { useRoomChatController } from '@/controllers/room/useRoomChatController'
 import * as webrtcService from '@/services/webrtc'
 import * as utils from '@/services/utils'
 
@@ -558,9 +559,9 @@ const globalStore = useGlobalStore()
 const videoCall = useVideoCallController(route.params.roomId)
 const { callState, media, screenShare, recording } = videoCall
 
-// Template refs
-const localVideoRef = ref(null)
-const remoteVideoRef = ref(null)
+// Template refs - use shallowRef for better performance
+const localVideoRef = shallowRef<HTMLVideoElement | null>(null)
+const remoteVideoRef = shallowRef<HTMLVideoElement | null>(null)
 
 // UI state (not business logic)
 const localVideoSize = ref('medium')
@@ -583,13 +584,15 @@ const currentFallbackMode = ref(null) // 'audio_only', 'chat_only', null
 const connectionQualityWarnings = ref([])
 const showConnectionHelp = ref(false)
 
-// Chat state - use controller
-const chat = useRoomChatController()
-const showChat = computed(() => chat.isOpen.value)
-const unreadMessages = computed(() => chat.unreadCount.value)
+// Chat state - initialize websocket and participant first
 const websocket = ref(null)
 const currentParticipantId = ref(null)
 const peerConnection = ref(null)
+
+// Chat controller - initialize after websocket and participant are available
+const chat = useRoomChatController()
+const showChat = computed(() => chat.isOpen.value)
+const unreadMessages = computed(() => chat.unreadCount.value)
 
 // Use roomInfo from controller
 const roomInfo = computed(() => videoCall.roomInfo.value)
@@ -858,26 +861,24 @@ const setupEnhancedMonitoring = () => {
     webrtcService.monitorConnectionState(
       webrtcStore.peerConnection,
       'main_participant',
-      handleConnectionRecovery,
+      (participantId, recoveryInfo) => handleConnectionRecovery(participantId, recoveryInfo),
       handleConnectionQualityChange
     )
   }
 }
 
-const handleConnectionRecovery = (recoveryInfo) => {
-  console.log('Connection recovery needed:', recoveryInfo)
+const handleConnectionRecovery = (participantId, recoveryInfo) => {
+  console.log('Connection recovery needed:', participantId, recoveryInfo)
 
-  if (recoveryInfo.type === 'connection_failed') {
-    if (recoveryInfo.canRecover === false) {
-      globalStore.addNotification(
-        'Unable to maintain connection. Please refresh the page.',
-        'error',
-        10000
-      )
-      showConnectionHelp.value = true
-    } else {
-      globalStore.addNotification('Attempting to restore connection...', 'info', 3000)
-    }
+  if (recoveryInfo && recoveryInfo.canRecover === false) {
+    globalStore.addNotification(
+      'Unable to maintain connection. Please refresh the page.',
+      'error',
+      10000
+    )
+    showConnectionHelp.value = true
+  } else if (recoveryInfo) {
+    globalStore.addNotification('Attempting to restore connection...', 'info', 3000)
   }
 }
 
@@ -1054,6 +1055,18 @@ const vClickOutside = {
 }
 
 // Lifecycle
+// Update chat context when room info or websocket changes
+watch(() => [roomInfo.value, websocket.value, currentParticipantId.value], ([newRoomInfo, newWebsocket, newParticipantId]) => {
+  if (newRoomInfo && newParticipantId) {
+    chat.updateContext(
+      newRoomInfo.short_code,
+      newParticipantId,
+      'Participant',
+      newWebsocket
+    )
+  }
+}, { immediate: true })
+
 onMounted(async () => {
   await initializeCall()
   

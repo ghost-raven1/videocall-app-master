@@ -128,9 +128,15 @@ class SFUClient:
         return self._make_request('GET', endpoint)
 
     def health_check(self):
-        """Check SFU server health"""
+        """Check SFU server health with shorter timeout"""
         endpoint = 'health'
-        return self._make_request('GET', endpoint)
+        # Use shorter timeout for health check (5 seconds)
+        original_timeout = self.timeout
+        self.timeout = 5
+        try:
+            return self._make_request('GET', endpoint)
+        finally:
+            self.timeout = original_timeout
 
     def get_server_stats(self):
         """Get SFU server statistics"""

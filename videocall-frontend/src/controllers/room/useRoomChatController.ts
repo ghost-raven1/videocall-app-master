@@ -4,6 +4,7 @@
  */
 import { ref, computed, type Ref } from 'vue'
 import { useGlobalStore } from '@/stores/global'
+import { apiService } from '@/services/api'
 
 export interface ChatMessage {
   id: string
@@ -40,14 +41,20 @@ export interface RoomChatController {
   addMessage: (message: ChatMessage) => void
   markAsRead: () => void
   clearMessages: () => void
-  loadHistory: (roomId: string) => Promise<void>
+  loadHistory: (roomCode?: string, limit?: number) => Promise<void>
   reset: () => void
+  updateContext: (roomCode?: string, participantId?: string, participantName?: string, websocket?: WebSocket | null) => void
 }
 
 /**
  * Creates a room chat controller
  */
-export function useRoomChatController(): RoomChatController {
+export function useRoomChatController(
+  roomCode?: string,
+  participantId?: string,
+  participantName?: string,
+  websocket?: WebSocket | null
+): RoomChatController {
   const globalStore = useGlobalStore()
   
   const messages = ref<ChatMessage[]>([])
@@ -55,6 +62,12 @@ export function useRoomChatController(): RoomChatController {
   const isOpen = ref(false)
   const isSending = ref(false)
   const error = ref<string | null>(null)
+  
+  // Store room context
+  const currentRoomCode = ref(roomCode || '')
+  const currentParticipantId = ref(participantId || '')
+  const currentParticipantName = ref(participantName || '')
+  const currentWebSocket = ref<WebSocket | null>(websocket || null)
 
   /**
    * Computed: Has unread messages
@@ -107,6 +120,10 @@ export function useRoomChatController(): RoomChatController {
       return { success: false, error: 'Message cannot be empty' }
     }
 
+    if (!currentRoomCode.value || !currentParticipantId.value) {
+      return { success: false, error: 'Room code and participant ID are required' }
+    }
+
     if (isSending.value) {
       return { success: false, error: 'Message is already being sent' }
     }
@@ -115,26 +132,59 @@ export function useRoomChatController(): RoomChatController {
       isSending.value = true
       error.value = null
 
-      // This would typically send via WebSocket or API
-      // For now, we'll create a local message that will be sent
-      const newMessage: ChatMessage = {
+      // Create optimistic message
+      const optimisticMessage: ChatMessage = {
         id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        room_id: '', // Will be set by caller
-        participant_id: '', // Will be set by caller
-        participant_name: '', // Will be set by caller
+        room_id: currentRoomCode.value,
+        participant_id: currentParticipantId.value,
+        participant_name: currentParticipantName.value,
         message: message.trim(),
         timestamp: new Date().toISOString(),
         message_type: 'text',
         reply_to: replyTo
       }
 
-      // Add message to local state (will be confirmed when received from server)
-      addMessage(newMessage)
+      // Add message to local state (optimistic update)
+      addMessage(optimisticMessage)
 
-      // TODO: Send via WebSocket or API
-      // await sendMessageViaWebSocket(newMessage)
+      // Send via API
+      const response = await apiService.sendChatMessage(
+        currentRoomCode.value,
+        currentParticipantId.value,
+        message.trim(),
+        'text',
+        replyTo
+      )
 
-      return { success: true }
+      if (response.data.success) {
+        // Update message with server response
+        const serverMessage = response.data.message
+        const index = messages.value.findIndex(m => m.id === optimisticMessage.id)
+        if (index !== -1) {
+          messages.value[index] = {
+            ...optimisticMessage,
+            id: serverMessage.id,
+            timestamp: serverMessage.created_at
+          }
+        }
+
+        // Broadcast via WebSocket if available
+        if (currentWebSocket.value && currentWebSocket.value.readyState === WebSocket.OPEN) {
+          currentWebSocket.value.send(JSON.stringify({
+            type: 'chat_message',
+            message: serverMessage
+          }))
+        }
+
+        return { success: true }
+      } else {
+        // Remove optimistic message on failure
+        const index = messages.value.findIndex(m => m.id === optimisticMessage.id)
+        if (index !== -1) {
+          messages.value.splice(index, 1)
+        }
+        throw new Error(response.data.error || 'Failed to send message')
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
       error.value = errorMessage
@@ -185,31 +235,52 @@ export function useRoomChatController(): RoomChatController {
       isSending.value = true
       error.value = null
 
-      // Create file message
-      const fileMessage: ChatMessage = {
-        id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        room_id: '', // Will be set by caller
-        participant_id: '', // Will be set by caller
-        participant_name: '', // Will be set by caller
-        message: `Shared file: ${file.name}`,
-        timestamp: new Date().toISOString(),
-        message_type: 'file',
-        file_name: file.name,
-        file_size: file.size
+      if (!currentRoomCode.value || !currentParticipantId.value) {
+        return { success: false, error: 'Room code and participant ID are required' }
       }
 
-      // TODO: Upload file and get URL
-      // const uploadResult = await uploadFile(file)
-      // fileMessage.file_url = uploadResult.url
+      // Upload file via API
+      const uploadResponse = await apiService.uploadChatFile(
+        currentRoomCode.value,
+        currentParticipantId.value,
+        file
+      )
 
-      // Add message to local state
-      addMessage(fileMessage)
+      if (uploadResponse.data.success) {
+        const serverMessage = uploadResponse.data.message
+        const attachment = uploadResponse.data.attachment
 
-      // TODO: Send via WebSocket or API
-      // await sendMessageViaWebSocket(fileMessage)
+        // Create file message from server response
+        const fileMessage: ChatMessage = {
+          id: serverMessage.id,
+          room_id: currentRoomCode.value,
+          participant_id: currentParticipantId.value,
+          participant_name: currentParticipantName.value,
+          message: serverMessage.content || `Shared file: ${file.name}`,
+          timestamp: serverMessage.created_at,
+          message_type: 'file',
+          file_name: attachment.original_filename,
+          file_size: attachment.file_size,
+          file_url: attachment.file.url || attachment.file
+        }
 
-      globalStore.addNotification('File sent successfully', 'success', 2000)
-      return { success: true }
+        // Add message to local state
+        addMessage(fileMessage)
+
+        // Broadcast via WebSocket if available
+        if (currentWebSocket.value && currentWebSocket.value.readyState === WebSocket.OPEN) {
+          currentWebSocket.value.send(JSON.stringify({
+            type: 'file_uploaded',
+            attachment: attachment,
+            message: serverMessage
+          }))
+        }
+
+        globalStore.addNotification('File sent successfully', 'success', 2000)
+        return { success: true }
+      } else {
+        throw new Error(uploadResponse.data.error || 'Failed to upload file')
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
       error.value = errorMessage
@@ -250,21 +321,67 @@ export function useRoomChatController(): RoomChatController {
   /**
    * Load chat history
    */
-  const loadHistory = async (roomId: string): Promise<void> => {
+  const loadHistory = async (roomCode?: string, limit: number = 100): Promise<void> => {
     try {
       error.value = null
       
-      // TODO: Load from API
-      // const response = await apiService.getChatHistory(roomId)
-      // messages.value = response.data.messages
+      const roomCodeToUse = roomCode || currentRoomCode.value
+      if (!roomCodeToUse) {
+        console.warn('Cannot load chat history: room code not provided')
+        return
+      }
       
-      // For now, just clear and reset
-      clearMessages()
+      const response = await apiService.getChatHistory(roomCodeToUse, limit)
+      
+      if (response.data.success) {
+        // Convert server messages to ChatMessage format
+        interface ServerMessage {
+          id: string
+          room_id: string
+          sender_id: string
+          content: string
+          message_type: 'text' | 'file' | 'system'
+          created_at: string
+          attachments?: Array<{
+            id: string
+            file: { url?: string } | string
+            original_filename: string
+            file_size: number
+          }>
+          reply_to?: { id: string } | null
+          participant?: { display_name?: string }
+        }
+        
+        messages.value = (response.data.messages as ServerMessage[]).map((msg) => ({
+          id: msg.id,
+          room_id: msg.room_id,
+          participant_id: msg.sender_id,
+          participant_name: msg.participant?.display_name || 'Unknown',
+          message: msg.content,
+          timestamp: msg.created_at,
+          message_type: msg.message_type || 'text',
+          file_url: msg.attachments?.[0]?.file?.url,
+          file_name: msg.attachments?.[0]?.original_filename,
+          file_size: msg.attachments?.[0]?.file_size,
+          reply_to: msg.reply_to?.id
+        }))
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
       error.value = errorMessage
       console.error('Failed to load chat history:', err)
+      globalStore.addNotification('Failed to load chat history', 'error', 3000)
     }
+  }
+  
+  /**
+   * Update room context
+   */
+  const updateContext = (roomCode?: string, participantId?: string, participantName?: string, websocket?: WebSocket | null) => {
+    if (roomCode) currentRoomCode.value = roomCode
+    if (participantId) currentParticipantId.value = participantId
+    if (participantName) currentParticipantName.value = participantName
+    if (websocket !== undefined) currentWebSocket.value = websocket
   }
 
   /**
@@ -299,7 +416,8 @@ export function useRoomChatController(): RoomChatController {
     markAsRead,
     clearMessages,
     loadHistory,
-    reset
+    reset,
+    updateContext
   }
 }
 

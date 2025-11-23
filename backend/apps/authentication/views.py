@@ -17,6 +17,9 @@ from .models import User, UserProfile, UserSession, LoginAttempt
 from apps.core.models import SystemSettings
 from apps.rooms.models import UserActivityLog
 
+# Import SSO views
+from . import sso_views
+
 
 logger = logging.getLogger(__name__)
 

@@ -11,14 +11,22 @@ django-ratelimit==4.1.0
 django-redis==5.4.0
 djangorestframework==3.14.0
 djangorestframework-simplejwt==5.3.1
+drf-spectacular==0.27.2
+# Enterprise SSO dependencies (optional - install only if needed)
+# python-ldap==3.4.3  # Uncomment for LDAP support
+# django-auth-ldap==4.1.0  # Uncomment for Django LDAP integration
+# python3-saml==1.15.0  # Uncomment for SAML support
+# django-allauth==0.57.0  # Uncomment for OAuth support
 msgpack==1.1.1
 pillow==11.3.0
 pycparser==2.22
 pypng==0.20220715.0
 python-decouple==3.8
+psutil==5.9.8  # System metrics for monitoring
 pytz==2025.2
 qrcode==7.4.2
 redis==5.0.1
+requests==2.31.0  # For OAuth SSO flows
 sqlparse==0.5.3
 typing_extensions==4.15.0
 uuid==1.30

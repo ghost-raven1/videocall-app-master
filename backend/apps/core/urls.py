@@ -7,4 +7,5 @@ app_name = 'core'
 urlpatterns = [
     path('health/', views.health_check, name='health'),
     path('csrf/', views.get_csrf_token, name='csrf'),
+    path('metrics/', views.metrics, name='metrics'),  # Prometheus metrics endpoint
 ]

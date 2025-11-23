@@ -18,5 +18,12 @@ class CookieJWTAuthentication(JWTAuthentication):
             validated_token = self.get_validated_token(token)
             user = self.get_user(validated_token)
             return (user, validated_token)
+        except exceptions.AuthenticationFailed:
+            # Re-raise authentication errors
+            raise
         except Exception as e:
-            raise exceptions.AuthenticationFailed('Invalid token')
+            # Log unexpected errors but don't expose details to client
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Unexpected authentication error: {e}", exc_info=True)
+            raise exceptions.AuthenticationFailed('Authentication failed')

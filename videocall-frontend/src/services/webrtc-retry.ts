@@ -1,4 +1,38 @@
-// src/services/webrtc-retry.js - WebRTC retry logic and error handling
+// src/services/webrtc-retry.ts - WebRTC retry logic and error handling
+
+/**
+ * Connection quality assessment result
+ */
+export interface ConnectionQuality {
+  score: number
+  issues: string[]
+  recommendation: string
+}
+
+/**
+ * Retry options for operations
+ */
+export interface RetryOptions<T = unknown> {
+  maxRetries?: number
+  baseDelay?: number
+  maxDelay?: number
+  shouldRetry?: (error: Error | unknown, attemptCount: number) => boolean
+}
+
+/**
+ * Recovery callback function type
+ */
+export type RecoveryCallback = (participantId: string, recoveryInfo: {
+  canRecover: boolean
+  requiresReconnection: boolean
+  error?: Error | unknown
+}) => void | Promise<void>
+
+/**
+ * Quality change callback function type
+ */
+export type QualityChangeCallback = (quality: ConnectionQuality, state?: string) => void | Promise<void>
+
 export class WebRTCRetryService {
   // Retry/backoff configuration
   maxRetries: number
@@ -12,7 +46,7 @@ export class WebRTCRetryService {
 
   // Quality monitoring state
   qualityMonitors: Map<RTCPeerConnection, ReturnType<typeof setInterval>>
-  qualityCallbacks: Map<RTCPeerConnection, (quality: { score: number; issues: string[]; recommendation: string }, _state?: string) => void>
+  qualityCallbacks: Map<RTCPeerConnection, QualityChangeCallback>
   connectionStates: Map<RTCPeerConnection, RTCPeerConnectionState | string>
 
   // Fallback strategies and state
@@ -44,16 +78,11 @@ export class WebRTCRetryService {
   /**
    * Execute operation with exponential backoff retry
    */
-  async executeWithRetry(
+  async executeWithRetry<T = unknown>(
     operationId: string,
-    operation: () => Promise<any>,
-    options: {
-      maxRetries?: number
-      baseDelay?: number
-      maxDelay?: number
-      shouldRetry?: (_error: any, _attemptCount: number) => boolean
-    } = {}
-  ) {
+    operation: () => Promise<T>,
+    options: RetryOptions<T> = {}
+  ): Promise<T> {
     const {
       maxRetries = this.maxRetries,
       baseDelay = this.baseDelay,
@@ -105,7 +134,7 @@ export class WebRTCRetryService {
   /**
    * Cancel retry operation
    */
-  cancelRetry(operationId) {
+  cancelRetry(operationId: string): void {
     const timeoutId = this.retryTimeouts.get(operationId)
     if (timeoutId) {
       clearTimeout(timeoutId)
@@ -118,7 +147,7 @@ export class WebRTCRetryService {
   /**
    * Calculate delay for exponential backoff with jitter
    */
-  calculateDelay(attemptCount, baseDelay, maxDelay) {
+  calculateDelay(attemptCount: number, baseDelay: number, maxDelay: number): number {
     const exponentialDelay = baseDelay * Math.pow(2, attemptCount)
     const cappedDelay = Math.min(exponentialDelay, maxDelay)
     const jitter = Math.random() * 0.1 * cappedDelay // Add 10% jitter
@@ -128,9 +157,11 @@ export class WebRTCRetryService {
   /**
    * Default retry condition
    */
-  defaultShouldRetry(error: any, attemptCount: number) {
+  defaultShouldRetry(error: Error | unknown, attemptCount: number): boolean {
+    const errorObj = error instanceof Error ? error : new Error(String(error))
+    
     // Don't retry on certain errors
-    if (error.name === 'NotAllowedError' || error.name === 'NotFoundError') {
+    if (errorObj.name === 'NotAllowedError' || errorObj.name === 'NotFoundError') {
       return false
     }
 
@@ -144,14 +175,19 @@ export class WebRTCRetryService {
     ]
 
     return retryableErrors.some(errorType =>
-      error.name?.includes(errorType) || error.message?.includes(errorType)
+      errorObj.name?.includes(errorType) || errorObj.message?.includes(errorType)
     ) || attemptCount < this.maxRetries
   }
 
   /**
    * Monitor connection state and trigger recovery
    */
-  monitorConnectionState(peerConnection, participantId, onRecoveryNeeded, onQualityChange) {
+  monitorConnectionState(
+    peerConnection: RTCPeerConnection | null,
+    participantId: string,
+    onRecoveryNeeded?: RecoveryCallback,
+    onQualityChange?: QualityChangeCallback
+  ): string | null {
     if (!peerConnection) return null
 
     const monitorId = `${participantId}_${Date.now()}`
@@ -194,16 +230,19 @@ export class WebRTCRetryService {
   /**
    * Handle connection failure with retry and fallback logic
    */
-  async handleConnectionFailure(peerConnection, participantId, onRecoveryNeeded) {
+  async handleConnectionFailure(
+    peerConnection: RTCPeerConnection,
+    participantId: string,
+    onRecoveryNeeded?: RecoveryCallback
+  ): Promise<void> {
     const currentFallback = this.currentFallbackLevel.get(peerConnection) || 0
 
     if (currentFallback >= Object.keys(this.fallbackStrategies).length) {
       console.error(`All fallback strategies exhausted for ${participantId}`)
-      onRecoveryNeeded?.({
-        type: 'connection_failed',
-        participantId,
+      onRecoveryNeeded?.(participantId, {
         canRecover: false,
-        message: 'Unable to maintain connection. Please check your internet connection.'
+        requiresReconnection: false,
+        error: new Error('Unable to maintain connection. Please check your internet connection.')
       })
       return
     }
@@ -230,7 +269,11 @@ export class WebRTCRetryService {
   /**
    * Handle ICE connection failure
    */
-  async handleIceConnectionFailure(peerConnection, participantId, onRecoveryNeeded) {
+  async handleIceConnectionFailure(
+    peerConnection: RTCPeerConnection,
+    participantId: string,
+    onRecoveryNeeded?: RecoveryCallback
+  ): Promise<void> {
     console.log(`Attempting ICE restart for ${participantId}`)
 
     try {
@@ -245,7 +288,7 @@ export class WebRTCRetryService {
   /**
    * Restart ICE connection
    */
-  async restartIceConnection(peerConnection) {
+  async restartIceConnection(peerConnection: RTCPeerConnection): Promise<RTCSessionDescriptionInit> {
     const offer = await peerConnection.createOffer({ iceRestart: true })
     await peerConnection.setLocalDescription(offer)
     return offer
@@ -254,7 +297,10 @@ export class WebRTCRetryService {
   /**
    * Fallback to audio-only mode
    */
-  async fallbackToAudioOnly(peerConnection, participantId) {
+  async fallbackToAudioOnly(
+    peerConnection: RTCPeerConnection,
+    participantId: string
+  ): Promise<{ success: boolean; mode?: string; error?: string }> {
     try {
       // Disable video tracks
       const senders = peerConnection.getSenders()
@@ -272,14 +318,18 @@ export class WebRTCRetryService {
       return { success: true, mode: 'audio_only' }
     } catch (error) {
       console.error(`Failed to fallback to audio-only for ${participantId}:`, error)
-      return { success: false, error: error.message }
+      const errorObj = error instanceof Error ? error : new Error(String(error))
+      return { success: false, error: errorObj.message }
     }
   }
 
   /**
    * Fallback to chat-only mode
    */
-  async fallbackToChatOnly(peerConnection, participantId) {
+  async fallbackToChatOnly(
+    peerConnection: RTCPeerConnection,
+    participantId: string
+  ): Promise<{ success: boolean; mode?: string; error?: string }> {
     try {
       // Disable all media tracks
       const senders = peerConnection.getSenders()
@@ -294,14 +344,18 @@ export class WebRTCRetryService {
       return { success: true, mode: 'chat_only' }
     } catch (error) {
       console.error(`Failed to fallback to chat-only for ${participantId}:`, error)
-      return { success: false, error: error.message }
+      const errorObj = error instanceof Error ? error : new Error(String(error))
+      return { success: false, error: errorObj.message }
     }
   }
 
   /**
    * Attempt full reconnection
    */
-  async attemptFullReconnect(peerConnection, participantId) {
+  async attemptFullReconnect(
+    peerConnection: RTCPeerConnection,
+    participantId: string
+  ): Promise<{ success: boolean; requiresReconnection?: boolean; error?: string }> {
     try {
       console.log(`Attempting full reconnection for ${participantId}`)
 
@@ -312,14 +366,15 @@ export class WebRTCRetryService {
       return { success: true, requiresReconnection: true }
     } catch (error) {
       console.error(`Failed to attempt full reconnection for ${participantId}:`, error)
-      return { success: false, error: error.message }
+      const errorObj = error instanceof Error ? error : new Error(String(error))
+      return { success: false, error: errorObj.message }
     }
   }
 
   /**
    * Assess connection quality and return quality score and recommendations
    */
-  async assessConnectionQuality(peerConnection) {
+  async assessConnectionQuality(peerConnection: RTCPeerConnection): Promise<ConnectionQuality> {
     try {
       const stats = await peerConnection.getStats()
       let quality = 100
@@ -371,7 +426,7 @@ export class WebRTCRetryService {
   /**
    * Get quality-based recommendation
    */
-  getQualityRecommendation(quality, _issues) {
+  getQualityRecommendation(quality: number, _issues: string[]): string {
     if (quality >= 80) {
       return 'excellent'
     } else if (quality >= 60) {
@@ -388,7 +443,18 @@ export class WebRTCRetryService {
   /**
    * Create adaptive quality monitor
    */
-  createAdaptiveQualityMonitor(peerConnection, participantId, onQualityChange, onAdaptiveAction) {
+  createAdaptiveQualityMonitor(
+    peerConnection: RTCPeerConnection,
+    participantId: string,
+    onQualityChange?: QualityChangeCallback,
+    onAdaptiveAction?: RecoveryCallback
+  ): string {
+    // Stop existing monitor if any
+    const existingMonitor = this.qualityMonitors.get(peerConnection)
+    if (existingMonitor) {
+      clearInterval(existingMonitor)
+    }
+    
     const monitorId = `adaptive_${participantId}_${Date.now()}`
 
     const monitor = setInterval(async () => {
@@ -416,7 +482,7 @@ export class WebRTCRetryService {
   /**
    * Stop quality monitoring
    */
-  stopQualityMonitor(peerConnection) {
+  stopQualityMonitor(peerConnection: RTCPeerConnection): void {
     const monitor = this.qualityMonitors.get(peerConnection)
     if (monitor) {
       clearInterval(monitor)
@@ -427,7 +493,7 @@ export class WebRTCRetryService {
   /**
    * Get user-friendly error message
    */
-  getErrorMessage(error, context = '') {
+  getErrorMessage(error: Error | unknown, context: string = ''): string {
     const errorMessages = {
       // Network errors
       'NetworkError': 'Network connection problem. Please check your internet connection.',
@@ -448,11 +514,12 @@ export class WebRTCRetryService {
       'default': 'Connection issue occurred. Attempting to restore connection...'
     }
 
+    const errorObj = error instanceof Error ? error : new Error(String(error))
     const errorKey = Object.keys(errorMessages).find(key =>
-      error.name?.includes(key) || error.message?.includes(key)
+      errorObj.name?.includes(key) || errorObj.message?.includes(key)
     )
 
-    let message = errorMessages[errorKey] || errorMessages.default
+    let message = errorMessages[errorKey as keyof typeof errorMessages] || errorMessages.default
 
     if (context) {
       message += ` (${context})`
@@ -464,7 +531,7 @@ export class WebRTCRetryService {
   /**
    * Clean up all resources
    */
-  cleanup() {
+  cleanup(): void {
     // Cancel all retries
     this.retryTimeouts.forEach((timeoutId) => {
       clearTimeout(timeoutId)

@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 from . import views
 from .views import CookieTokenObtainPairView, CookieTokenRefreshView
+from . import sso_views
 
 app_name = 'authentication'
 
@@ -41,6 +42,15 @@ urlpatterns = [
 
     # Activity endpoints
     path('activity/recent/', views.UserActivityViewSet.as_view({'get': 'recent'}), name='recent_activity'),
+
+    # SSO OAuth endpoints
+    path('oauth/<str:provider>/initiate/', sso_views.oauth_initiate, name='oauth_initiate'),
+    path('oauth/<str:provider>/callback/', sso_views.oauth_callback, name='oauth_callback'),
+
+    # SSO SAML endpoints
+    path('saml/initiate/', sso_views.saml_initiate, name='saml_initiate'),
+    path('saml/acs/', sso_views.saml_acs, name='saml_acs'),
+    path('saml/metadata/', sso_views.saml_metadata, name='saml_metadata'),
 
     # Include router URLs
     path('', include(router.urls)),

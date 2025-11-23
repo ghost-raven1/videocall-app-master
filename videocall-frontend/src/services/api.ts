@@ -1,18 +1,13 @@
-// src/services/api.js - API service layer with JWT support
-import axios from 'axios'
-
-/**
- * @typedef {Object} Credentials
- * @property {string} email
- * @property {string} password
- */
+// src/services/api.ts - API service layer with JWT support
+import axios, { type AxiosError, type AxiosRequestConfig } from 'axios'
+import type { APIError, APIRequestConfig, Credentials, TokenResponse, APIEnvironment } from '../types/api'
 
 // Create axios instance with base configuration
-// In dev mode, use relative path which will be proxied by Vite
+// In dev mode, always use relative path which will be proxied by Vite
 // In production, use VITE_API_BASE_URL if set
 const apiBaseURL = import.meta.env.PROD 
-  ? (import.meta.env.VITE_API_BASE_URL || ((window as any).__API_BASE_URL) || '/api')
-  : '/api' // Use relative path in dev - Vite will proxy it
+  ? (import.meta.env.VITE_API_BASE_URL || (window.__API_BASE_URL) || '/api')
+  : '/api' // Use relative path in dev - Vite will proxy it to backend
 const apiClient = axios.create({
   baseURL: apiBaseURL,
   timeout: 30000,
@@ -60,7 +55,7 @@ apiClient.interceptors.response.use(
     console.log(`API Response: ${response.status} ${response.config.url}`)
     return response
   },
-  async (error) => {
+  async (error: APIError) => {
     const errorStatus = error.response?.status
     const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message
     const errorUrl = error.config?.url
@@ -86,12 +81,13 @@ apiClient.interceptors.response.use(
       console.log('Unauthorized access - token may be expired')
 
       // Try to refresh token once before giving up
-      if (!error.config._retry) {
-        error.config._retry = true
+      const config = error.config as APIRequestConfig
+      if (!config._retry) {
+        config._retry = true
         try {
           await jwtManager.refreshAccessToken()
           // Retry the original request
-          return apiClient(error.config)
+          return apiClient(config)
         } catch (refreshError) {
           console.warn('Token refresh failed:', refreshError)
           // Clear invalid tokens
@@ -156,7 +152,7 @@ apiClient.interceptors.response.use(
 const jwtManager = {
   refreshPromise: null,
 
-  async refreshAccessToken() {
+  async refreshAccessToken(): Promise<TokenResponse> {
     // Prevent multiple simultaneous refresh requests
     if (this.refreshPromise) {
       return this.refreshPromise
@@ -171,9 +167,9 @@ const jwtManager = {
     }
   },
 
-  async _doRefreshToken() {
+  async _doRefreshToken(): Promise<TokenResponse> {
     try {
-      const response = await apiClient.post('/auth/token/refresh/')
+      const response = await apiClient.post<TokenResponse>('/auth/token/refresh/')
       return response.data
     } catch (error) {
       console.warn('Failed to refresh JWT token:', error)
@@ -181,14 +177,14 @@ const jwtManager = {
     }
   },
 
-  isTokenExpiringSoon(expiresAt) {
+  isTokenExpiringSoon(expiresAt: number | null | undefined): boolean {
     if (!expiresAt) return false
     const now = Math.floor(Date.now() / 1000)
     const fiveMinutesFromNow = now + (5 * 60)
     return expiresAt < fiveMinutesFromNow
   },
 
-  scheduleTokenRefresh(expiresAt) {
+  scheduleTokenRefresh(expiresAt: number | null | undefined): void {
     if (!expiresAt) return
 
     const now = Math.floor(Date.now() / 1000)
@@ -219,13 +215,33 @@ export const apiService = {
   // Authentication endpoints using JWT with httpOnly cookies
   /**
    * Вход по email и паролю
-   * @param {Credentials|string} credentials
-   * @returns {Promise<import('axios').AxiosResponse<any>>}
    */
-  async login(credentials) {
+  async login(credentials: Credentials | string) {
     try {
       // Ensure credentials is an object
-      const loginData = typeof credentials === 'string' ? JSON.parse(credentials) : credentials
+      let loginData: Credentials
+      if (typeof credentials === 'string') {
+        try {
+          loginData = JSON.parse(credentials)
+        } catch (error) {
+          throw new Error('Invalid credentials format')
+        }
+      } else {
+        loginData = credentials
+      }
+      
+      // Validate input
+      if (!loginData.email || !loginData.password) {
+        throw new Error('Email and password are required')
+      }
+      
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginData.email)) {
+        throw new Error('Invalid email format')
+      }
+      
+      if (loginData.password.length < 6) {
+        throw new Error('Password must be at least 6 characters')
+      }
       
       // Ensure we're sending proper JSON
       const response = await apiClient.post('/auth/token/', loginData, {
@@ -290,19 +306,15 @@ export const apiService = {
 
   /**
    * Получение информации о комнате
-   * @param {string} roomId
-   * @returns {Promise<import('axios').AxiosResponse<any>>}
    */
-  async getRoomInfo(roomId) {
+  async getRoomInfo(roomId: string) {
     return apiClient.get(`/rooms/${roomId}/`)
   },
 
   /**
    * Присоединение к комнате
-   * @param {string} roomIdentifier
-   * @returns {Promise<import('axios').AxiosResponse<any>>}
    */
-  async joinRoom(roomIdentifier) {
+  async joinRoom(roomIdentifier: string) {
     return apiClient.post('/rooms/join/', {
       room_identifier: roomIdentifier,
     })
@@ -310,28 +322,22 @@ export const apiService = {
 
   /**
    * Выход из комнаты
-   * @param {string} roomId
-   * @returns {Promise<import('axios').AxiosResponse<any>>}
    */
-  async leaveRoom(roomId) {
+  async leaveRoom(roomId: string) {
     return apiClient.post(`/rooms/${roomId}/leave/`)
   },
 
   /**
    * Удаление комнаты
-   * @param {string} roomId
-   * @returns {Promise<import('axios').AxiosResponse<any>>}
    */
-  async deleteRoom(roomId) {
+  async deleteRoom(roomId: string) {
     return apiClient.delete(`/rooms/${roomId}/delete/`)
   },
 
   /**
    * Проверка здоровья комнаты и SFU
-   * @param {string} roomId
-   * @returns {Promise<import('axios').AxiosResponse<any>>}
    */
-  async getRoomHealth(roomId) {
+  async getRoomHealth(roomId: string) {
     return apiClient.get(`/rooms/${roomId}/health/`)
   },
 
@@ -341,6 +347,73 @@ export const apiService = {
    */
   async getSFUServerStats() {
     return apiClient.get('/rooms/sfu/server/stats/')
+  },
+
+  // Chat endpoints
+  /**
+   * Send chat message
+   */
+  async sendChatMessage(roomCode: string, participantId: string, content: string, messageType: string = 'text', replyTo?: string) {
+    return apiClient.post('/rooms/chat/messages/', {
+      room_code: roomCode,
+      participant_id: participantId,
+      content,
+      message_type: messageType,
+      reply_to: replyTo
+    })
+  },
+
+  /**
+   * Upload chat file attachment
+   */
+  async uploadChatFile(roomCode: string, participantId: string, file: File, messageId?: string) {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('room_code', roomCode)
+    formData.append('participant_id', participantId)
+    if (messageId) {
+      formData.append('message_id', messageId)
+    }
+    
+    return apiClient.post('/rooms/chat/attachments/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    })
+  },
+
+  /**
+   * Get chat history
+   */
+  async getChatHistory(roomCode: string, limit: number = 100, offset: number = 0) {
+    return apiClient.get('/rooms/chat/messages/history/', {
+      params: {
+        room_code: roomCode,
+        limit,
+        offset
+      }
+    })
+  },
+
+  /**
+   * Edit chat message
+   */
+  async editChatMessage(messageId: string, participantId: string, content: string) {
+    return apiClient.put(`/rooms/chat/messages/${messageId}/edit/`, {
+      participant_id: participantId,
+      content
+    })
+  },
+
+  /**
+   * Delete chat message
+   */
+  async deleteChatMessage(messageId: string, participantId: string) {
+    return apiClient.delete(`/rooms/chat/messages/${messageId}/soft_delete/`, {
+      data: {
+        participant_id: participantId
+      }
+    })
   },
 
   // System endpoints
@@ -358,44 +431,65 @@ export const apiUtils = {
   /**
    * Extract error message from API response
    */
-  getErrorMessage(error) {
-    if (error.response?.data?.error) {
-      return error.response.data.error
-    } else if (error.response?.data?.message) {
-      return error.response.data.message
-    } else if (error.message) {
-      return error.message
-    } else {
-      return 'An unexpected error occurred'
+  getErrorMessage(error: APIError | Error | unknown): string {
+    if (error && typeof error === 'object' && 'response' in error) {
+      const apiError = error as APIError
+      if (apiError.response?.data?.error) {
+        return String(apiError.response.data.error)
+      } else if (apiError.response?.data?.message) {
+        return String(apiError.response.data.message)
+      }
     }
+    
+    if (error instanceof Error) {
+      return error.message
+    }
+    
+    return 'An unexpected error occurred'
   },
 
   /**
    * Check if error is due to network issues
    */
-  isNetworkError(error) {
-    return !error.response || error.code === 'NETWORK_ERROR'
+  isNetworkError(error: APIError | Error | unknown): boolean {
+    if (error && typeof error === 'object' && 'response' in error) {
+      const apiError = error as APIError
+      return !apiError.response || apiError.code === 'NETWORK_ERROR'
+    }
+    return false
   },
 
   /**
    * Check if error is due to authentication
    */
-  isAuthError(error) {
-    return error.response?.status === 401
+  isAuthError(error: APIError | Error | unknown): boolean {
+    if (error && typeof error === 'object' && 'response' in error) {
+      const apiError = error as APIError
+      return apiError.response?.status === 401
+    }
+    return false
   },
 
   /**
    * Check if error is due to rate limiting
    */
-  isRateLimitError(error) {
-    return error.response?.status === 429
+  isRateLimitError(error: APIError | Error | unknown): boolean {
+    if (error && typeof error === 'object' && 'response' in error) {
+      const apiError = error as APIError
+      return apiError.response?.status === 429
+    }
+    return false
   },
 
 
   /**
    * Retry API call with exponential backoff
    */
-  async retryWithBackoff(apiCall, maxRetries = 3, baseDelay = 1000) {
+  async retryWithBackoff<T = unknown>(
+    apiCall: () => Promise<T>,
+    maxRetries: number = 3,
+    baseDelay: number = 1000
+  ): Promise<T> {
     let lastError
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -428,17 +522,20 @@ export const apiUtils = {
   /**
    * Refresh JWT token if needed and retry request
    */
-  async retryWithTokenRefresh(apiCall) {
+  async retryWithTokenRefresh<T = unknown>(apiCall: () => Promise<T>): Promise<T> {
     try {
       return await apiCall()
     } catch (error) {
-      if (error.response?.status === 401) {
-        try {
-          await jwtManager.refreshAccessToken()
-          return await apiCall()
-        } catch (refreshError) {
-          console.error('Token refresh failed:', refreshError)
-          throw error
+      if (error && typeof error === 'object' && 'response' in error) {
+        const apiError = error as APIError
+        if (apiError.response?.status === 401) {
+          try {
+            await jwtManager.refreshAccessToken()
+            return await apiCall()
+          } catch (refreshError) {
+            console.error('Token refresh failed:', refreshError)
+            throw error
+          }
         }
       }
       throw error

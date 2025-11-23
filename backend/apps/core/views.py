@@ -177,45 +177,98 @@ def system_info(request):
 @csrf_exempt
 def metrics(request):
     """
-    Basic metrics endpoint for monitoring.
+    Prometheus-compatible metrics endpoint for monitoring.
+    Returns metrics in Prometheus text format.
     """
     try:
         from apps.core.models import RoomActivityLog
+        from apps.rooms.models import SystemMetrics, RoomAnalytics
         from datetime import timedelta
+        import psutil
 
-        # Calculate basic metrics
         now = timezone.now()
         last_hour = now - timedelta(hours=1)
         last_day = now - timedelta(days=1)
 
-        metrics_data = {
-            'timestamp': now.isoformat(),
-            'rooms': {
-                'created_last_hour': RoomActivityLog.objects.filter(
-                    action='created',
-                    timestamp__gte=last_hour
-                ).count(),
-                'created_last_day': RoomActivityLog.objects.filter(
-                    action='created',
-                    timestamp__gte=last_day
-                ).count(),
-                'total_created': RoomActivityLog.objects.filter(
-                    action='created'
-                ).count(),
-            },
-            'users': {
-                'joined_last_hour': RoomActivityLog.objects.filter(
-                    action='joined',
-                    timestamp__gte=last_hour
-                ).count(),
-                'joined_last_day': RoomActivityLog.objects.filter(
-                    action='joined',
-                    timestamp__gte=last_day
-                ).count(),
-            }
-        }
+        # Get format parameter (default: prometheus)
+        format_type = request.GET.get('format', 'prometheus')
 
-        return JsonResponse(metrics_data)
+        if format_type == 'json':
+            # JSON format for API clients
+            metrics_data = {
+                'timestamp': now.isoformat(),
+                'rooms': {
+                    'created_last_hour': RoomActivityLog.objects.filter(
+                        action='created',
+                        timestamp__gte=last_hour
+                    ).count(),
+                    'created_last_day': RoomActivityLog.objects.filter(
+                        action='created',
+                        timestamp__gte=last_day
+                    ).count(),
+                    'total_created': RoomActivityLog.objects.filter(
+                        action='created'
+                    ).count(),
+                },
+                'users': {
+                    'joined_last_hour': RoomActivityLog.objects.filter(
+                        action='joined',
+                        timestamp__gte=last_hour
+                    ).count(),
+                    'joined_last_day': RoomActivityLog.objects.filter(
+                        action='joined',
+                        timestamp__gte=last_day
+                    ).count(),
+                }
+            }
+            return JsonResponse(metrics_data)
+        else:
+            # Prometheus text format
+            from django.http import HttpResponse
+
+            # Get latest system metrics
+            latest_metrics = SystemMetrics.objects.order_by('-timestamp').first()
+            
+            # System metrics
+            try:
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+                memory = psutil.virtual_memory()
+                memory_percent = memory.percent
+            except ImportError:
+                cpu_percent = latest_metrics.cpu_usage if latest_metrics else 0
+                memory_percent = latest_metrics.memory_usage if latest_metrics else 0
+
+            # Room metrics
+            rooms_created_last_hour = RoomActivityLog.objects.filter(
+                action='created',
+                timestamp__gte=last_hour
+            ).count()
+            rooms_created_last_day = RoomActivityLog.objects.filter(
+                action='created',
+                timestamp__gte=last_day
+            ).count()
+
+            # Build Prometheus format response
+            prometheus_metrics = f"""# HELP videocall_cpu_usage CPU usage percentage
+# TYPE videocall_cpu_usage gauge
+videocall_cpu_usage {cpu_percent}
+
+# HELP videocall_memory_usage Memory usage percentage
+# TYPE videocall_memory_usage gauge
+videocall_memory_usage {memory_percent}
+
+# HELP videocall_rooms_created_total Total rooms created
+# TYPE videocall_rooms_created_total counter
+videocall_rooms_created_total{{period="hour"}} {rooms_created_last_hour}
+videocall_rooms_created_total{{period="day"}} {rooms_created_last_day}
+
+# HELP videocall_health_status Health check status (1=healthy, 0=unhealthy)
+# TYPE videocall_health_status gauge
+videocall_health_status 1
+"""
+
+            response = HttpResponse(prometheus_metrics, content_type='text/plain; version=0.0.4')
+            return response
 
     except Exception as e:
         logger.error(f"Metrics endpoint failed: {e}")

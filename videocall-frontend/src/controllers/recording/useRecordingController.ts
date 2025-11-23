@@ -172,7 +172,7 @@ export function useRecordingController(): RecordingController {
         globalStore.addNotification(errorMsg, 'error', 5000)
         return { success: false, error: errorMsg }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errorMessage = err.response?.data?.error || err.message || 'Unknown error'
       error.value = errorMessage
       globalStore.addNotification(`Failed to start recording: ${errorMessage}`, 'error', 5000)
@@ -226,7 +226,7 @@ export function useRecordingController(): RecordingController {
         globalStore.addNotification(errorMsg, 'error', 5000)
         return { success: false, error: errorMsg }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errorMessage = err.response?.data?.error || err.message || 'Unknown error'
       error.value = errorMessage
       globalStore.addNotification(`Failed to stop recording: ${errorMessage}`, 'error', 5000)
@@ -264,7 +264,7 @@ export function useRecordingController(): RecordingController {
       } else {
         console.error('Failed to load recordings:', response.data.error || 'Unknown error')
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errorMessage = err.message || 'Failed to load recordings'
       error.value = errorMessage
       console.error('Failed to load recordings:', err)

@@ -48,9 +48,11 @@ try {
 
 // Global error handler for Vue application errors (after Pinia is installed)
 app.config.errorHandler = (error, instance, info) => {
+  const errorObj = error instanceof Error ? error : new Error(String(error))
+  
   console.error('Vue Error Handler:', {
-    error: error.message,
-    stack: error.stack,
+    error: errorObj.message,
+    stack: errorObj.stack,
     component: instance?.$?.type?.name || 'Unknown',
     info,
     timestamp: new Date().toISOString(),
@@ -59,7 +61,7 @@ app.config.errorHandler = (error, instance, info) => {
   })
 
   // Report to error reporting service
-  errorReportingService.captureError(error, {
+  errorReportingService.captureError(errorObj, {
     type: 'vue-error',
     component: instance?.$?.type?.name || 'Unknown',
     info,
@@ -173,6 +175,8 @@ apiService
 app.mount('#app')
 
 // PWA Service Worker Registration
+let swUpdateInterval = null
+
 if ('serviceWorker' in navigator) {
   // Use dynamic import to handle virtual modules
   import('virtual:pwa-register')
@@ -200,9 +204,17 @@ if ('serviceWorker' in navigator) {
       })
 
       // Optional: Periodic update checks (every 60 seconds)
-      setInterval(() => {
+      swUpdateInterval = setInterval(() => {
         updateSW()
       }, 60000)
+      
+      // Cleanup on page unload
+      window.addEventListener('beforeunload', () => {
+        if (swUpdateInterval) {
+          clearInterval(swUpdateInterval)
+          swUpdateInterval = null
+        }
+      })
     })
     .catch((error) => {
       console.error('Failed to register service worker:', error)

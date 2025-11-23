@@ -19,8 +19,8 @@ COPY . .
 # Tidy dependencies to ensure go.mod is up to date
 RUN go mod tidy
 
-# Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o streaming-node .
+# Build the application (use -mod=mod to ignore vendor directory if inconsistent)
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=mod -a -installsuffix cgo -o streaming-node .
 
 # Final stage
 FROM alpine:latest

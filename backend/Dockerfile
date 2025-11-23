@@ -12,6 +12,8 @@ RUN apt-get update --fix-missing && \
     apt-get install -y --no-install-recommends \
         libpq-dev \
         gcc \
+        python3-dev \
+        linux-libc-dev \
         gettext \
         curl \
         && rm -rf /var/lib/apt/lists/*
@@ -35,11 +37,13 @@ COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/pytho
 COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Установка системных зависимостей только для runtime
+# FFmpeg для recording (Enterprise feature)
 RUN apt-get update --fix-missing && \
     apt-get install -y --no-install-recommends \
         libpq5 \
         gettext \
         curl \
+        ffmpeg \
         && rm -rf /var/lib/apt/lists/*
 
 # Создание непривилегированного пользователя

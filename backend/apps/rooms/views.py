@@ -659,11 +659,37 @@ class RoomAnalyticsViewSet(viewsets.ReadOnlyModelViewSet):
             
             online_users_count = User.objects.filter(is_active=True).count()  # Simplified
             
+            # Calculate server load
+            server_load = 0
+            try:
+                import psutil
+                # Get system metrics
+                cpu_percent = psutil.cpu_percent(interval=0.1)
+                memory = psutil.virtual_memory()
+                memory_percent = memory.percent
+                
+                # Calculate load as weighted average (CPU 60%, Memory 40%)
+                server_load = round((cpu_percent * 0.6) + (memory_percent * 0.4), 2)
+                
+                # Cap at 100
+                server_load = min(server_load, 100)
+            except ImportError:
+                # psutil not available, use fallback calculation
+                # Use active rooms and participants as proxy
+                max_rooms = 100  # Assume max capacity
+                max_participants = 1000  # Assume max capacity
+                rooms_load = min((active_rooms_count / max_rooms) * 100, 100)
+                participants_load = min((online_users_count / max_participants) * 100, 100)
+                server_load = round((rooms_load * 0.5) + (participants_load * 0.5), 2)
+            except Exception as e:
+                logger.warning(f"Failed to calculate server load: {e}")
+                server_load = 0
+            
             stats = {
                 'activeRooms': active_rooms_count,
                 'onlineUsers': online_users_count,
                 'totalCalls': (daily_stats.total_calls if daily_stats else 0) or 0,
-                'serverLoad': 0,  # TODO: Implement server load calculation
+                'serverLoad': server_load,
                 'daily': daily_stats.__dict__ if daily_stats else {},
                 'weekly': weekly_stats.__dict__ if weekly_stats else {},
                 'monthly': monthly_stats.__dict__ if monthly_stats else {},

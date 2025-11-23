@@ -3,6 +3,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useGlobalStore } from './global'
 import { webrtcRetryService } from '../services/webrtc-retry'
+import { errorReportingService } from '../services/error-reporting'
 import { SFUConnectionManager } from './webrtc-sfu'
 import { P2PConnectionManager } from './webrtc-p2p'
 import { ConnectionQualityMonitor } from './webrtc-quality'
@@ -32,27 +33,34 @@ import { ConnectionQualityMonitor } from './webrtc-quality'
  * @param {string} roomId
  * @returns {string}
  */
-function buildWebSocketUrl(roomId) {
+interface WindowWithWS extends Window {
+  __WS_BASE_URL?: string
+  __WS_HOST?: string
+}
+
+function buildWebSocketUrl(roomId: string): string {
   // Prefer process.env (tests) and fall back to window overrides or location
-  const envBase = (typeof process !== 'undefined' && process.env && process.env.VITE_WS_BASE_URL) || (window as any).__WS_BASE_URL
+  const windowWithWS = window as WindowWithWS
+  const envBase = (typeof process !== 'undefined' && process.env && process.env.VITE_WS_BASE_URL) || windowWithWS.__WS_BASE_URL
   if (typeof envBase === 'string' && envBase.trim() !== '') {
     const base = envBase.replace(/\/$/, '')
     return `${base}/ws/room/${roomId}/`
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const hostEnv = (typeof process !== 'undefined' && process.env && process.env.VITE_WS_HOST) || (window as any).__WS_HOST
+  const hostEnv = (typeof process !== 'undefined' && process.env && process.env.VITE_WS_HOST) || windowWithWS.__WS_HOST
   const wsHost = hostEnv || window.location.host
   return `${protocol}//${wsHost}/ws/room/${roomId}/`
 }
 
+import type { BaseWsMessage, WebSocketMessageType, RecoveryInfo } from '../types/websocket'
+
 /**
- * @param {any} data
- * @returns {data is BaseWsMessage}
+ * Type guard for WebSocket messages
  */
-function isValidWsMessage(data) {
+function isValidWsMessage(data: unknown): data is BaseWsMessage {
   if (!data || typeof data !== 'object') return false
-  if (typeof data.type !== 'string') return false
-  const known = new Set([
+  if (!('type' in data) || typeof (data as { type: unknown }).type !== 'string') return false
+  const known: Set<WebSocketMessageType> = new Set([
     'user_joined',
     'user_left',
     'webrtc_offer',
@@ -61,8 +69,18 @@ function isValidWsMessage(data) {
     'media_state_update',
     'pong',
     'error',
+    'chat_message',
+    'chat_message_edited',
+    'chat_message_deleted',
+    'file_uploaded',
+    'screen_share_started',
+    'screen_share_stopped',
+    'ping',
+    'sfu_enabled',
+    'participant_list_request',
+    'room_info_request',
   ])
-  return known.has(data.type)
+  return known.has((data as { type: string }).type as WebSocketMessageType)
 }
 
 export const useWebRTCStore = defineStore('webrtc', () => {
@@ -250,7 +268,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     } catch (error) {
       console.error('Failed to create peer connection:', error)
       globalStore.addNotification('Failed to create connection', 'error', 5000)
-      return { success: false, error: error.message }
+      const errorObj = error instanceof Error ? error : new Error(String(error))
+      return { success: false, error: errorObj.message }
     }
   }
 
@@ -270,7 +289,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
           baseDelay: 1000,
           shouldRetry: (error) => {
             // Don't retry on configuration errors
-            return !error.message?.includes('InvalidAccessError')
+            const errorObj = error instanceof Error ? error : new Error(String(error))
+            return !errorObj.message?.includes('InvalidAccessError')
           }
         }
       )
@@ -350,7 +370,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       const monitorId = webrtcRetryService.monitorConnectionState(
         peerConnection,
         participantId,
-        (recoveryInfo) => handleConnectionRecovery(participantId, peerConnection, recoveryInfo),
+        (recoveryParticipantId, recoveryInfo) => handleConnectionRecovery(recoveryParticipantId, peerConnection, recoveryInfo),
         (quality, state) => handleConnectionQualityChange(participantId, quality, state)
       )
       connectionMonitors.value.set(participantId, monitorId)
@@ -360,7 +380,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       console.error(`Failed to create peer connection for participant ${participantId}:`, error)
       const userFriendlyMessage = webrtcRetryService.getErrorMessage(error, `Participant ${participantId}`)
       globalStore.addNotification(userFriendlyMessage, 'error', 6000)
-      return { success: false, error: error.message }
+      const errorObj = error instanceof Error ? error : new Error(String(error))
+      return { success: false, error: errorObj.message }
     }
   }
 
@@ -388,7 +409,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
-  const handleConnectionRecovery = async (participantId, peerConnection, recoveryInfo?: any) => {
+  const handleConnectionRecovery = async (participantId: string, peerConnection: RTCPeerConnection, recoveryInfo?: RecoveryInfo) => {
     if (connectionRecoveryInProgress.value) {
       return // Already handling recovery
     }
@@ -489,7 +510,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
           maxRetries: 3,
           baseDelay: 2000,
           shouldRetry: (error) => {
-            return !error.message?.includes('NotAllowedError')
+            const errorObj = error instanceof Error ? error : new Error(String(error))
+            return !errorObj.message?.includes('NotAllowedError')
           }
         }
       )
@@ -592,7 +614,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       console.error('Failed to switch to SFU mode:', error)
       globalStore.addNotification('Failed to switch to SFU mode, using P2P', 'error', 5000)
       sfuMode.value = false
-      return { success: false, error: error.message }
+      const errorObj = error instanceof Error ? error : new Error(String(error))
+      return { success: false, error: errorObj.message }
     }
   }
 
@@ -680,7 +703,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     } catch (error) {
       console.error('Failed to switch to P2P mode:', error)
       globalStore.addNotification('Error switching to P2P mode', 'error', 5000)
-      return { success: false, error: error.message }
+      const errorObj = error instanceof Error ? error : new Error(String(error))
+      return { success: false, error: errorObj.message }
     }
   }
 
@@ -770,7 +794,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
           baseDelay: 2000,
           shouldRetry: (error) => {
             // Retry on network errors but not on authentication errors
-            return !error.message?.includes('401') && !error.message?.includes('403')
+            const errorObj = error instanceof Error ? error : new Error(String(error))
+            return !errorObj.message?.includes('401') && !errorObj.message?.includes('403')
           }
         }
       )
@@ -967,12 +992,30 @@ export const useWebRTCStore = defineStore('webrtc', () => {
    * Ожидает открытое соединение, иначе логирует предупреждение.
    *
    * @param {Partial<BaseWsMessage> & { type: string }} message
+   * @returns {boolean} true if message was sent, false otherwise
    */
   const sendWebSocketMessage = (message) => {
-    if (websocket.value && websocket.value.readyState === WebSocket.OPEN) {
-      websocket.value.send(JSON.stringify(message))
+    if (!websocket.value) {
+      console.warn('WebSocket not initialized')
+      return false
+    }
+    
+    if (websocket.value.readyState === WebSocket.OPEN) {
+      try {
+        websocket.value.send(JSON.stringify(message))
+        return true
+      } catch (error) {
+        console.error('Failed to send WebSocket message:', error)
+        errorReportingService.captureError(error, {
+          type: 'websocket-error',
+          severity: 'error',
+          context: { messageType: message.type }
+        })
+        return false
+      }
     } else {
       console.warn('WebSocket not connected, message not sent:', message)
+      return false
     }
   }
 
@@ -1039,6 +1082,36 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       // Stop all quality monitoring
       qualityMonitor.stopAllMonitoring()
       
+      // Stop all connection monitors from webrtcRetryService
+      connectionMonitors.value.forEach((monitorId) => {
+        // Monitor ID is a string, we need to stop the monitoring
+        // The actual cleanup is done by webrtcRetryService when peer connection closes
+      })
+      
+      // Stop all quality monitors
+      qualityMonitors.value.forEach((monitor) => {
+        if (monitor && typeof monitor === 'number') {
+          clearInterval(monitor)
+        }
+      })
+      
+      // Clear all monitors
+      connectionMonitors.value.clear()
+      qualityMonitors.value.clear()
+      
+      // Close all peer connections (this will trigger cleanup in webrtcRetryService)
+      peerConnections.value.forEach((pc, participantId) => {
+        try {
+          // Stop quality monitoring for this connection
+          webrtcRetryService.stopQualityMonitor(pc)
+          // Close the connection
+          pc.close()
+        } catch (error) {
+          console.error(`Error closing peer connection for ${participantId}:`, error)
+        }
+      })
+      peerConnections.value.clear()
+      
       // Close SFU connections if active
       if (sfuMode.value) {
         sfuManager.closeSFUConnections()
@@ -1057,19 +1130,38 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
       // Close WebSocket
       if (websocket.value) {
-        websocket.value.close(1000, 'Call ended') // Normal closure
-        websocket.value = null
+        try {
+          if (websocket.value.readyState === WebSocket.OPEN || websocket.value.readyState === WebSocket.CONNECTING) {
+            websocket.value.close(1000, 'Call ended') // Normal closure
+          }
+        } catch (error) {
+          console.error('Error closing WebSocket:', error)
+        } finally {
+          websocket.value = null
+        }
       }
 
       // Stop local media tracks
       if (localStream.value) {
-        localStream.value.getTracks().forEach((track) => track.stop())
+        localStream.value.getTracks().forEach((track) => {
+          try {
+            track.stop()
+          } catch (error) {
+            console.error('Error stopping local track:', error)
+          }
+        })
         localStream.value = null
       }
 
       // Stop and clear all remote streams
       remoteStreams.value.forEach((stream) => {
-        stream.getTracks().forEach((track) => track.stop())
+        stream.getTracks().forEach((track) => {
+          try {
+            track.stop()
+          } catch (error) {
+            console.error('Error stopping remote track:', error)
+          }
+        })
       })
       remoteStreams.value.clear()
 
@@ -1084,6 +1176,12 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       console.log('Call ended successfully')
     } catch (error) {
       console.error('Failed to end call:', error)
+      // Report error but don't throw - we want to clean up as much as possible
+      errorReportingService.captureError(error, {
+        type: 'webrtc-error',
+        severity: 'error',
+        context: { action: 'endCall' }
+      })
     }
   }
 

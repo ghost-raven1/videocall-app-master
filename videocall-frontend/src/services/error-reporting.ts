@@ -1,20 +1,32 @@
-// src/services/error-reporting.js - Error reporting and monitoring service
+// src/services/error-reporting.ts - Error reporting and monitoring service
 import { useGlobalStore } from '../stores/global'
+import type {
+  ErrorInfo,
+  ErrorReport,
+  ErrorSeverity,
+  ErrorType,
+  ErrorContext,
+  UserContext,
+  CustomContext,
+  MessageInfo,
+  AppEnvironment,
+  PerformanceWithMemory
+} from '../types/errors'
 
 export class ErrorReportingService {
   // Class fields (TS) to satisfy useDefineForClassFields
-  errors: any[] = []
+  errors: ErrorReport[] = []
   maxErrors: number = 100
   isProduction: boolean = false
   reportingEndpoint?: string
   apiKey?: string
-  userContext: Record<string, any> = {}
-  customContext: Record<string, any> = {}
+  userContext: UserContext = {}
+  customContext: CustomContext = {}
 
   constructor() {
     this.errors = []
     this.maxErrors = 100 // Keep only the last 100 errors
-    const env = (window as any).__APP_ENV || {}
+    const env: AppEnvironment = window.__APP_ENV || {}
     this.isProduction = env.MODE === 'production'
     this.reportingEndpoint = env.VITE_ERROR_REPORTING_URL
     this.apiKey = env.VITE_ERROR_REPORTING_API_KEY
@@ -50,18 +62,20 @@ export class ErrorReportingService {
   /**
    * Capture an error with context information
    */
-  captureError(error: any, context: Record<string, any> = {}) {
-    const errorInfo = {
-      message: error.message || error.toString(),
-      stack: error.stack,
+  captureError(error: Error | unknown, context: ErrorContext = {}) {
+    const errorObj = error instanceof Error ? error : new Error(String(error))
+    
+    const errorInfo: ErrorInfo = {
+      message: errorObj.message || errorObj.toString(),
+      stack: errorObj.stack,
       timestamp: new Date().toISOString(),
       url: window.location.href,
       userAgent: navigator.userAgent,
       userId: this.getCurrentUserId(),
       sessionId: this.getSessionId(),
-      context,
-      severity: context.severity || 'error',
-      type: context.type || 'unknown',
+      context: context,
+      severity: (context.severity || 'error') as ErrorSeverity,
+      type: (context.type || 'unknown') as ErrorType,
       metadata: {
         viewport: `${window.innerWidth}x${window.innerHeight}`,
         screen: `${screen.width}x${screen.height}`,
@@ -98,13 +112,13 @@ export class ErrorReportingService {
   /**
    * Capture a message (for logging purposes)
    */
-  captureMessage(message: string, level: 'info'|'warning'|'error' = 'info', context: Record<string, any> = {}) {
-    const messageInfo = {
+  captureMessage(message: string, level: 'info'|'warning'|'error' = 'info', context: ErrorContext = {}) {
+    const messageInfo: MessageInfo = {
       message,
       level,
       timestamp: new Date().toISOString(),
       url: window.location.href,
-      context,
+      context: context,
       type: 'message'
     }
 
@@ -144,10 +158,11 @@ export class ErrorReportingService {
   /**
    * Send errors to the external reporting service
    */
-  async sendToReportingService(errors: any[]) {
+  async sendToReportingService(errors: ErrorReport[]) {
     if (!this.reportingEndpoint) return
 
     try {
+      const env: AppEnvironment = window.__APP_ENV || {}
       const response = await fetch(this.reportingEndpoint, {
         method: 'POST',
         headers: {
@@ -156,8 +171,8 @@ export class ErrorReportingService {
         },
         body: JSON.stringify({
           errors,
-          appVersion: ((window as any).__APP_ENV?.VITE_APP_VERSION) || '1.0.0',
-          environment: ((window as any).__APP_ENV?.MODE) || 'development',
+          appVersion: env.VITE_APP_VERSION || '1.0.0',
+          environment: env.MODE || 'development',
           timestamp: new Date().toISOString()
         })
       })
@@ -176,7 +191,7 @@ export class ErrorReportingService {
   /**
    * Report a single error immediately
    */
-  async reportError(errorInfo) {
+  async reportError(errorInfo: ErrorInfo) {
     if (this.isProduction && this.reportingEndpoint) {
       try {
         await this.sendToReportingService([errorInfo])
@@ -215,12 +230,9 @@ export class ErrorReportingService {
    * Get memory usage information (if available)
    */
   getMemoryUsage() {
-    if ('memory' in (performance as any)) {
-      const memInfo = (performance as any).memory as {
-        usedJSHeapSize: number
-        totalJSHeapSize: number
-        jsHeapSizeLimit: number
-      }
+    const perf = performance as PerformanceWithMemory
+    if (perf.memory) {
+      const memInfo = perf.memory
       return {
         used: Math.round(memInfo.usedJSHeapSize / 1048576), // Convert to MB
         total: Math.round(memInfo.totalJSHeapSize / 1048576),
@@ -247,14 +259,14 @@ export class ErrorReportingService {
   /**
    * Set user context for error reporting
    */
-  setUserContext(userContext) {
+  setUserContext(userContext: UserContext) {
     this.userContext = { ...this.userContext, ...userContext }
   }
 
   /**
    * Set custom context for error reporting
    */
-  setCustomContext(customContext) {
+  setCustomContext(customContext: CustomContext) {
     this.customContext = { ...this.customContext, ...customContext }
   }
 }
@@ -264,19 +276,14 @@ export const errorReportingService = new ErrorReportingService()
 
 // Vue plugin for easy access in components
 export const ErrorReportingPlugin = {
-  install(app) {
+  install(app: { config: { globalProperties: Record<string, unknown> } }) {
+    // Add to global properties (works with Composition API)
     app.config.globalProperties.$errorReporting = errorReportingService
-
-    // Add $captureError and $captureMessage to all components
-    app.mixin({
-      methods: {
-        $captureError(error, context) {
-          errorReportingService.captureError(error, context)
-        },
-        $captureMessage(message, level, context) {
-          errorReportingService.captureMessage(message, level, context)
-        }
-      }
-    })
+    app.config.globalProperties.$captureError = (error: Error | unknown, context?: ErrorContext) => {
+      errorReportingService.captureError(error, context)
+    }
+    app.config.globalProperties.$captureMessage = (message: string, level?: 'info'|'warning'|'error', context?: ErrorContext) => {
+      errorReportingService.captureMessage(message, level || 'info', context || {})
+    }
   }
 }

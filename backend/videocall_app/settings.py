@@ -66,6 +66,7 @@ THIRD_PARTY_APPS = [
     'corsheaders',
     'channels',
     'django_ratelimit',
+    'drf_spectacular',  # OpenAPI documentation
 ]
 
 LOCAL_APPS = [
@@ -231,7 +232,8 @@ REST_FRAMEWORK = {
         'anon': '100/hour',
         'user': '1000/hour',
         'admin': '5000/hour'
-    }
+    },
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 # Enable throttling in production only
@@ -240,6 +242,50 @@ if not DEBUG:
         'rest_framework.throttling.AnonRateThrottle',
         'rest_framework.throttling.UserRateThrottle'
     ]
+
+# OpenAPI/Spectacular settings
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'VideoCall App API',
+    'DESCRIPTION': 'API documentation for VideoCall application - secure video calling without registration',
+    'VERSION': '2.1',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SCHEMA_PATH_PREFIX': '/api/',
+    'COMPONENT_SPLIT_REQUEST': True,
+    'COMPONENT_NO_READ_ONLY_REQUIRED': True,
+    'TAGS': [
+        {'name': 'Authentication', 'description': 'User authentication and authorization'},
+        {'name': 'Rooms', 'description': 'Room management and video calls'},
+        {'name': 'Chat', 'description': 'Chat messages and file attachments'},
+        {'name': 'Screen Share', 'description': 'Screen sharing functionality'},
+        {'name': 'Recording', 'description': 'Call recording management'},
+        {'name': 'Admin', 'description': 'Administrative endpoints'},
+        {'name': 'System', 'description': 'System health and metrics'},
+    ],
+    'SECURITY_DEFINITIONS': {
+        'JWT': {
+            'type': 'http',
+            'scheme': 'bearer',
+            'bearerFormat': 'JWT',
+            'description': 'JWT token authentication using httpOnly cookies'
+        },
+        'CookieAuth': {
+            'type': 'apiKey',
+            'in': 'cookie',
+            'name': 'access_token',
+            'description': 'JWT token stored in httpOnly cookie'
+        }
+    },
+    'SERVERS': [
+        {
+            'url': 'http://localhost:8000',
+            'description': 'Development server'
+        },
+        {
+            'url': 'https://video-call-ghost.ru',
+            'description': 'Production server'
+        }
+    ],
+}
 
 # JWT Configuration
 from datetime import timedelta
@@ -580,11 +626,43 @@ ENABLE_LDAP = config('ENABLE_LDAP', default=False, cast=bool)
 ENABLE_SAML = config('ENABLE_SAML', default=False, cast=bool)
 ENABLE_OAUTH = config('ENABLE_OAUTH', default=False, cast=bool)
 
+# Authentication Backends - include SSO backends if enabled
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',  # Default Django authentication
+]
+
+if ENABLE_LDAP:
+    AUTHENTICATION_BACKENDS.append('apps.authentication.sso_backends.LDAPBackend')
+if ENABLE_SAML:
+    AUTHENTICATION_BACKENDS.append('apps.authentication.sso_backends.SAMLBackend')
+if ENABLE_OAUTH:
+    AUTHENTICATION_BACKENDS.append('apps.authentication.sso_backends.OAuth2Backend')
+
 # LDAP Settings (if enabled)
 if ENABLE_LDAP:
     AUTH_LDAP_SERVER_URI = config('LDAP_SERVER_URI', default='ldap://localhost')
     AUTH_LDAP_BIND_DN = config('LDAP_BIND_DN', default='')
     AUTH_LDAP_BIND_PASSWORD = config('LDAP_BIND_PASSWORD', default='')
+
+# OAuth Settings (if enabled)
+if ENABLE_OAUTH:
+    # Google OAuth
+    GOOGLE_OAUTH_CLIENT_ID = config('GOOGLE_OAUTH_CLIENT_ID', default='')
+    GOOGLE_OAUTH_CLIENT_SECRET = config('GOOGLE_OAUTH_CLIENT_SECRET', default='')
+    GOOGLE_OAUTH_REDIRECT_URI = config('GOOGLE_OAUTH_REDIRECT_URI', default='http://localhost:8000/api/auth/oauth/google/callback/')
+    
+    # Microsoft OAuth
+    MICROSOFT_OAUTH_CLIENT_ID = config('MICROSOFT_OAUTH_CLIENT_ID', default='')
+    MICROSOFT_OAUTH_CLIENT_SECRET = config('MICROSOFT_OAUTH_CLIENT_SECRET', default='')
+    MICROSOFT_OAUTH_REDIRECT_URI = config('MICROSOFT_OAUTH_REDIRECT_URI', default='http://localhost:8000/api/auth/oauth/microsoft/callback/')
+
+# SAML Settings (if enabled)
+if ENABLE_SAML:
+    SAML_SP_ENTITY_ID = config('SAML_SP_ENTITY_ID', default='https://your-domain.com/saml/metadata/')
+    SAML_SP_ACS_URL = config('SAML_SP_ACS_URL', default='https://your-domain.com/api/auth/saml/acs/')
+    SAML_IDP_ENTITY_ID = config('SAML_IDP_ENTITY_ID', default='')
+    SAML_IDP_SSO_URL = config('SAML_IDP_SSO_URL', default='')
+    SAML_IDP_CERT = config('SAML_IDP_CERT', default='')
 
 # Recording Settings
 RECORDING_STORAGE_PATH = config('RECORDING_STORAGE_PATH', default='recordings/')

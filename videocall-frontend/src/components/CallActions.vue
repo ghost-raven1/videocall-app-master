@@ -10,9 +10,10 @@
           <p class="text-gray-600 mb-4">Создайте новую комнату для видеозвонка и пригласите участников</p>
           <button 
             @click="createNewCall" 
-            class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded transition-colors"
+            :disabled="isCreating"
+            class="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded transition-colors"
           >
-            Создать звонок
+            {{ isCreating ? 'Создание...' : 'Создать звонок' }}
           </button>
         </div>
         
@@ -29,10 +30,10 @@
             />
             <button 
               @click="joinCall" 
-              class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded transition-colors"
-              :disabled="!roomCode"
+              class="bg-green-500 hover:bg-green-600 disabled:bg-gray-400 disabled:cursor-not-allowed text-white font-bold py-2 px-4 rounded transition-colors"
+              :disabled="!roomCode || isJoining"
             >
-              Присоединиться
+              {{ isJoining ? 'Присоединение...' : 'Присоединиться' }}
             </button>
           </div>
           <p v-if="error" class="text-red-500 mt-2 text-sm">{{ error }}</p>
@@ -45,46 +46,74 @@
 <script>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useRoomsStore } from '../stores/rooms'
 
 export default {
   name: 'CallActions',
   setup() {
     const router = useRouter()
+    const roomsStore = useRoomsStore()
     const roomCode = ref('')
     const error = ref('')
+    const isCreating = ref(false)
+    const isJoining = ref(false)
 
     // Создать новый звонок
     const createNewCall = async () => {
       try {
-        // Генерируем случайный код комнаты или используем API для создания
-        const roomId = Math.random().toString(36).substring(2, 8).toUpperCase()
+        isCreating.value = true
+        error.value = ''
         
-        // В реальном приложении здесь был бы запрос к API для создания комнаты
-        // await roomsStore.createRoom({ name: 'Новый звонок', roomId })
+        // Создаем комнату через API
+        const result = await roomsStore.createRoom()
         
-        // Переходим в комнату
-        router.push(`/room/${roomId}`)
+        if (result.success && result.room) {
+          // Переходим на страницу присоединения с кодом комнаты
+          router.push(`/join/${result.room.short_code}`)
+        } else {
+          error.value = result.error || 'Не удалось создать комнату. Пожалуйста, попробуйте снова.'
+        }
       } catch (err) {
         error.value = 'Не удалось создать комнату. Пожалуйста, попробуйте снова.'
         console.error('Error creating room:', err)
+      } finally {
+        isCreating.value = false
       }
     }
 
     // Присоединиться к существующему звонку
-    const joinCall = () => {
+    const joinCall = async () => {
       if (!roomCode.value) {
         error.value = 'Пожалуйста, введите код комнаты'
         return
       }
       
-      // В реальном приложении здесь была бы проверка существования комнаты
-      // Для демонстрации просто переходим по указанному коду
-      router.push(`/room/${roomCode.value}`)
+      try {
+        isJoining.value = true
+        error.value = ''
+        
+        // Проверяем существование комнаты и присоединяемся через API
+        const result = await roomsStore.joinRoom(roomCode.value.trim().toUpperCase())
+        
+        if (result.success && result.room) {
+          // Переходим в комнату
+          router.push(`/call/${result.room.room_id}`)
+        } else {
+          error.value = result.error || 'Комната не найдена. Проверьте код комнаты.'
+        }
+      } catch (err) {
+        error.value = 'Не удалось присоединиться к комнате. Пожалуйста, попробуйте снова.'
+        console.error('Error joining room:', err)
+      } finally {
+        isJoining.value = false
+      }
     }
 
     return {
       roomCode,
       error,
+      isCreating,
+      isJoining,
       createNewCall,
       joinCall
     }

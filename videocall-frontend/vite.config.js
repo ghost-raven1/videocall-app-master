@@ -97,6 +97,27 @@ export default defineConfig({
   build: {
     target: 'esnext',
     sourcemap: true,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+      },
+    },
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vue-vendor': ['vue', 'vue-router', 'pinia', 'vue-i18n'],
+          'webrtc-vendor': ['axios'],
+          'ui-vendor': ['@headlessui/vue', '@heroicons/vue'],
+          'utils-vendor': ['qrcode', '@vueuse/core'],
+        },
+        chunkFileNames: 'js/[name]-[hash].js',
+        entryFileNames: 'js/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash].[ext]',
+      },
+    },
+    chunkSizeWarningLimit: 1000,
   },
   define: {
     __VUE_OPTIONS_API__: false,
