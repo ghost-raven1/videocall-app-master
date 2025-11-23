@@ -28,8 +28,9 @@ export const mediaService = {
   async checkMediaPermissions() {
     try {
       const permissions = await Promise.all([
-        navigator.permissions.query({ name: 'camera' }),
-        navigator.permissions.query({ name: 'microphone' }),
+        // 'camera' and 'microphone' are not part of lib.dom PermissionName typings; cast for TS
+        navigator.permissions.query({ name: 'camera' as any }),
+        navigator.permissions.query({ name: 'microphone' as any }),
       ])
 
       return {
@@ -48,12 +49,12 @@ export const mediaService = {
   /**
    * Get optimal media constraints based on device capabilities
    */
-  async getOptimalConstraints() {
+  async getOptimalConstraints(): Promise<MediaStreamConstraints> {
     try {
       const devices = await this.getMediaDevices()
 
       // Default constraints
-      let constraints = {
+      let constraints: MediaStreamConstraints = {
         video: {
           width: { ideal: 1280, max: 1920 },
           height: { ideal: 720, max: 1080 },
@@ -78,10 +79,7 @@ export const mediaService = {
       return constraints
     } catch (error) {
       console.error('Failed to get optimal constraints:', error)
-      return {
-        video: true,
-        audio: true,
-      }
+      return { video: true, audio: true }
     }
   },
 

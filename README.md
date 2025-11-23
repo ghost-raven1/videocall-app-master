@@ -53,6 +53,43 @@
 
 ## 🚀 Быстрый старт
 
+### Development режим
+
+```bash
+# 1. Скопировать конфигурацию
+cp .env.dev.example .env.dev
+
+# 2. Запустить
+./scripts/start-dev.sh
+
+# Доступ:
+# - Frontend: http://localhost:3000
+# - Backend: http://localhost:8000
+# - Admin: http://localhost:8000/admin
+```
+
+### Production режим
+
+```bash
+# 1. Скопировать конфигурацию
+cp .env.prod.example .env
+
+# 2. Сгенерировать секреты
+./scripts/generate-secrets.sh
+
+# 3. Обновить .env (обязательно!)
+nano .env
+
+# 4. Запустить
+./scripts/start-prod.sh
+```
+
+Подробнее: [CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md) | [QUICK_START.md](QUICK_START.md)
+
+---
+
+## 🚀 Быстрый старт (старый способ)
+
 ### Автоматический запуск (Рекомендуется)
 
 ```bash

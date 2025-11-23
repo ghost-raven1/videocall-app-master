@@ -771,7 +771,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useWebRTCStore } from '@/stores/webrtc'
 import { useRoomsStore } from '@/stores/rooms'
@@ -784,7 +784,6 @@ import ScreenShareControls from '@/components/ScreenShareControls.vue'
 import MultiUserControls from '@/components/MultiUserControls.vue'
 import * as webrtcService from '@/services/webrtc'
 import * as utils from '@/services/utils'
-import * as mediaService from '@/services/media'
 
 const route = useRoute()
 const router = useRouter()
@@ -833,8 +832,6 @@ const peerConnection = ref(null)
 
 // Connection state variables
 const connectionProgress = ref('Please wait while we set up your call')
-const connectionRetryCount = ref(0)
-const maxRetries = 3
 
 // Computed properties
 const connectionStatusText = computed(() => {
@@ -1253,7 +1250,7 @@ const refreshConnection = () => {
 }
 
 // Chat handlers
-const onNewChatMessage = (message) => {
+const onNewChatMessage = () => {
   if (!showChat.value) {
     unreadMessages.value++
     // Optional: Play notification sound

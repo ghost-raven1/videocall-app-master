@@ -69,12 +69,10 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRoomsStore } from '../stores/rooms'
-import { useGlobalStore } from '../stores/global'
 
 const route = useRoute()
 const router = useRouter()
 const roomsStore = useRoomsStore()
-const globalStore = useGlobalStore()
 
 const roomCode = ref('')
 const isJoining = ref(false)

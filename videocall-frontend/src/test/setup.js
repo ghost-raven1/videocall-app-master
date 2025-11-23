@@ -1,4 +1,4 @@
-import { beforeAll, vi } from 'vitest'
+import { beforeAll, afterAll, vi } from 'vitest'
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
@@ -124,3 +124,12 @@ global.testUtils = {
     return element
   }
 }
+
+// Use fake timers globally in tests to stabilize time-based logic
+beforeAll(() => {
+  vi.useFakeTimers()
+})
+
+afterAll(() => {
+  vi.useRealTimers()
+})

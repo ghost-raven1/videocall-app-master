@@ -45,13 +45,11 @@
 <script>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useRoomsStore } from '../stores/rooms'
 
 export default {
   name: 'CallActions',
   setup() {
     const router = useRouter()
-    const roomsStore = useRoomsStore()
     const roomCode = ref('')
     const error = ref('')
 

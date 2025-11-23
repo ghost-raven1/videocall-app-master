@@ -286,15 +286,13 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { useWebRTCStore } from '../stores/webrtc'
-import { useGlobalStore } from '../stores/global'
 
 const webrtcStore = useWebRTCStore()
-const globalStore = useGlobalStore()
 
 // Props
-const props = defineProps({
+defineProps({
   participantCount: {
     type: Number,
     default: 1

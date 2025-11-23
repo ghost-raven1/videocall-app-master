@@ -2,6 +2,7 @@ import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
+import { existsSync } from 'node:fs'
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -65,6 +66,33 @@ export default defineConfig({
     host: true,
     port: 3000,
     strictPort: true,
+    proxy: {
+      '/api': {
+        // In Docker, use service name 'backend', otherwise use localhost
+        // Check for DOCKER_ENV or if we're running in a container (has /.dockerenv)
+        target: (process.env.DOCKER_ENV === 'true' || existsSync('/.dockerenv')) 
+          ? 'http://backend:8000' 
+          : 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+        ws: true, // Enable WebSocket proxying
+      },
+      '/ws': {
+        target: (process.env.DOCKER_ENV === 'true' || existsSync('/.dockerenv')) 
+          ? 'http://backend:8000' 
+          : 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+        ws: true,
+      },
+      '/admin': {
+        target: (process.env.DOCKER_ENV === 'true' || existsSync('/.dockerenv')) 
+          ? 'http://backend:8000' 
+          : 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
   },
   build: {
     target: 'esnext',

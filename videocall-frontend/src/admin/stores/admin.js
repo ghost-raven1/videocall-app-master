@@ -342,8 +342,6 @@ export const useAdminStore = defineStore('admin', {
         const {
           page = 1,
           perPage = 20,
-          search = '',
-          status = '',
         } = params
 
         // Mock API call
@@ -427,8 +425,6 @@ export const useAdminStore = defineStore('admin', {
         const {
           page = 1,
           perPage = 20,
-          search = '',
-          role = '',
         } = params
 
         // Mock API call

@@ -1,11 +1,23 @@
 // src/services/error-reporting.js - Error reporting and monitoring service
+import { useGlobalStore } from '../stores/global'
+
 export class ErrorReportingService {
+  // Class fields (TS) to satisfy useDefineForClassFields
+  errors: any[] = []
+  maxErrors: number = 100
+  isProduction: boolean = false
+  reportingEndpoint?: string
+  apiKey?: string
+  userContext: Record<string, any> = {}
+  customContext: Record<string, any> = {}
+
   constructor() {
     this.errors = []
     this.maxErrors = 100 // Keep only the last 100 errors
-    this.isProduction = import.meta.env.MODE === 'production'
-    this.reportingEndpoint = import.meta.env.VITE_ERROR_REPORTING_URL
-    this.apiKey = import.meta.env.VITE_ERROR_REPORTING_API_KEY
+    const env = (window as any).__APP_ENV || {}
+    this.isProduction = env.MODE === 'production'
+    this.reportingEndpoint = env.VITE_ERROR_REPORTING_URL
+    this.apiKey = env.VITE_ERROR_REPORTING_API_KEY
 
     // Initialize error reporting
     this.initialize()
@@ -38,7 +50,7 @@ export class ErrorReportingService {
   /**
    * Capture an error with context information
    */
-  captureError(error, context = {}) {
+  captureError(error: any, context: Record<string, any> = {}) {
     const errorInfo = {
       message: error.message || error.toString(),
       stack: error.stack,
@@ -86,7 +98,7 @@ export class ErrorReportingService {
   /**
    * Capture a message (for logging purposes)
    */
-  captureMessage(message, level = 'info', context = {}) {
+  captureMessage(message: string, level: 'info'|'warning'|'error' = 'info', context: Record<string, any> = {}) {
     const messageInfo = {
       message,
       level,
@@ -132,7 +144,7 @@ export class ErrorReportingService {
   /**
    * Send errors to the external reporting service
    */
-  async sendToReportingService(errors) {
+  async sendToReportingService(errors: any[]) {
     if (!this.reportingEndpoint) return
 
     try {
@@ -144,8 +156,8 @@ export class ErrorReportingService {
         },
         body: JSON.stringify({
           errors,
-          appVersion: import.meta.env.VITE_APP_VERSION || '1.0.0',
-          environment: import.meta.env.MODE || 'development',
+          appVersion: ((window as any).__APP_ENV?.VITE_APP_VERSION) || '1.0.0',
+          environment: ((window as any).__APP_ENV?.MODE) || 'development',
           timestamp: new Date().toISOString()
         })
       })
@@ -203,8 +215,12 @@ export class ErrorReportingService {
    * Get memory usage information (if available)
    */
   getMemoryUsage() {
-    if ('memory' in performance) {
-      const memInfo = performance.memory
+    if ('memory' in (performance as any)) {
+      const memInfo = (performance as any).memory as {
+        usedJSHeapSize: number
+        totalJSHeapSize: number
+        jsHeapSizeLimit: number
+      }
       return {
         used: Math.round(memInfo.usedJSHeapSize / 1048576), // Convert to MB
         total: Math.round(memInfo.totalJSHeapSize / 1048576),

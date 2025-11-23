@@ -181,6 +181,30 @@ func (sm *StreamManager) readTrackPackets(stream *Stream) {
 			return
 		}
 
+		// Update quality controller first
+		stream.qualityController.UpdateWithRTPPacket(rtpPacket)
+
+		// Check if we should adapt quality
+		stream.qualityController.AdaptQuality()
+
+		// Get target bitrate for this stream
+		targetBitrate := stream.qualityController.GetTargetBitrate()
+		currentBitrate := stream.qualityController.GetQualityMetrics().Bitrate
+
+		// Apply bandwidth limiting: only forward packets if we're within target bitrate
+		// This is a simple throttling mechanism
+		if currentBitrate > targetBitrate && targetBitrate > 0 {
+			// Calculate packet drop rate to achieve target bitrate
+			dropRate := 1.0 - float64(targetBitrate)/float64(currentBitrate)
+			if dropRate > 0 && dropRate < 1.0 {
+				// Randomly drop packets to achieve target bitrate
+				// In production, this could be more sophisticated (e.g., drop based on priority)
+				if stream.qualityController.shouldDropPacket(dropRate) {
+					continue // Skip this packet
+				}
+			}
+		}
+
 		// Forward to all subscribers
 		stream.subscribersMutex.RLock()
 		subscribers := make([]*Peer, 0, len(stream.subscribers))
@@ -192,9 +216,6 @@ func (sm *StreamManager) readTrackPackets(stream *Stream) {
 		for _, peer := range subscribers {
 			peer.SendRTPPacket(stream.id, rtpPacket)
 		}
-
-		// Update quality controller
-		stream.qualityController.UpdateWithRTPPacket(rtpPacket)
 	}
 }
 

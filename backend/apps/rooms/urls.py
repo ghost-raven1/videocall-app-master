@@ -12,6 +12,11 @@ router = DefaultRouter()
 router.register(r'admin/management', views.RoomManagementViewSet, basename='room_management')
 router.register(r'admin/analytics', views.RoomAnalyticsViewSet, basename='room_analytics')
 
+# Admin panel aliases (for Vue.js admin)
+admin_router = DefaultRouter()
+admin_router.register(r'admin/rooms', views.RoomManagementViewSet, basename='admin_rooms')
+admin_router.register(r'admin/analytics', views.RoomAnalyticsViewSet, basename='admin_analytics')
+
 # Chat and screen share routers
 router.register(r'chat/messages', chat_views.ChatMessageViewSet, basename='chat_messages')
 router.register(r'chat/attachments', chat_views.ChatAttachmentViewSet, basename='chat_attachments')
@@ -42,10 +47,14 @@ urlpatterns = [
 
     # Analytics endpoints for dashboard
     path('admin/analytics/dashboard/', views.RoomAnalyticsViewSet.as_view({'get': 'dashboard_stats'}), name='dashboard_stats'),
+    path('admin/dashboard/stats', views.RoomAnalyticsViewSet.as_view({'get': 'dashboard_stats'}), name='admin_dashboard_stats'),  # Alias for Vue.js admin
     path('admin/rooms/active/', views.RoomManagementViewSet.as_view({'get': 'active_rooms'}), name='active_rooms'),
     path('admin/activity/logs/', views.RoomManagementViewSet.as_view({'get': 'room_activity_logs'}), name='room_activity_logs'),
 
     # Include router URLs
     path('', include(router.urls)),
+    
+    # Admin panel aliases (for Vue.js admin)
+    path('', include(admin_router.urls)),
 ]
 

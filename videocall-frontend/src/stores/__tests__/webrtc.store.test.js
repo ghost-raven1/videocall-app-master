@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useWebRTCStore } from '../webrtc.js'
-import { buildWebSocketUrl, isValidWsMessage } from '../webrtc.js'
-import { useGlobalStore } from '../../stores/global.js'
+import { useWebRTCStore } from '../webrtc'
+import { buildWebSocketUrl, isValidWsMessage } from '../webrtc'
+import { useGlobalStore } from '../../stores/global'
 
 // Mock retry service used by the store to avoid side effects
 vi.mock('../../services/webrtc-retry', () => {

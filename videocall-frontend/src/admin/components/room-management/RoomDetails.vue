@@ -303,7 +303,7 @@
 </template>
 
 <script setup>
-import { ref, computed, defineProps, onMounted } from 'vue'
+import { ref, defineProps, onMounted } from 'vue'
 import LoadingSpinner from '../ui/LoadingSpinner.vue'
 
 const props = defineProps({
@@ -313,7 +313,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['edit', 'force-close', 'close'])
+defineEmits(['edit', 'force-close', 'close'])
 
 // Tab management
 const activeTab = ref('overview')
@@ -334,10 +334,7 @@ const participants = ref([])
 const activity = ref([])
 const activityPeriod = ref('24h')
 
-// Computed
-const activeParticipants = computed(() => {
-  return participants.value.filter(p => p.connection === 'connected')
-})
+// Computed (удалено как неиспользуемое)
 
 // Methods
 const loadParticipants = async () => {

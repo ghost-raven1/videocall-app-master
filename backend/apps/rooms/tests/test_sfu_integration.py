@@ -10,8 +10,8 @@ from django.test import TestCase, override_settings
 from django.conf import settings
 from django.urls import reverse
 
-from ..sfu_client import SFUClient
-from ..models import Room, RoomParticipant
+from apps.rooms.sfu_client import SFUClient
+from apps.rooms.models import RoomManager
 
 
 class SFUIntegrationTestCase(TestCase):
@@ -349,54 +349,71 @@ class FullIntegrationTestCase(TestCase):
 
 
 class DjangoModelIntegrationTestCase(TestCase):
-    """Test Django model integration with SFU operations"""
+    """Test Django RoomManager integration with SFU operations"""
 
     def setUp(self):
-        """Set up Django model test fixtures"""
-        self.test_room = Room.objects.create(
-            code="TEST123",
-            name="Test Room",
-            max_participants=10
-        )
+        """Set up test fixtures"""
+        self.test_room_id = f"test-room-{int(time.time())}"
+        self.sfu_client = SFUClient()
+
+    def tearDown(self):
+        """Clean up after tests"""
+        try:
+            RoomManager.delete_room(self.test_room_id)
+        except:
+            pass
 
     def test_room_creation_with_sfu_integration(self):
-        """Test Django room creation triggers SFU room creation"""
-        # This would test the actual integration between Django models
-        # and SFU room creation (when implemented)
-
-        # For now, we test the model structure
-        self.assertEqual(self.test_room.code, "TEST123")
-        self.assertEqual(self.test_room.name, "Test Room")
-        self.assertEqual(self.test_room.max_participants, 10)
-        self.assertEqual(self.test_room.status, "active")
+        """Test room creation with SFU integration"""
+        # Create room using RoomManager
+        room_data = RoomManager.create_room(creator_ip='127.0.0.1')
+        self.assertIsNotNone(room_data)
+        self.assertIn('room_id', room_data)
+        self.assertIn('short_code', room_data)
+        self.assertEqual(room_data['room_mode'], 'p2p')  # Default is P2P
+        
+        # Test SFU room creation
+        with patch.object(self.sfu_client, 'create_room') as mock_create:
+            mock_create.return_value = {
+                'success': True,
+                'room_id': room_data['room_id'],
+                'ws_url': 'ws://localhost:8080/ws/test'
+            }
+            result = RoomManager.create_sfu_room(room_data['room_id'])
+            self.assertTrue(result.get('success', False))
 
     def test_participant_management_integration(self):
         """Test participant management with SFU synchronization"""
-        # Create participants
-        participants = []
+        # Create room
+        room_data = RoomManager.create_room(creator_ip='127.0.0.1')
+        room_id = room_data['room_id']
+        
+        # Add participants
         for i in range(3):
-            participant = RoomParticipant.objects.create(
-                room=self.test_room,
-                user_id=f"user-{i}",
-                status="active"
-            )
-            participants.append(participant)
-
-        # Verify participants were created
-        self.assertEqual(self.test_room.participants.count(), 3)
-
-        # Test participant status updates
-        participants[0].status = "disconnected"
-        participants[0].save()
-
-        # Verify status update
-        participants[0].refresh_from_db()
-        self.assertEqual(participants[0].status, "disconnected")
+            participant_id = f"user-{i}"
+            result = RoomManager.add_participant(room_id, participant_id, f"User {i}")
+            self.assertTrue(result)
+        
+        # Verify participants were added
+        room_data = RoomManager.get_room_by_id(room_id)
+        self.assertEqual(len(room_data['participants']), 3)
 
     def test_room_capacity_management(self):
         """Test room capacity limits and SFU integration"""
+        # Create room
+        room_data = RoomManager.create_room(creator_ip='127.0.0.1')
+        room_id = room_data['room_id']
+        max_participants = room_data.get('max_participants', 15)
+        
         # Test max participants limit
-        self.assertEqual(self.test_room.max_participants, 10)
-
-        # This would test the integration with SFU capacity management
-        # when participants are added/removed
+        self.assertGreater(max_participants, 0)
+        
+        # Add participants up to limit
+        for i in range(max_participants):
+            participant_id = f"user-{i}"
+            result = RoomManager.add_participant(room_id, participant_id, f"User {i}")
+            self.assertTrue(result)
+        
+        # Verify room has max participants
+        room_data = RoomManager.get_room_by_id(room_id)
+        self.assertEqual(len(room_data['participants']), max_participants)

@@ -89,9 +89,9 @@ export const utils = {
   /**
    * Format relative time
    */
-  formatRelativeTime(date) {
+  formatRelativeTime(date: Date) {
     const now = new Date()
-    const diffInSeconds = Math.floor((now - date) / 1000)
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000)
 
     if (diffInSeconds < 60) {
       return 'Just now'
@@ -114,7 +114,7 @@ export const utils = {
     try {
       new URL(string)
       return true
-    } catch (_) {
+    } catch {
       return false
     }
   },

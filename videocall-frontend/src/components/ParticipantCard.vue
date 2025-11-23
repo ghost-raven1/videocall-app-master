@@ -143,7 +143,6 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
-import { useWebRTCStore } from '../stores/webrtc'
 
 // Props
 const props = defineProps({

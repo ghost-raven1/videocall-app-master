@@ -1,5 +1,23 @@
 // src/services/webrtc-retry.js - WebRTC retry logic and error handling
 export class WebRTCRetryService {
+  // Retry/backoff configuration
+  maxRetries: number
+  baseDelay: number
+  maxDelay: number
+
+  // Retry state
+  retryAttempts: Map<string, number>
+  retryTimeouts: Map<string, ReturnType<typeof setTimeout>>
+  isRetrying: Set<string>
+
+  // Quality monitoring state
+  qualityMonitors: Map<RTCPeerConnection, ReturnType<typeof setInterval>>
+  qualityCallbacks: Map<RTCPeerConnection, (quality: { score: number; issues: string[]; recommendation: string }, _state?: string) => void>
+  connectionStates: Map<RTCPeerConnection, RTCPeerConnectionState | string>
+
+  // Fallback strategies and state
+  fallbackStrategies: { video_to_audio: string; audio_to_chat: string; full_reconnect: string }
+  currentFallbackLevel: Map<RTCPeerConnection, number>
   constructor() {
     this.maxRetries = 5
     this.baseDelay = 1000 // 1 second
@@ -26,7 +44,16 @@ export class WebRTCRetryService {
   /**
    * Execute operation with exponential backoff retry
    */
-  async executeWithRetry(operationId, operation, options = {}) {
+  async executeWithRetry(
+    operationId: string,
+    operation: () => Promise<any>,
+    options: {
+      maxRetries?: number
+      baseDelay?: number
+      maxDelay?: number
+      shouldRetry?: (_error: any, _attemptCount: number) => boolean
+    } = {}
+  ) {
     const {
       maxRetries = this.maxRetries,
       baseDelay = this.baseDelay,
@@ -101,7 +128,7 @@ export class WebRTCRetryService {
   /**
    * Default retry condition
    */
-  defaultShouldRetry(error, attemptCount) {
+  defaultShouldRetry(error: any, attemptCount: number) {
     // Don't retry on certain errors
     if (error.name === 'NotAllowedError' || error.name === 'NotFoundError') {
       return false
@@ -344,7 +371,7 @@ export class WebRTCRetryService {
   /**
    * Get quality-based recommendation
    */
-  getQualityRecommendation(quality, issues) {
+  getQualityRecommendation(quality, _issues) {
     if (quality >= 80) {
       return 'excellent'
     } else if (quality >= 60) {
@@ -439,14 +466,14 @@ export class WebRTCRetryService {
    */
   cleanup() {
     // Cancel all retries
-    for (const timeoutId of this.retryTimeouts.values()) {
+    this.retryTimeouts.forEach((timeoutId) => {
       clearTimeout(timeoutId)
-    }
+    })
 
     // Clear quality monitors
-    for (const monitor of this.qualityMonitors.values()) {
+    this.qualityMonitors.forEach((monitor) => {
       clearInterval(monitor)
-    }
+    })
 
     // Clear all maps and sets
     this.retryAttempts.clear()

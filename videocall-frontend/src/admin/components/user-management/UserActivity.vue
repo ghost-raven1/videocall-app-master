@@ -234,10 +234,10 @@
 </template>
 
 <script setup>
-import { ref, computed, defineProps, onMounted } from 'vue'
+import { ref, defineProps, onMounted } from 'vue'
 import LoadingSpinner from '../ui/LoadingSpinner.vue'
 
-const props = defineProps({
+defineProps({
   user: {
     type: Object,
     required: true

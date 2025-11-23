@@ -2,10 +2,10 @@
  * @jest-environment jsdom
  */
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
-import { webrtcService } from '../webrtc.js'
+import { webrtcService } from '../webrtc'
 
 // Mock the webrtc-retry service
-vi.mock('../webrtc-retry.js', () => ({
+vi.mock('../webrtc-retry', () => ({
   webrtcRetryService: {
     createAdaptiveQualityMonitor: vi.fn(),
     monitorConnectionState: vi.fn(),
@@ -210,7 +210,7 @@ describe('webrtcService', () => {
       }
 
       mockGetStats.mockResolvedValue([])
-      webrtcService.getConnectionStats = vi.fn().mockResolvedValue(mockStats)
+      const getStatsSpy = vi.spyOn(webrtcService, 'getConnectionStats').mockResolvedValue(mockStats)
 
       const monitor = webrtcService.createQualityMonitor(mockPeerConnection, callback, 1000)
 
@@ -221,7 +221,7 @@ describe('webrtcService', () => {
 
       await new Promise(resolve => setImmediate(resolve))
 
-      expect(webrtcService.getConnectionStats).toHaveBeenCalledWith(mockPeerConnection)
+      expect(getStatsSpy).toHaveBeenCalledWith(mockPeerConnection)
       expect(callback).toHaveBeenCalled()
     })
 
@@ -230,6 +230,8 @@ describe('webrtcService', () => {
       mockGetStats.mockRejectedValue(new Error('InvalidStateError'))
 
       const monitor = webrtcService.createQualityMonitor(mockPeerConnection, callback, 1000)
+
+      expect(monitor).not.toBeNull()
 
       // Fast-forward time to trigger the interval
       vi.advanceTimersByTime(1000)
@@ -403,8 +405,8 @@ describe('webrtcService', () => {
   })
 
   describe('Error Handling', () => {
-    it('delegates error message formatting to retry service', () => {
-      const { webrtcRetryService } = require('../webrtc-retry.js')
+    it('delegates error message formatting to retry service', async () => {
+      const { webrtcRetryService } = await import('../webrtc-retry')
       const error = new Error('Test error')
       const context = 'test context'
 
@@ -413,8 +415,8 @@ describe('webrtcService', () => {
       expect(webrtcRetryService.getErrorMessage).toHaveBeenCalledWith(error, context)
     })
 
-    it('handles adaptive quality monitor creation', () => {
-      const { webrtcRetryService } = require('../webrtc-retry.js')
+    it('handles adaptive quality monitor creation', async () => {
+      const { webrtcRetryService } = await import('../webrtc-retry')
       const callback = vi.fn()
 
       webrtcService.createAdaptiveQualityMonitor(mockPeerConnection, 'participant1', callback, callback)
@@ -427,8 +429,8 @@ describe('webrtcService', () => {
       )
     })
 
-    it('handles connection state monitoring', () => {
-      const { webrtcRetryService } = require('../webrtc-retry.js')
+    it('handles connection state monitoring', async () => {
+      const { webrtcRetryService } = await import('../webrtc-retry')
       const recoveryCallback = vi.fn()
       const qualityCallback = vi.fn()
 
@@ -443,7 +445,7 @@ describe('webrtcService', () => {
     })
 
     it('handles retry execution', async () => {
-      const { webrtcRetryService } = require('../webrtc-retry.js')
+      const { webrtcRetryService } = await import('../webrtc-retry')
       const operation = vi.fn()
       const options = { maxRetries: 3 }
 

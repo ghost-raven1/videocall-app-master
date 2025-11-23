@@ -206,6 +206,7 @@
 </template>
 
 <script setup>
+defineOptions({ name: 'DashboardView' })
 import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useGlobalStore } from '../stores/global'

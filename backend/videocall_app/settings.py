@@ -51,8 +51,9 @@ if DEBUG:
     ALLOWED_HOSTS.extend(['localhost', '127.0.0.1', '0.0.0.0'])
 
 # Application definition
+# Django Admin отключен - используется админка приложения (Vue.js)
 DJANGO_APPS = [
-    'django.contrib.admin',
+    # 'django.contrib.admin',  # Отключено - используем админку приложения
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -169,23 +170,26 @@ CHANNEL_LAYERS = {
     },
 }
 
-# Cache configuration with fallback for development
+# Cache configuration - Use Redis for django_ratelimit compatibility
+# django_ratelimit requires a shared cache (Redis), so we use Redis in both dev and production
+# In Docker environment, Redis is always available via REDIS_URL
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'development_cache',
-    }
-}
-
-# Use Redis in production only
-if not DEBUG:
-    CACHES['default'] = {
         'BACKEND': 'django_redis.cache.RedisCache',
         'LOCATION': REDIS_URL,
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-        }
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'CONNECTION_POOL_KWARGS': {
+                'retry_on_timeout': True,
+                'health_check_interval': 30,
+            },
+        },
+        'KEY_PREFIX': 'videocall_cache',
+        'TIMEOUT': 300,  # 5 minutes default timeout
     }
+}
 
 # Session configuration with fallback
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Use database sessions when Redis is unavailable

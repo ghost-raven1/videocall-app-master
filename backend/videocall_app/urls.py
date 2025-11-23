@@ -1,11 +1,11 @@
 # videocall_app/urls.py - Main URL configuration
-from django.contrib import admin
+# Django Admin отключен - используется админка приложения (Vue.js)
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    # path('admin/', admin.site.urls),  # Отключено - используем админку приложения
     path('api/auth/', include('apps.authentication.urls')),
     path('api/rooms/', include('apps.rooms.urls')),
     path('api/', include('apps.core.urls')),

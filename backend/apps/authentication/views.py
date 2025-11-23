@@ -315,6 +315,19 @@ class UserManagementViewSet(viewsets.ModelViewSet):
 
     queryset = User.objects.all().order_by('-created_at')
     permission_classes = [IsAuthenticated]
+    
+    def get_serializer_class(self):
+        """Return serializer class based on action"""
+        from rest_framework import serializers
+        
+        class UserSerializer(serializers.ModelSerializer):
+            """Serializer for User model"""
+            class Meta:
+                model = User
+                fields = ['id', 'email', 'role', 'first_name', 'last_name', 'is_active', 'is_staff', 'created_at', 'updated_at', 'last_activity']
+                read_only_fields = ['id', 'created_at', 'updated_at', 'last_activity']
+        
+        return UserSerializer
 
     def get_queryset(self):
         """Filter queryset based on user permissions"""

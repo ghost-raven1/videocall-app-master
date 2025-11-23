@@ -8,8 +8,13 @@ import axios from 'axios'
  */
 
 // Create axios instance with base configuration
+// In dev mode, use relative path which will be proxied by Vite
+// In production, use VITE_API_BASE_URL if set
+const apiBaseURL = import.meta.env.PROD 
+  ? (import.meta.env.VITE_API_BASE_URL || ((window as any).__API_BASE_URL) || '/api')
+  : '/api' // Use relative path in dev - Vite will proxy it
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
+  baseURL: apiBaseURL,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

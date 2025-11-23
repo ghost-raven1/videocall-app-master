@@ -12,6 +12,10 @@ router = DefaultRouter()
 router.register(r'users', views.UserManagementViewSet, basename='users')
 router.register(r'activity', views.UserActivityViewSet, basename='activity')
 
+# Admin panel aliases (for Vue.js admin)
+admin_router = DefaultRouter()
+admin_router.register(r'admin/users', views.UserManagementViewSet, basename='admin_users')
+
 urlpatterns = [
     # Legacy authentication endpoints (for backward compatibility)
     path('login/', views.login_view, name='login'),
@@ -40,4 +44,7 @@ urlpatterns = [
 
     # Include router URLs
     path('', include(router.urls)),
+    
+    # Admin panel aliases (for Vue.js admin)
+    path('', include(admin_router.urls)),
 ]

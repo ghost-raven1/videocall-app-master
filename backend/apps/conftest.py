@@ -8,13 +8,15 @@ from django.conf import settings
 from django.test import Client
 from django.contrib.auth import get_user_model
 from faker import Faker
-from rest_framework.test import APITestCase
-from channels.testing import WebsocketCommunicator
 import asyncio
 
-# Setup Django
+# Setup Django BEFORE importing DRF classes
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'videocall_app.settings')
 django.setup()
+
+# Import DRF and channels AFTER Django setup
+from rest_framework.test import APITestCase
+from channels.testing import WebsocketCommunicator
 
 User = get_user_model()
 fake = Faker()
@@ -75,11 +77,7 @@ if not settings.configured:
     )
 
 
-@pytest.fixture(scope='session')
-def django_db_setup():
-    """Setup test database."""
-    from django.core.management import execute_from_command_line
-    execute_from_command_line(['manage.py', 'migrate', '--run-syncdb'])
+# Removed custom django_db_setup - using pytest-django's built-in fixture
 
 
 @pytest.fixture

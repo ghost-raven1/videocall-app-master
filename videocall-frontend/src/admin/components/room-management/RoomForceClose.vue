@@ -174,7 +174,7 @@
 import { ref, computed, defineProps, defineEmits } from 'vue'
 import LoadingSpinner from '../ui/LoadingSpinner.vue'
 
-const props = defineProps({
+defineProps({
   room: {
     type: Object,
     required: true

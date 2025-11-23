@@ -106,14 +106,12 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useWebRTCStore } from '../stores/webrtc'
-import { useRoomsStore } from '../stores/rooms'
 import ParticipantCard from './ParticipantCard.vue'
 
 const webrtcStore = useWebRTCStore()
-const roomsStore = useRoomsStore()
 
 // Props
-const props = defineProps({
+defineProps({
   roomCode: {
     type: String,
     default: ''
@@ -133,7 +131,6 @@ const emit = defineEmits(['participant-count-changed'])
 
 // Reactive state
 const isTransitioning = ref(false)
-const gridLayout = ref('auto')
 
 // Computed properties
 const participantCount = computed(() => webrtcStore.participantCount)
@@ -165,7 +162,6 @@ const participantCardSize = computed(() => {
 })
 
 const localParticipantPosition = computed(() => {
-  const count = participantCount.value
   // Position local participant in bottom right corner
   return 'position-absolute'
 })

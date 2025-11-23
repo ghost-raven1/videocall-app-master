@@ -63,7 +63,6 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
 import {
   HomeIcon,
   UsersIcon,
@@ -92,42 +91,34 @@ const navigationItems = [
   {
     name: 'AdminDashboard',
     title: $t('admin.navigation.dashboard'),
-    icon: 'HomeIcon',
+    icon: HomeIcon,
   },
   {
     name: 'AdminRooms',
     title: $t('admin.navigation.rooms'),
-    icon: 'VideoCameraIcon',
+    icon: VideoCameraIcon,
     badge: null,
   },
   {
     name: 'AdminUsers',
     title: $t('admin.navigation.users'),
-    icon: 'UsersIcon',
+    icon: UsersIcon,
     badge: null,
   },
   {
     name: 'AdminAnalytics',
     title: $t('admin.navigation.analytics'),
-    icon: 'ChartBarIcon',
+    icon: ChartBarIcon,
     badge: null,
   },
   {
     name: 'AdminSettings',
     title: $t('admin.navigation.systemSettings'),
-    icon: 'CogIcon',
+    icon: CogIcon,
     badge: null,
   },
 ]
 
-// Icon components mapping
-const iconComponents = {
-  HomeIcon,
-  UsersIcon,
-  VideoCameraIcon,
-  ChartBarIcon,
-  CogIcon,
-}
 
 // Computed
 const isActiveRoute = (routeName) => {

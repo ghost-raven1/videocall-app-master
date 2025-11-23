@@ -9,7 +9,6 @@ const Dashboard = () => import(/* webpackChunkName: "dashboard" */ '../component
 const VideoCall = () => import(/* webpackChunkName: "video-call" */ '../components/VideoCall.vue')
 const NotFound = () => import(/* webpackChunkName: "not-found" */ '../components/NotFound.vue')
 const JoinRoom = () => import(/* webpackChunkName: "join-room" */ '../components/JoinRoom.vue')
-const LandingPage = () => import(/* webpackChunkName: "landing-page" */ '../components/LandingPage.vue')
 const CallActions = () => import(/* webpackChunkName: "call-actions" */ '../components/CallActions.vue')
 
 // Lazy load admin components
@@ -72,17 +71,14 @@ const routes = [
   {
     path: '/admin/login',
     name: 'AdminLogin',
-    component: () => import('../components/AdminLogin.vue'),
+    // Use the unified admin login view
+    component: () => import('../admin/views/AdminLogin.vue'),
     meta: {
       requiresAuth: false,
       title: 'Вход в админ-панель',
       description: 'Вход в панель управления',
       showInNav: false,
     },
-  },
-  {
-    path: '/admin',
-    redirect: '/admin/login',
   },
   {
     path: '/call/:roomId',
@@ -186,29 +182,8 @@ const routes = [
   //     icon: 'question',
   //   },
   // },
-  // Admin login route
-  {
-    path: '/admin/login',
-    name: 'AdminLogin',
-    component: () => import('../admin/views/AdminLogin.vue'),
-    meta: {
-      requiresAuth: false,
-      title: 'Вход в админ-панель',
-      description: 'Страница входа в панель администратора',
-      showInNav: false,
-    }
-  },
-  {
-    path: '/room/:id',
-    name: 'Room',
-    component: VideoCall,
-    meta: {
-      requiresAuth: false, // Изменено для прямого доступа
-      title: 'Video Call Room',
-      description: 'Secure video conferencing room',
-      showInNav: false,
-    },
-  },
+  // Duplicate admin login route removed
+  // Insecure direct room route removed
   // Admin routes (lazy loaded for better performance)
   {
     path: '/admin',
@@ -448,7 +423,16 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  // Authentication check removed to allow direct access
+  // Enforce authentication for routes with requiresAuth (excluding admin routes handled below)
+  if (to.meta?.requiresAuth && !to.meta?.isAdmin) {
+    if (!globalStore.isAuthenticated) {
+      await globalStore.checkAuthentication?.()
+      if (!globalStore.isAuthenticated) {
+        next({ name: 'Login', query: { redirect: to.fullPath } })
+        return
+      }
+    }
+  }
 
   // Check admin permissions
   if (to.meta.isAdmin) {
@@ -498,13 +482,13 @@ router.afterEach((to, from, failure) => {
   }
 
   // Handle route-specific post-navigation logic
-  handlePostNavigation(to, from)
+  handlePostNavigation(to)
 })
 
 // Route-specific handlers
 async function handleSpecialRoutes(to, from, next, { globalStore, roomsStore }) {
   switch (to.name) {
-    case 'VideoCall':
+    case 'VideoCall': {
       // Special handling for video call routes
       if (from.name !== 'JoinRoom' && from.name !== 'Dashboard') {
         // If coming from external source, show warning about media permissions
@@ -515,8 +499,9 @@ async function handleSpecialRoutes(to, from, next, { globalStore, roomsStore }) 
         )
       }
       break
+    }
 
-    case 'JoinRoom':
+    case 'JoinRoom': {
       // Check if we already have room info
       const shortCode = to.params.shortCode
       if (roomsStore.currentRoom?.short_code === shortCode) {
@@ -525,11 +510,13 @@ async function handleSpecialRoutes(to, from, next, { globalStore, roomsStore }) 
         return
       }
       break
+    }
 
-    case 'Dashboard':
+    case 'Dashboard': {
       // Load room history when entering dashboard
       roomsStore.loadHistory()
       break
+    }
   }
 
   next()
@@ -595,7 +582,7 @@ function trackPageView(to) {
   })
 }
 
-function handlePostNavigation(to, from) {
+function handlePostNavigation(to) {
   // Handle route-specific post-navigation tasks
 
   // Add body classes for styling
@@ -784,32 +771,10 @@ const middlewares = {
   },
 }
 
-// Apply middleware to routes
-function applyMiddleware(to, from, next, middlewareList = []) {
-  if (middlewareList.length === 0) {
-    next()
-    return
-  }
-
-  const middleware = middlewares[middlewareList[0]]
-
-  if (!middleware) {
-    console.warn(`Middleware ${middlewareList[0]} not found`)
-    applyMiddleware(to, from, next, middlewareList.slice(1))
-    return
-  }
-
-  middleware(to, from, (nextArg) => {
-    if (nextArg) {
-      next(nextArg)
-    } else {
-      applyMiddleware(to, from, next, middlewareList.slice(1))
-    }
-  })
-}
+// Middleware system placeholder was unused; removed to satisfy lint
 
 // Error handling for navigation
-router.onError((error, to, from) => {
+router.onError((error) => {
   console.error('Router error:', error)
 
   const globalStore = useGlobalStore()

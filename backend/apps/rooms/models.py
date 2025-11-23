@@ -2,10 +2,13 @@
 import uuid
 import string
 import secrets
+import logging
 from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
 from django.db import models
+
+logger = logging.getLogger(__name__)
 
 
 class RoomManager:

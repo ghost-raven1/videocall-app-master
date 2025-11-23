@@ -109,7 +109,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import LanguageSwitcher from './LanguageSwitcher.vue'
 
 // Props
-const props = defineProps({
+defineProps({
   title: {
     type: String,
     default: ''

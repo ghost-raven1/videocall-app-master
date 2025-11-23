@@ -646,7 +646,24 @@ class RoomAnalyticsViewSet(viewsets.ReadOnlyModelViewSet):
                     'ip_address': activity.ip_address,
                 })
 
+            # Calculate dashboard stats in format expected by frontend
+            # Get active rooms count from Redis
+            cache = RoomManager._get_redis_client()
+            active_rooms_count = 0
+            try:
+                # Try to get count from cache (if we store it)
+                # Otherwise, we'll need to scan Redis keys (expensive, so use cached value if available)
+                active_rooms_count = cache.get('active_rooms_count', 0) or 0
+            except Exception:
+                pass
+            
+            online_users_count = User.objects.filter(is_active=True).count()  # Simplified
+            
             stats = {
+                'activeRooms': active_rooms_count,
+                'onlineUsers': online_users_count,
+                'totalCalls': (daily_stats.total_calls if daily_stats else 0) or 0,
+                'serverLoad': 0,  # TODO: Implement server load calculation
                 'daily': daily_stats.__dict__ if daily_stats else {},
                 'weekly': weekly_stats.__dict__ if weekly_stats else {},
                 'monthly': monthly_stats.__dict__ if monthly_stats else {},

@@ -155,7 +155,7 @@
 <script setup>
 import { ref, computed, defineProps, onMounted } from 'vue'
 
-const props = defineProps({
+defineProps({
   room: {
     type: Object,
     required: true

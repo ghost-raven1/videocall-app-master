@@ -314,8 +314,6 @@ const {
   audioDevices,
   selectedVideoDevice,
   selectedAudioDevice,
-  switchVideoDevice: switchVideo,
-  switchAudioDevice: switchAudio,
 } = useMediaDevices()
 
 // Template refs

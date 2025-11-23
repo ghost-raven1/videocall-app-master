@@ -1,3 +1,20 @@
+# Development stage
+FROM node:20-alpine AS development
+
+WORKDIR /app
+
+# Копирование package.json и установка зависимостей
+COPY package*.json ./
+RUN npm ci
+
+# Копирование исходного кода
+COPY . .
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+
+# Production builder stage
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -10,8 +27,8 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Production стадия с nginx
-FROM nginx:alpine
+# Production stage with nginx
+FROM nginx:alpine AS production
 
 # Удаление дефолтной конфигурации nginx
 RUN rm /etc/nginx/conf.d/default.conf

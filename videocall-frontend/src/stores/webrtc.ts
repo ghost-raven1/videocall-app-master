@@ -30,13 +30,15 @@ import { webrtcRetryService } from '../services/webrtc-retry'
  * @returns {string}
  */
 function buildWebSocketUrl(roomId) {
-  const baseEnv = import.meta.env.VITE_WS_BASE_URL
-  if (typeof baseEnv === 'string' && baseEnv.trim() !== '') {
-    const base = baseEnv.replace(/\/$/, '')
+  // Prefer process.env (tests) and fall back to window overrides or location
+  const envBase = (typeof process !== 'undefined' && process.env && process.env.VITE_WS_BASE_URL) || (window as any).__WS_BASE_URL
+  if (typeof envBase === 'string' && envBase.trim() !== '') {
+    const base = envBase.replace(/\/$/, '')
     return `${base}/ws/room/${roomId}/`
   }
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const wsHost = import.meta.env.VITE_WS_HOST || window.location.host
+  const hostEnv = (typeof process !== 'undefined' && process.env && process.env.VITE_WS_HOST) || (window as any).__WS_HOST
+  const wsHost = hostEnv || window.location.host
   return `${protocol}//${wsHost}/ws/room/${roomId}/`
 }
 
@@ -75,6 +77,9 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   const remoteParticipants = ref([])
   const localParticipantId = ref(null)
   const sfuMode = ref(false) // true when using SFU for 3+ users
+  const sfuWebSocket = ref(null) // SFU WebSocket connection
+  const sfuPeerConnection = ref(null) // WebRTC connection to SFU server
+  const sfuRoomId = ref(null) // SFU room ID
 
   // Retry and recovery state
   const retryOperations = ref(new Map()) // Map<operationId, retryInfo>
@@ -325,7 +330,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
-  const handleConnectionRecovery = async (participantId, peerConnection, recoveryInfo) => {
+  const handleConnectionRecovery = async (participantId, peerConnection, recoveryInfo?: any) => {
     if (connectionRecoveryInProgress.value) {
       return // Already handling recovery
     }
@@ -439,16 +444,308 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     }
   }
 
-  const switchToSFUMode = () => {
-    sfuMode.value = true
-    console.log('Switching to SFU mode for multi-user call')
-    // TODO: Implement SFU connection logic
+  const switchToSFUMode = async (roomInfo = null) => {
+    // If roomInfo not provided, try to get it from current room
+    if (!roomInfo) {
+      try {
+        // Try to get room info from rooms store or API
+        const { useRoomsStore } = await import('./rooms')
+        const roomsStore = useRoomsStore()
+        if (roomsStore.currentRoomId) {
+          const roomResult = await roomsStore.getRoomInfo(roomsStore.currentRoomId)
+          if (roomResult.success) {
+            roomInfo = roomResult.room
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to get room info for SFU:', error)
+      }
+    }
+
+    if (!roomInfo || !roomInfo.sfu_ws_url || !roomInfo.sfu_enabled) {
+      console.warn('SFU mode requested but room info missing or SFU not enabled')
+      globalStore.addNotification('SFU mode not available, using P2P', 'warning', 5000)
+      return { success: false, error: 'SFU not available' }
+    }
+
+    try {
+      sfuMode.value = true
+      console.log('Switching to SFU mode for multi-user call')
+      globalStore.addNotification('Switching to SFU mode...', 'info', 3000)
+
+      // Store SFU room ID
+      sfuRoomId.value = roomInfo.sfu_room_id || roomInfo.room_id
+
+      // Close existing P2P connections
+      const p2pParticipantIds = Array.from(peerConnections.value.keys())
+      for (const participantId of p2pParticipantIds) {
+        const pc = peerConnections.value.get(participantId)
+        if (pc) {
+          pc.close()
+          peerConnections.value.delete(participantId)
+        }
+        // Clean up remote streams
+        const stream = remoteStreams.value.get(participantId)
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop())
+        }
+        remoteStreams.value.delete(participantId)
+      }
+
+      // Connect to SFU WebSocket
+      const sfuWsUrl = roomInfo.sfu_ws_url
+      console.log('Connecting to SFU WebSocket:', sfuWsUrl)
+
+      await new Promise((resolve, reject) => {
+        try {
+          // Build SFU WebSocket URL with room and peer parameters
+          const url = new URL(sfuWsUrl)
+          url.searchParams.set('room', sfuRoomId.value)
+          url.searchParams.set('peer', localParticipantId.value || `peer_${Date.now()}`)
+
+          sfuWebSocket.value = new WebSocket(url.toString())
+
+          sfuWebSocket.value.onopen = () => {
+            console.log('SFU WebSocket connected')
+            resolve(undefined)
+          }
+
+          sfuWebSocket.value.onmessage = async (event) => {
+            try {
+              const data = JSON.parse(event.data)
+              await handleSFUWebSocketMessage(data)
+            } catch (error) {
+              console.error('Failed to handle SFU WebSocket message:', error)
+            }
+          }
+
+          sfuWebSocket.value.onerror = (error) => {
+            console.error('SFU WebSocket error:', error)
+            reject(error)
+          }
+
+          sfuWebSocket.value.onclose = (event) => {
+            console.log('SFU WebSocket closed:', event.code, event.reason)
+            if (event.code !== 1000) {
+              globalStore.addNotification('SFU connection lost, attempting reconnection...', 'warning', 5000)
+              // Attempt to reconnect after delay
+              setTimeout(() => {
+                if (sfuMode.value) {
+                  switchToSFUMode(roomInfo).catch(console.error)
+                }
+              }, 3000)
+            }
+          }
+
+          // Set timeout for connection
+          setTimeout(() => {
+            if (sfuWebSocket.value && sfuWebSocket.value.readyState !== WebSocket.OPEN) {
+              sfuWebSocket.value.close()
+              reject(new Error('SFU WebSocket connection timeout'))
+            }
+          }, 15000)
+        } catch (error) {
+          reject(error)
+        }
+      })
+
+      // Create WebRTC connection to SFU server
+      if (!localStream.value) {
+        throw new Error('Local media stream not available')
+      }
+
+      const sfuPC = new RTCPeerConnection(rtcConfiguration)
+      sfuPeerConnection.value = sfuPC
+
+      // Add local tracks to SFU connection
+      localStream.value.getTracks().forEach(track => {
+        sfuPC.addTrack(track, localStream.value)
+      })
+
+      // Handle remote tracks from SFU
+      sfuPC.ontrack = (event) => {
+        console.log('Received track from SFU:', event)
+        const stream = event.streams[0]
+        if (stream) {
+          // SFU sends tracks with participant ID in track ID or stream ID
+          // For now, we'll use a generic identifier
+          const participantId = event.track.id || `sfu_${Date.now()}`
+          remoteStreams.value.set(participantId, stream)
+
+          // Add participant if not exists
+          const existingParticipant = remoteParticipants.value.find(p => p.id === participantId)
+          if (!existingParticipant) {
+            remoteParticipants.value.push({
+              id: participantId,
+              name: `Participant ${participantId.slice(-4)}`,
+              stream: stream,
+              isVideoEnabled: true,
+              isAudioEnabled: true,
+              connectionState: 'connected',
+            })
+          }
+        }
+      }
+
+      // Handle ICE candidates
+      sfuPC.onicecandidate = (event) => {
+        if (event.candidate && sfuWebSocket.value) {
+          sendSFUWebSocketMessage({
+            type: 'ice-candidate',
+            room_id: sfuRoomId.value,
+            peer_id: localParticipantId.value,
+            data: {
+              candidate: event.candidate.candidate,
+              sdpMLineIndex: event.candidate.sdpMLineIndex,
+              sdpMid: event.candidate.sdpMid,
+            },
+          })
+        }
+      }
+
+      // Handle connection state
+      sfuPC.onconnectionstatechange = () => {
+        console.log('SFU connection state:', sfuPC.connectionState)
+        if (sfuPC.connectionState === 'connected') {
+          globalStore.addNotification('Connected to SFU server', 'success', 3000)
+        } else if (sfuPC.connectionState === 'failed') {
+          globalStore.addNotification('SFU connection failed, falling back to P2P', 'error', 5000)
+          switchToP2PMode()
+        }
+      }
+
+      // Create offer for SFU
+      const offer = await sfuPC.createOffer()
+      await sfuPC.setLocalDescription(offer)
+
+      // Send offer to SFU via WebSocket
+      sendSFUWebSocketMessage({
+        type: 'offer',
+        room_id: sfuRoomId.value,
+        peer_id: localParticipantId.value,
+        data: {
+          sdp: offer.sdp,
+          type: offer.type,
+        },
+      })
+
+      globalStore.addNotification('Switched to SFU mode successfully', 'success', 3000)
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to switch to SFU mode:', error)
+      globalStore.addNotification('Failed to switch to SFU mode, using P2P', 'error', 5000)
+      sfuMode.value = false
+      return { success: false, error: error.message }
+    }
   }
 
-  const switchToP2PMode = () => {
-    sfuMode.value = false
-    console.log('Switching to P2P mode')
-    // TODO: Implement P2P fallback logic
+  const sendSFUWebSocketMessage = (message) => {
+    if (sfuWebSocket.value && sfuWebSocket.value.readyState === WebSocket.OPEN) {
+      sfuWebSocket.value.send(JSON.stringify(message))
+    } else {
+      console.warn('SFU WebSocket not connected, cannot send message:', message)
+    }
+  }
+
+  const handleSFUWebSocketMessage = async (data) => {
+    console.log('Received SFU WebSocket message:', data.type)
+
+    switch (data.type) {
+      case 'answer':
+        if (sfuPeerConnection.value && data.data) {
+          await sfuPeerConnection.value.setRemoteDescription(
+            new RTCSessionDescription({
+              type: 'answer',
+              sdp: data.data.sdp,
+            })
+          )
+        }
+        break
+
+      case 'ice-candidate':
+        if (sfuPeerConnection.value && data.data) {
+          await sfuPeerConnection.value.addIceCandidate(
+            new RTCIceCandidate({
+              candidate: data.data.candidate,
+              sdpMLineIndex: data.data.sdpMLineIndex,
+              sdpMid: data.data.sdpMid,
+            })
+          )
+        }
+        break
+
+      case 'peer-joined':
+        console.log('Peer joined via SFU:', data.peer_id)
+        // SFU will handle peer connections automatically
+        break
+
+      case 'peer-left':
+        console.log('Peer left via SFU:', data.peer_id)
+        // Remove participant
+        remoteParticipants.value = remoteParticipants.value.filter(p => p.id !== data.peer_id)
+        remoteStreams.value.delete(data.peer_id)
+        break
+
+      default:
+        console.log('Unknown SFU message type:', data.type)
+    }
+  }
+
+  const switchToP2PMode = async () => {
+    try {
+      console.log('Switching to P2P mode')
+      globalStore.addNotification('Switching to P2P mode...', 'info', 3000)
+
+      // Close SFU WebSocket connection
+      if (sfuWebSocket.value) {
+        sfuWebSocket.value.close()
+        sfuWebSocket.value = null
+      }
+
+      // Close SFU WebRTC connection
+      if (sfuPeerConnection.value) {
+        sfuPeerConnection.value.close()
+        sfuPeerConnection.value = null
+      }
+
+      // Clear SFU remote streams
+      const sfuStreams = Array.from(remoteStreams.value.entries())
+        .filter(([id]) => id.startsWith('sfu_'))
+      for (const [participantId, stream] of sfuStreams) {
+        stream.getTracks().forEach(track => track.stop())
+        remoteStreams.value.delete(participantId)
+      }
+
+      // Remove SFU participants
+      remoteParticipants.value = remoteParticipants.value.filter(
+        p => !p.id.startsWith('sfu_')
+      )
+
+      // Reset SFU state
+      sfuRoomId.value = null
+      sfuMode.value = false
+
+      // Re-establish P2P connections if we have participants
+      if (websocket.value && websocket.value.readyState === WebSocket.OPEN) {
+        // Re-initiate connections with all participants via Django WebSocket
+        const currentParticipants = remoteParticipants.value.map(p => p.id)
+        for (const participantId of currentParticipants) {
+          try {
+            await createPeerConnectionForParticipant(participantId)
+            await createOfferForParticipant(participantId)
+          } catch (error) {
+            console.error(`Failed to re-establish P2P connection with ${participantId}:`, error)
+          }
+        }
+      }
+
+      globalStore.addNotification('Switched to P2P mode successfully', 'success', 3000)
+      return { success: true }
+    } catch (error) {
+      console.error('Failed to switch to P2P mode:', error)
+      globalStore.addNotification('Error switching to P2P mode', 'error', 5000)
+      return { success: false, error: error.message }
+    }
   }
 
   const connectWebSocket = async (roomId) => {
@@ -470,7 +767,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
                 console.log('WebSocket connected')
                 connectionAttemptCount.value = 0
                 lastConnectionAttempt.value = new Date()
-                resolve()
+                resolve(undefined)
               }
 
               websocket.value.onmessage = async (event) => {
@@ -823,27 +1120,39 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   }
 
   const endCall = async () => {
+    // Close SFU connections if active
+    if (sfuMode.value) {
+      if (sfuWebSocket.value) {
+        sfuWebSocket.value.close()
+        sfuWebSocket.value = null
+      }
+      if (sfuPeerConnection.value) {
+        sfuPeerConnection.value.close()
+        sfuPeerConnection.value = null
+      }
+      sfuMode.value = false
+    }
     try {
       // Cancel all retry operations
-      for (const operationId of retryOperations.value.keys()) {
+      retryOperations.value.forEach((_, operationId) => {
         webrtcRetryService.cancelRetry(operationId)
-      }
+      })
       retryOperations.value.clear()
 
       // Stop all quality monitors
-      for (const [participantId, monitorId] of qualityMonitors.value) {
+      qualityMonitors.value.forEach((monitorId, participantId) => {
         webrtcRetryService.stopQualityMonitor(peerConnections.value.get(participantId))
-      }
+      })
       qualityMonitors.value.clear()
 
       // Close all peer connections
-      for (const [participantId, peerConnection] of peerConnections.value) {
+      peerConnections.value.forEach((peerConnection, participantId) => {
         const monitorId = connectionMonitors.value.get(participantId)
         if (monitorId) {
           // The monitor cleanup is handled by the retry service
         }
         peerConnection.close()
-      }
+      })
       peerConnections.value.clear()
       connectionMonitors.value.clear()
 
@@ -860,9 +1169,9 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       }
 
       // Stop and clear all remote streams
-      for (const [participantId, stream] of remoteStreams.value) {
+      remoteStreams.value.forEach((stream) => {
         stream.getTracks().forEach((track) => track.stop())
-      }
+      })
       remoteStreams.value.clear()
 
       // Reset state
