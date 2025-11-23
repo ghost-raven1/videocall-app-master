@@ -253,22 +253,52 @@
       </div>
       
       <!-- File upload preview -->
-      <div v-if="selectedFile" class="mt-2 p-2 bg-blue-50 dark:bg-blue-900 rounded-lg flex items-center justify-between">
-        <div class="flex items-center space-x-2">
-          <svg class="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-          </svg>
-          <span class="text-sm text-gray-900 dark:text-white">{{ selectedFile.name }}</span>
-          <span class="text-xs text-gray-500 dark:text-gray-400">({{ formatFileSize(selectedFile.size) }})</span>
+      <div v-if="selectedFile" class="mt-2 p-2 bg-blue-50 dark:bg-blue-900 rounded-lg">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center space-x-2 flex-1 min-w-0">
+            <svg class="w-5 h-5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+            </svg>
+            <div class="flex-1 min-w-0">
+              <span class="text-sm text-gray-900 dark:text-white block truncate">{{ selectedFile.name }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">({{ formatFileSize(selectedFile.size) }})</span>
+            </div>
+          </div>
+          <button
+            v-if="!isUploading"
+            @click="clearFileSelection"
+            class="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors ml-2 flex-shrink-0"
+            title="Remove file"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
-        <button
-          @click="clearFileSelection"
-          class="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors"
-        >
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
+        
+        <!-- Upload progress bar -->
+        <div v-if="isUploading" class="mt-2">
+          <div class="flex items-center justify-between mb-1">
+            <span class="text-xs text-gray-600 dark:text-gray-400">Uploading...</span>
+            <span class="text-xs text-gray-600 dark:text-gray-400">{{ uploadProgress }}%</span>
+          </div>
+          <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+            <div
+              class="bg-blue-500 h-2 rounded-full transition-all duration-300"
+              :style="{ width: uploadProgress + '%' }"
+            ></div>
+          </div>
+        </div>
+        
+        <!-- Upload error -->
+        <div v-if="uploadError" class="mt-2 p-2 bg-red-50 dark:bg-red-900 rounded-lg">
+          <div class="flex items-center space-x-2">
+            <svg class="w-4 h-4 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span class="text-xs text-red-700 dark:text-red-300">{{ uploadError }}</span>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -300,7 +330,11 @@ export default {
       replyingTo: null,
       editingMessage: null,
       showAttachments: false,
-      acceptedFileTypes: '.jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z,.csv,.json'
+      acceptedFileTypes: '.jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip,.rar,.7z,.csv,.json',
+      maxFileSize: 50 * 1024 * 1024, // 50MB
+      uploadProgress: 0,
+      isUploading: false,
+      uploadError: null
     }
   },
   mounted() {
@@ -405,45 +439,129 @@ export default {
     },
     
     async uploadFile() {
+      if (!this.selectedFile) return
+      
+      // Validate file size again before upload
+      if (this.selectedFile.size > this.maxFileSize) {
+        this.uploadError = `File too large. Maximum size is ${this.formatFileSize(this.maxFileSize)}`
+        this.clearFileSelection()
+        return
+      }
+      
       const formData = new FormData()
       formData.append('file', this.selectedFile)
       formData.append('room_code', this.roomCode)
       formData.append('participant_id', this.participantId)
       
+      this.isUploading = true
+      this.uploadProgress = 0
+      this.uploadError = null
+      
       try {
-        const response = await fetch('/api/rooms/chat/attachments/', {
-          method: 'POST',
-          body: formData
+        const xhr = new XMLHttpRequest()
+        
+        // Track upload progress
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            this.uploadProgress = Math.round((e.loaded / e.total) * 100)
+          }
         })
         
-        const data = await response.json()
-        if (data.success) {
-          // Broadcast via WebSocket
-          if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-            this.websocket.send(JSON.stringify({
-              type: 'file_uploaded',
-              attachment: data.attachment,
-              message: data.message
-            }))
+        // Handle completion
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200 || xhr.status === 201) {
+            try {
+              const data = JSON.parse(xhr.responseText)
+              if (data.success) {
+                // Broadcast via WebSocket
+                if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+                  this.websocket.send(JSON.stringify({
+                    type: 'file_uploaded',
+                    attachment: data.attachment,
+                    message: data.message
+                  }))
+                }
+                
+                this.clearFileSelection()
+                this.newMessage = ''
+                this.uploadProgress = 0
+              } else {
+                this.uploadError = data.error || 'Upload failed'
+              }
+            } catch (error) {
+              this.uploadError = 'Failed to parse server response'
+            }
+          } else {
+            try {
+              const errorData = JSON.parse(xhr.responseText)
+              this.uploadError = errorData.error || `Upload failed with status ${xhr.status}`
+            } catch {
+              this.uploadError = `Upload failed with status ${xhr.status}`
+            }
           }
-          
-          this.clearFileSelection()
-          this.newMessage = ''
-        }
+          this.isUploading = false
+        })
+        
+        // Handle errors
+        xhr.addEventListener('error', () => {
+          this.uploadError = 'Network error during upload'
+          this.isUploading = false
+          this.uploadProgress = 0
+        })
+        
+        // Handle abort
+        xhr.addEventListener('abort', () => {
+          this.uploadError = 'Upload cancelled'
+          this.isUploading = false
+          this.uploadProgress = 0
+        })
+        
+        xhr.open('POST', '/api/rooms/chat/attachments/')
+        xhr.send(formData)
+        
       } catch (error) {
         console.error('Failed to upload file:', error)
+        this.uploadError = error.message || 'Upload failed'
+        this.isUploading = false
+        this.uploadProgress = 0
       }
     },
     
     handleFileSelect(event) {
       const file = event.target.files[0]
       if (file) {
-        // Check file size (max 50MB)
-        if (file.size > 50 * 1024 * 1024) {
-          alert('File too large. Maximum size is 50MB')
+        // Validate file size on frontend before upload
+        if (file.size > this.maxFileSize) {
+          this.uploadError = `File too large. Maximum size is ${this.formatFileSize(this.maxFileSize)}`
+          this.$nextTick(() => {
+            setTimeout(() => {
+              this.uploadError = null
+            }, 5000)
+          })
+          // Clear file input
+          if (this.$refs.fileInput) {
+            this.$refs.fileInput.value = ''
+          }
           return
         }
+        
+        // Validate file type
+        const fileExtension = '.' + file.name.split('.').pop().toLowerCase()
+        if (!this.acceptedFileTypes.includes(fileExtension)) {
+          this.uploadError = `File type not supported. Allowed types: ${this.acceptedFileTypes}`
+          this.$nextTick(() => {
+            setTimeout(() => {
+              this.uploadError = null
+            }, 5000)
+          })
+          if (this.$refs.fileInput) {
+            this.$refs.fileInput.value = ''
+          }
+          return
+        }
+        
         this.selectedFile = file
+        this.uploadError = null
       }
     },
     

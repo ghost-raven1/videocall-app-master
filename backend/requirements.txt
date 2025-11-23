@@ -35,3 +35,4 @@ pytest-env==1.0.1
 factory-boy==3.3.0
 faker==20.1.0
 responses==0.24.1
+daphne==4.1.0

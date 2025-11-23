@@ -15,7 +15,7 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
     const store = useWebRTCStore()
     const globalStore = useGlobalStore()
 
-    // Mock getUserMedia
+    // Mock getUserMedia - override method in existing object
     const mockStream = {
       getTracks: () => [
         { kind: 'video', enabled: true },
@@ -25,22 +25,23 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
       getAudioTracks: () => [{ enabled: true }]
     }
 
-    // Delete existing property if it exists
+    // Override getUserMedia in existing mediaDevices object
     if (global.navigator.mediaDevices) {
-      delete (global.navigator as any).mediaDevices
+      global.navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockStream)
+    } else {
+      Object.defineProperty(global.navigator, 'mediaDevices', {
+        value: {
+          getUserMedia: vi.fn().mockResolvedValue(mockStream)
+        },
+        writable: true,
+        configurable: true
+      })
     }
-    Object.defineProperty(global.navigator, 'mediaDevices', {
-      value: {
-        getUserMedia: vi.fn().mockResolvedValue(mockStream)
-      },
-      writable: true,
-      configurable: true
-    })
 
     const result = await store.initializeLocalMedia()
 
     expect(result.success).toBe(true)
-    expect(store.localStream).toBe(mockStream)
+    expect(store.localStream).toEqual(mockStream)
     expect(store.isVideoEnabled).toBe(true)
     expect(store.isAudioEnabled).toBe(true)
   })

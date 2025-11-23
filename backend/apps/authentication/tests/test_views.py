@@ -314,3 +314,75 @@ class JWTViewsTestCase(APITestCase):
         self.assertIn('access_token', response.cookies)
         self.assertIn('refresh_token', response.cookies)
 
+    def test_admin_login_invalid_credentials(self):
+        """Test admin login with invalid credentials"""
+        url = '/api/auth/admin/login/'
+        data = {
+            'email': self.admin.email,
+            'password': 'wrongpassword'
+        }
+        
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn('error', response.data)
+
+    def test_admin_login_inactive_user(self):
+        """Test admin login with inactive user"""
+        self.admin.is_active = False
+        self.admin.save()
+        
+        url = '/api/auth/admin/login/'
+        data = {
+            'email': self.admin.email,
+            'password': 'jwtadmin123'
+        }
+        
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertIn('error', response.data)
+
+    def test_admin_login_regular_user(self):
+        """Test admin login with regular user (should fail)"""
+        url = '/api/auth/admin/login/'
+        data = {
+            'email': self.user.email,
+            'password': 'jwtpass123'
+        }
+        
+        response = self.client.post(url, data, format='json')
+        
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertIn('error', response.data)
+
+    def test_check_auth_view(self):
+        """Test check auth view"""
+        self.client.force_authenticate(user=self.user)
+        url = '/api/auth/check/'
+        
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('authenticated', response.data)
+
+    def test_user_stats(self):
+        """Test user stats endpoint"""
+        self.client.force_authenticate(user=self.admin)
+        url = '/api/auth/stats/'
+        
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('total_users', response.data)
+
+    def test_session_info(self):
+        """Test session info endpoint"""
+        self.client.force_authenticate(user=self.user)
+        url = '/api/auth/session/'
+        
+        response = self.client.get(url)
+        
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('user', response.data)
+

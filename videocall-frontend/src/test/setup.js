@@ -32,6 +32,7 @@ global.IntersectionObserver = vi.fn().mockImplementation(() => ({
 // Mock MediaDevices
 Object.defineProperty(navigator, 'mediaDevices', {
   writable: true,
+  configurable: true,
   value: {
     getUserMedia: vi.fn().mockResolvedValue({
       getTracks: () => [

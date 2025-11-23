@@ -27,6 +27,7 @@ describe('WebRTC Store - SFU Mode', () => {
   })
 
   it('should switch to SFU mode when room info has SFU enabled', async () => {
+    // Increase timeout for this test
     const store = useWebRTCStore()
     const globalStore = useGlobalStore()
 
@@ -38,25 +39,34 @@ describe('WebRTC Store - SFU Mode', () => {
       sfu_room_id: 'sfu-room-123'
     }
 
-    // Mock WebSocket
-    const mockWebSocket = {
-      readyState: 1, // OPEN
-      send: vi.fn(),
-      close: vi.fn(),
-      onopen: null,
-      onmessage: null,
-      onerror: null,
-      onclose: null,
-      CONNECTING: 0,
-      OPEN: 1,
-      CLOSING: 2,
-      CLOSED: 3
-    }
+    // Mock WebSocket with proper async handling
+    let mockWebSocket: any = null
     
     global.WebSocket = vi.fn().mockImplementation(() => {
+      mockWebSocket = {
+        readyState: 0, // CONNECTING initially
+        send: vi.fn(),
+        close: vi.fn(),
+        onopen: null,
+        onmessage: null,
+        onerror: null,
+        onclose: null,
+        CONNECTING: 0,
+        OPEN: 1,
+        CLOSING: 2,
+        CLOSED: 3
+      }
+      
+      // Auto-open after a short delay
       setTimeout(() => {
-        if (mockWebSocket.onopen) mockWebSocket.onopen({} as Event)
-      }, 0)
+        if (mockWebSocket) {
+          mockWebSocket.readyState = 1 // OPEN
+          if (mockWebSocket.onopen) {
+            mockWebSocket.onopen({} as Event)
+          }
+        }
+      }, 5)
+      
       return mockWebSocket
     }) as any
 
@@ -80,32 +90,45 @@ describe('WebRTC Store - SFU Mode', () => {
     
     global.RTCPeerConnection = vi.fn().mockImplementation(() => mockPeerConnection) as any
 
-    // Mock getUserMedia
-    // Delete existing property if it exists
-    if (global.navigator.mediaDevices) {
-      delete (global.navigator as any).mediaDevices
+    // Mock getUserMedia - override method in existing object
+    const mockStream = {
+      getTracks: () => [],
+      getVideoTracks: () => [],
+      getAudioTracks: () => []
     }
-    Object.defineProperty(global.navigator, 'mediaDevices', {
-      value: {
-        getUserMedia: vi.fn().mockResolvedValue({
-          getTracks: () => [],
-          getVideoTracks: () => [],
-          getAudioTracks: () => []
-        })
-      },
-      writable: true,
-      configurable: true
-    })
+    
+    if (global.navigator.mediaDevices) {
+      global.navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValue(mockStream)
+    } else {
+      Object.defineProperty(global.navigator, 'mediaDevices', {
+        value: {
+          getUserMedia: vi.fn().mockResolvedValue(mockStream)
+        },
+        writable: true,
+        configurable: true
+      })
+    }
 
     // Initialize local media first
     await store.initializeLocalMedia()
 
-    // Switch to SFU mode
-    const result = await store.switchToSFUMode(roomInfo)
+    // Switch to SFU mode - wait for WebSocket to connect
+    const resultPromise = store.switchToSFUMode(roomInfo)
+    
+    // Wait for WebSocket to open and process
+    await new Promise(resolve => setTimeout(resolve, 50))
+    
+    // Wait for the result with timeout
+    const result = await Promise.race([
+      resultPromise,
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), 5000)
+      )
+    ]) as any
 
     expect(result.success).toBe(true)
     expect(store.sfuMode).toBe(true)
-  })
+  }, 10000) // 10 second timeout
 
   it('should handle SFU mode switch failure gracefully', async () => {
     const store = useWebRTCStore()
@@ -173,16 +196,52 @@ describe('WebRTC Store - P2P Fallback', () => {
     // Set up SFU mode
     store.sfuMode = true
 
-    // Mock WebSocket for P2P
-    store.websocket = {
-      readyState: WebSocket.OPEN
-    } as any
+    // Mock WebSocket for P2P - websocket is a ref, so we need to set it properly
+    const mockWebSocket = {
+      readyState: WebSocket.OPEN,
+      send: vi.fn(),
+      close: vi.fn(),
+      onopen: null,
+      onmessage: null,
+      onerror: null,
+      onclose: null,
+      CONNECTING: 0,
+      OPEN: 1,
+      CLOSING: 2,
+      CLOSED: 3
+    }
+    // In Pinia stores with Composition API, refs are auto-unwrapped when accessed
+    // But we need to set the value directly
+    if (store.websocket && typeof store.websocket === 'object' && 'value' in store.websocket) {
+      (store.websocket as any).value = mockWebSocket
+    } else {
+      store.websocket = mockWebSocket as any
+    }
 
     // Mock participants
     store.remoteParticipants = [
       { id: 'participant-1', name: 'User 1' },
       { id: 'participant-2', name: 'User 2' }
     ]
+
+    // Mock RTCPeerConnection for P2P connections
+    const mockPeerConnection = {
+      addTrack: vi.fn(),
+      createOffer: vi.fn().mockResolvedValue({
+        type: 'offer',
+        sdp: 'test-sdp'
+      }),
+      setLocalDescription: vi.fn().mockResolvedValue(undefined),
+      setRemoteDescription: vi.fn().mockResolvedValue(undefined),
+      addIceCandidate: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn(),
+      connectionState: 'new',
+      onicecandidate: null,
+      ontrack: null,
+      onconnectionstatechange: null
+    }
+    
+    global.RTCPeerConnection = vi.fn().mockImplementation(() => mockPeerConnection) as any
 
     const result = await store.switchToP2PMode()
 

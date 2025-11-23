@@ -1,176 +1,39 @@
 <!-- src/components/VideoCall.vue - Complete main video call component -->
 <template>
   <div class="min-h-screen bg-black flex flex-col main-container">
-    <!-- Loading overlay -->
-    <div v-if="isConnecting" class="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
-      <div class="text-center text-white">
-        <div class="inline-block w-12 h-12 border-4 border-t-green-500 border-white border-opacity-25 rounded-full animate-spin mb-4"></div>
-        <p class="text-lg font-medium">{{ connectionMessage }}</p>
-        <p class="text-sm text-gray-300 mt-2">{{ connectionProgress }}</p>
-      </div>
-    </div>
-    
     <!-- Header -->
-    <header
-      class="bg-gray-900 text-white p-4 flex items-center justify-between z-10 safe-area-inset"
-    >
-      <div class="flex items-center space-x-4">
-        <h1 class="text-lg font-medium">Room {{ roomInfo?.short_code }}</h1>
-        <div class="flex items-center space-x-2 text-sm text-gray-300">
-          <div :class="['w-2 h-2 rounded-full animate-pulse', connectionStatusColor]"></div>
-          <span>{{ connectionStatusText }}</span>
-        </div>
-      </div>
-
-      <div class="flex items-center space-x-4">
-        <!-- Call duration -->
-        <div v-if="callDuration > 0" class="text-sm text-gray-300 font-mono">
-          {{ utils.formatDuration(callDuration) }}
-        </div>
-
-        <!-- Participants count -->
-        <div class="flex items-center space-x-1 text-sm text-gray-300">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"
-            ></path>
-          </svg>
-          <span>{{ participantCount }}</span>
-        </div>
-
-        <!-- Chat button -->
-        <button
-          @click="showChat = !showChat"
-          class="p-2 hover:bg-gray-800 rounded-full transition-colors relative"
-          title="Toggle chat"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-          </svg>
-          <span v-if="unreadMessages > 0" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-            {{ unreadMessages > 9 ? '9+' : unreadMessages }}
-          </span>
-        </button>
-
-        <!-- Screen share button -->
-        <button
-          @click="toggleScreenShare"
-          :class="[
-            'p-2 rounded-full transition-colors',
-            isScreenSharing ? 'bg-green-600 hover:bg-green-700' : 'hover:bg-gray-800'
-          ]"
-          :title="isScreenSharing ? 'Stop sharing' : 'Share screen'"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-          </svg>
-        </button>
-
-        <!-- Audio Settings button -->
-        <AudioSettings @settings-changed="onAudioSettingsChanged" />
-
-        <!-- Menu button -->
-        <button
-          @click="showMenu = !showMenu"
-          class="p-2 hover:bg-gray-800 rounded-full transition-colors relative"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-            ></path>
-          </svg>
-
-          <!-- Dropdown menu -->
-          <div
-            v-if="showMenu"
-            v-click-outside="() => (showMenu = false)"
-            class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-2 z-50"
-          >
-            <button
-              @click="shareRoom"
-              class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"
-                ></path>
-              </svg>
-              <span>Поделиться комнатой</span>
-            </button>
-            <button
-              @click="toggleRecording"
-              class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
-            >
-              <svg class="w-4 h-4" :style="isRecording ? 'color: red;' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-                ></path>
-              </svg>
-              <span>{{ isRecording ? 'Остановить запись' : 'Начать запись' }}</span>
-            </button>
-            <button
-              @click="showStats = !showStats"
-              class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M9 19v-6a2 2 0 00-2-2H2a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-                ></path>
-              </svg>
-              <span>Connection stats</span>
-            </button>
-            <div class="border-t border-gray-200 dark:border-gray-600 my-2"></div>
-            <button
-              @click="handleEndCall"
-              class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center space-x-2"
-            >
-              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  stroke-width="2"
-                  d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 3l18 18"
-                ></path>
-              </svg>
-              <span>End call</span>
-            </button>
-          </div>
-        </button>
-      </div>
-    </header>
+    <VideoCallHeader
+      :room-code="roomInfo?.short_code || ''"
+      :connection-status-text="connectionStatusText"
+      :connection-status-color="connectionStatusColor"
+      :call-duration="callDuration"
+      :participant-count="participantCount"
+      :unread-messages="unreadMessages"
+      :is-screen-sharing="isScreenSharing"
+      :is-recording="isRecording"
+      :show-menu="showMenu"
+      @toggle-chat="showChat = !showChat"
+      @toggle-screen-share="handleToggleScreenShare"
+      @audio-settings-changed="onAudioSettingsChanged"
+      @toggle-menu="showMenu = !showMenu"
+      @close-menu="showMenu = false"
+      @share-room="shareRoom"
+      @toggle-recording="toggleRecording"
+      @toggle-stats="showStats = !showStats"
+      @end-call="handleEndCall"
+    />
 
     <!-- Video Container -->
     <div class="flex-1 relative overflow-hidden">
       <!-- Chat Panel (Overlay) -->
-      <div
-        v-if="showChat"
-        class="absolute right-0 top-0 bottom-0 w-full md:w-96 bg-white dark:bg-gray-800 shadow-2xl z-20 transform transition-transform duration-300"
-        :class="showChat ? 'translate-x-0' : 'translate-x-full'"
-      >
-        <RoomChat
-          v-if="roomInfo"
-          :room-code="roomInfo.short_code"
-          :participant-id="currentParticipantId"
-          :websocket="websocket"
-          @close="showChat = false"
-          @new-message="onNewChatMessage"
-        />
-      </div>
+      <VideoCallSidebar
+        :show-chat="showChat"
+        :room-code="roomInfo?.short_code || ''"
+        :participant-id="currentParticipantId || ''"
+        :websocket="websocket"
+        @close="chat.closeChat()"
+        @new-message="onNewChatMessage"
+      />
       <!-- Multi-user call (3+ participants) -->
       <ParticipantGrid
         v-if="webrtcStore.isMultiUserCall"
@@ -383,138 +246,35 @@
     </div>
 
     <!-- Controls -->
-    <div class="bg-gray-900 p-4 safe-area-inset">
-      <!-- Recording Controls (Enterprise feature) -->
-      <div v-if="roomInfo" class="mb-4 flex justify-center">
-        <RecordingControls
-          :room-code="roomInfo.short_code"
-          :participant-id="currentParticipantId"
-          @recording-started="onRecordingStarted"
-          @recording-stopped="onRecordingStopped"
-        />
-      </div>
+    <VideoCallControls
+      :room-code="roomInfo?.short_code || ''"
+      :participant-id="currentParticipantId || ''"
+      :is-multi-user-call="webrtcStore.isMultiUserCall"
+      :participant-count="webrtcStore.participantCount"
+      :is-audio-enabled="webrtcStore.isAudioEnabled"
+      :is-video-enabled="webrtcStore.isVideoEnabled"
+      @recording-started="onRecordingStarted"
+      @recording-stopped="onRecordingStopped"
+      @layout-changed="onLayoutChanged"
+      @screen-share-toggled="onScreenShareToggled"
+      @recording-toggled="onRecordingToggled"
+      @participant-pinned="onParticipantPinned"
+      @toggle-audio="handleToggleAudio"
+      @toggle-video="handleToggleVideo"
+      @share-room="shareRoom"
+      @end-call="handleEndCall"
+    />
 
-      <!-- Multi-user controls for 3+ participants -->
-      <MultiUserControls
-        v-if="webrtcStore.isMultiUserCall"
-        :participant-count="webrtcStore.participantCount"
-        @layout-changed="onLayoutChanged"
-        @screen-share-toggled="onScreenShareToggled"
-        @recording-toggled="onRecordingToggled"
-        @participant-pinned="onParticipantPinned"
+    <!-- Screen Share Controls -->
+    <div v-if="roomInfo" class="bg-gray-900 px-4 pb-4">
+      <ScreenShareControls
+        :room-code="roomInfo.short_code"
+        :participant-id="currentParticipantId"
+        :peer-connection="peerConnection"
+        @screen-share-started="onScreenShareStarted"
+        @screen-share-stopped="onScreenShareStopped"
       />
-
-      <!-- Standard controls for 2-user calls (backward compatibility) -->
-      <div v-else class="max-w-md mx-auto flex items-center justify-center space-x-6">
-        <!-- Toggle Audio -->
-        <button
-          @click="webrtcStore.toggleAudio"
-          :class="[
-            'control-button',
-            webrtcStore.isAudioEnabled ? 'control-button-active' : 'control-button-danger',
-          ]"
-          :title="webrtcStore.isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'"
-        >
-          <svg
-            v-if="webrtcStore.isAudioEnabled"
-            class="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
-            ></path>
-          </svg>
-          <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1m0 0V7a3 3 0 013-3h8a3 3 0 013 3v2M4 9h1m11 0h5m-9 0a1 1 0 011-1v-1a1 1 0 011-1m-1 1v1a1 1 0 001 1M9 7h8a3 3 0 013 3v2"
-            ></path>
-          </svg>
-        </button>
-
-        <!-- Toggle Video -->
-        <button
-          @click="webrtcStore.toggleVideo"
-          :class="[
-            'control-button',
-            webrtcStore.isVideoEnabled ? 'control-button-active' : 'control-button-danger',
-          ]"
-          :title="webrtcStore.isVideoEnabled ? 'Turn off camera' : 'Turn on camera'"
-        >
-          <svg
-            v-if="webrtcStore.isVideoEnabled"
-            class="w-6 h-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-            ></path>
-          </svg>
-          <svg v-else class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728L5.636 5.636m12.728 12.728L18 21l-1.5-1.5m-6.364-6.364L8.5 14.5 7 13l1.636-1.636m0 0L9 10.5"
-            ></path>
-          </svg>
-        </button>
-
-        <!-- Share Room -->
-        <button
-          @click="shareRoom"
-          class="control-button control-button-inactive"
-          title="Share room"
-        >
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 3 0 00-5.367-2.684z"
-            ></path>
-          </svg>
-        </button>
-
-        <!-- End Call -->
-        <button
-          @click="handleEndCall"
-          class="control-button control-button-danger bg-red-500 hover:bg-red-600"
-          title="End call"
-        >
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 3l18 18"
-            ></path>
-          </svg>
-        </button>
-      </div>
-
-      <!-- Screen Share Controls -->
-      <div v-if="roomInfo" class="mt-4">
-        <ScreenShareControls
-          :room-code="roomInfo.short_code"
-          :participant-id="currentParticipantId"
-          :peer-connection="peerConnection"
-          @screen-share-started="onScreenShareStarted"
-          @screen-share-stopped="onScreenShareStopped"
-        />
-      </div>
+    </div>
 
       <!-- Connection status message -->
       <div v-if="connectionMessage" class="mt-4 text-center text-sm text-gray-400">
@@ -549,7 +309,6 @@
           </div>
         </div>
       </div>
-    </div>
 
     <!-- Share Modal -->
     <Teleport to="body">
@@ -782,6 +541,10 @@ import AudioSettings from '@/components/AudioSettings.vue'
 import RecordingControls from '@/components/RecordingControls.vue'
 import ScreenShareControls from '@/components/ScreenShareControls.vue'
 import MultiUserControls from '@/components/MultiUserControls.vue'
+import VideoCallHeader from '@/components/VideoCallHeader.vue'
+import VideoCallControls from '@/components/VideoCallControls.vue'
+import VideoCallSidebar from '@/components/VideoCallSidebar.vue'
+import { useVideoCallController } from '@/controllers/video-call/useVideoCallController'
 import * as webrtcService from '@/services/webrtc'
 import * as utils from '@/services/utils'
 
@@ -791,14 +554,15 @@ const webrtcStore = useWebRTCStore()
 const roomsStore = useRoomsStore()
 const globalStore = useGlobalStore()
 
+// Initialize video call controller
+const videoCall = useVideoCallController(route.params.roomId)
+const { callState, media, screenShare, recording } = videoCall
+
 // Template refs
 const localVideoRef = ref(null)
 const remoteVideoRef = ref(null)
 
-// Reactive state
-const roomInfo = ref(null)
-const callStartTime = ref(null)
-const callDuration = ref(0)
+// UI state (not business logic)
 const localVideoSize = ref('medium')
 const showShareModal = ref(false)
 const showStats = ref(false)
@@ -808,9 +572,6 @@ const roomLinkCopied = ref(false)
 const shouldMirrorLocal = ref(true)
 const showVideoInfo = ref(false)
 const showConnectionQuality = ref(true)
-const isConnecting = ref(false)
-const connectingMessage = ref('Connecting...')
-const connectingSubMessage = ref('Setting up your video call')
 
 // Connection monitoring
 const connectionStats = ref(null)
@@ -822,52 +583,25 @@ const currentFallbackMode = ref(null) // 'audio_only', 'chat_only', null
 const connectionQualityWarnings = ref([])
 const showConnectionHelp = ref(false)
 
-// Chat and Screen Share state
-const showChat = ref(false)
-const unreadMessages = ref(0)
+// Chat state - use controller
+const chat = useRoomChatController()
+const showChat = computed(() => chat.isOpen.value)
+const unreadMessages = computed(() => chat.unreadCount.value)
 const websocket = ref(null)
 const currentParticipantId = ref(null)
-const isScreenSharing = ref(false)
 const peerConnection = ref(null)
 
-// Connection state variables
-const connectionProgress = ref('Please wait while we set up your call')
+// Use roomInfo from controller
+const roomInfo = computed(() => videoCall.roomInfo.value)
 
-// Computed properties
-const connectionStatusText = computed(() => {
-  switch (webrtcStore.connectionState) {
-    case 'new':
-      return 'Initializing...'
-    case 'connecting':
-      return 'Connecting...'
-    case 'connected':
-      return 'Connected'
-    case 'disconnected':
-      return 'Disconnected'
-    case 'failed':
-      return 'Connection failed'
-    case 'closed':
-      return 'Connection closed'
-    default:
-      return 'Unknown'
-  }
-})
-
-const connectionStatusColor = computed(() => {
-  switch (webrtcStore.connectionState) {
-    case 'connected':
-      return 'bg-green-400'
-    case 'connecting':
-    case 'new':
-      return 'bg-yellow-400'
-    case 'disconnected':
-    case 'failed':
-    case 'closed':
-      return 'bg-red-400'
-    default:
-      return 'bg-gray-400'
-  }
-})
+// Computed properties - use controller values
+const connectionStatusText = computed(() => callState.connectionStatusText.value)
+const connectionStatusColor = computed(() => callState.connectionStatusColor.value)
+const callDuration = computed(() => callState.callDuration.value)
+const isConnecting = computed(() => callState.isConnecting.value)
+const connectingMessage = computed(() => callState.connectingMessage.value)
+const connectingSubMessage = computed(() => callState.connectingSubMessage.value)
+const connectionProgress = computed(() => callState.connectionProgress.value)
 
 const participantCount = computed(() => {
   return webrtcStore.remoteParticipants.length + 1 // +1 for local participant
@@ -907,6 +641,12 @@ const connectionMessage = computed(() => {
   }
   return ''
 })
+
+// Use screen share state from controller
+const isScreenSharing = computed(() => screenShare.isScreenSharing.value)
+
+// Use recording state from controller
+const isRecording = computed(() => recording.isRecording.value)
 
 const fallbackModeMessage = computed(() => {
   switch (currentFallbackMode.value) {
@@ -996,106 +736,40 @@ const remoteVideoInfo = computed(() => {
 })
 
 // Methods
+// Use controller's initializeCall method
 const initializeCall = async () => {
   const roomId = route.params.roomId
-
-  try {
-    isConnecting.value = true
-    connectionMessage.value = 'Finding room...'
-    connectionProgress.value = 'Step 1/4: Locating room'
-
-    // Get room info
-    const roomResult = await roomsStore.getRoomInfo(roomId)
-    if (!roomResult.success) {
-      globalStore.addNotification('Room not found or expired', 'error')
-      router.push('/')
-      return
-    }
-
-    roomInfo.value = roomResult.room
-    connectionMessage.value = 'Accessing camera and microphone...'
-    connectionProgress.value = 'Step 2/4: Setting up media devices'
-
-    // Initialize media
-    const mediaResult = await webrtcStore.initializeLocalMedia()
-    if (!mediaResult.success) {
-      globalStore.addNotification('Failed to access camera/microphone', 'error')
-    }
-
-    connectingMessage.value = 'Setting up connection...'
-    connectingSubMessage.value = 'Preparing for video call'
-
-    // Create peer connection
-    const peerResult = webrtcStore.createPeerConnection()
-    if (!peerResult.success) {
-      throw new Error('Failed to create peer connection')
-    }
-
-    connectingMessage.value = 'Connecting to room...'
-    connectingSubMessage.value = 'Almost ready'
-
-    // Connect WebSocket with timeout
-    try {
-      await webrtcStore.connectWebSocket(roomId)
-    } catch (error) {
-      console.error('WebSocket connection failed:', error)
-      globalStore.addNotification('Failed to connect to room. Please try again.', 'error')
-      isConnecting.value = false
-      return
-    }
-
-    // Start call timer and monitoring
-    callStartTime.value = new Date()
+  const result = await videoCall.initializeCall(roomId)
+  
+  if (result.success) {
+    // Start stats monitoring after successful initialization
     startStatsMonitoring()
     setupEnhancedMonitoring()
-
-    isConnecting.value = false
-  } catch (error) {
-    console.error('Failed to initialize call:', error)
-    globalStore.addNotification('Failed to join call', 'error')
-    isConnecting.value = false
-    router.push('/')
   }
 }
 
+// Use controller's handleEndCall method
 const handleEndCall = async () => {
-  try {
-    // Show confirmation if call is active
-    if (webrtcStore.isConnected) {
-      const confirmed = confirm('Are you sure you want to end this call?')
-      if (!confirmed) return
-    }
-
-    // Stop stats monitoring
-    if (statsMonitor.value) {
-      clearInterval(statsMonitor.value)
-      statsMonitor.value = null
-    }
-
-    // End the call
-    await webrtcStore.endCall()
-
-    // Leave room
-    if (roomInfo.value) {
-      const callEndTime = new Date()
-      const duration = Math.floor((callEndTime - callStartTime.value) / 1000)
-
-      await roomsStore.leaveRoom(roomInfo.value.room_id)
-
-      // Update history with call duration
-      roomsStore.updateHistoryEntry(roomInfo.value.room_id, {
-        duration: duration,
-        status: 'completed',
-        ended_at: callEndTime.toISOString(),
-      })
-    }
-
-    router.push('/')
-  } catch (error) {
-    console.error('Failed to end call properly:', error)
-    // Force navigate even if there's an error
-    router.push('/')
+  // Stop stats monitoring
+  if (statsMonitor.value) {
+    clearInterval(statsMonitor.value)
+    statsMonitor.value = null
   }
+  
+  // Update history with call duration if needed
+  if (roomInfo.value && callState.callStartTime.value) {
+    const callEndTime = new Date()
+    const duration = Math.floor((callEndTime.getTime() - callState.callStartTime.value.getTime()) / 1000)
+    
+    await roomsStore.updateHistoryEntry(roomInfo.value.room_id, {
+      duration: duration,
+      status: 'completed',
+      ended_at: callEndTime.toISOString(),
+    })
+  }
+  
+  // Use controller's method
+  await videoCall.handleEndCall()
 }
 
 const toggleLocalVideoSize = () => {
@@ -1249,28 +923,20 @@ const refreshConnection = () => {
   window.location.reload()
 }
 
-// Chat handlers
-const onNewChatMessage = () => {
-  if (!showChat.value) {
-    unreadMessages.value++
-    // Optional: Play notification sound
-    // new Audio('/notification.mp3').play()
-  }
+// Chat handlers - use controller
+const onNewChatMessage = (message) => {
+  // Controller handles unread count automatically
+  chat.addMessage(message)
 }
 
-const toggleScreenShare = async () => {
-  if (isScreenSharing.value) {
-    // Stop screen sharing handled by ScreenShareControls component
-    isScreenSharing.value = false
-  } else {
-    isScreenSharing.value = true
-  }
+// Use controller's screen share methods
+const handleToggleScreenShare = async () => {
+  await screenShare.toggleScreenShare()
 }
 
-const onScreenShareStarted = ({ session, stream }) => {
+const onScreenShareStarted = async ({ session, stream }) => {
   console.log('Screen share started:', session)
-  isScreenSharing.value = true
-  // Add screen share stream to peer connection if needed
+  // Controller already handles this, but we can add peer connection logic if needed
   if (peerConnection.value && stream) {
     stream.getTracks().forEach(track => {
       peerConnection.value.addTrack(track, stream)
@@ -1278,20 +944,26 @@ const onScreenShareStarted = ({ session, stream }) => {
   }
 }
 
-const onScreenShareStopped = ({ session }) => {
+const onScreenShareStopped = async ({ session }) => {
   console.log('Screen share stopped:', session)
-  isScreenSharing.value = false
+  // Controller already handles stopping
 }
 
-// Recording handlers
-const onRecordingStarted = (recording) => {
-  console.log('Recording started:', recording)
-  // Optional: Show notification
+// Recording handlers - use controller
+const toggleRecording = async () => {
+  if (roomInfo.value) {
+    await recording.toggleRecording(roomInfo.value.short_code, currentParticipantId.value || undefined)
+  }
 }
 
-const onRecordingStopped = (recording) => {
-  console.log('Recording stopped:', recording)
-  // Optional: Show notification
+const onRecordingStarted = (recordingData) => {
+  console.log('Recording started:', recordingData)
+  // Controller already handles notifications
+}
+
+const onRecordingStopped = (recordingData) => {
+  console.log('Recording stopped:', recordingData)
+  // Controller already handles notifications
 }
 
 // Audio settings handler
@@ -1334,7 +1006,7 @@ const onAudioSettingsChanged = async (settings) => {
 // Watch chat visibility to reset unread count
 watch(showChat, (isVisible) => {
   if (isVisible) {
-    unreadMessages.value = 0
+    chat.markAsRead()
   }
 })
 
@@ -1364,13 +1036,7 @@ watch(
 )
 
 // Update call duration
-let durationInterval = null
-
-const updateCallDuration = () => {
-  if (callStartTime.value) {
-    callDuration.value = Math.floor((new Date() - callStartTime.value) / 1000)
-  }
-}
+// Duration tracking is now handled by callState controller
 
 // Click outside directive
 const vClickOutside = {
@@ -1388,33 +1054,44 @@ const vClickOutside = {
 }
 
 // Lifecycle
-onMounted(() => {
-  initializeCall()
-  durationInterval = setInterval(updateCallDuration, 1000)
+onMounted(async () => {
+  await initializeCall()
+  
+  // Load recordings for the room
+  if (roomInfo.value) {
+    await recording.loadRecordings(roomInfo.value.short_code)
+  }
+  
+  // Setup video refs when streams are available
+  watch(() => media.localStream.value, (stream) => {
+    if (stream && localVideoRef.value) {
+      localVideoRef.value.srcObject = stream
+    }
+  }, { immediate: true })
+  
+  watch(() => webrtcStore.remoteStream, (stream) => {
+    if (stream && remoteVideoRef.value) {
+      remoteVideoRef.value.srcObject = stream
+    }
+  }, { immediate: true })
+  
+  // Watch for room info changes to load recordings
+  watch(() => roomInfo.value, async (newRoomInfo) => {
+    if (newRoomInfo) {
+      await recording.loadRecordings(newRoomInfo.short_code)
+    }
+  })
 })
-
-// Импортируем onUnmounted выше в скрипте
-import { onUnmounted } from 'vue'
 
 onUnmounted(async () => {
   // Cleanup intervals
-  if (durationInterval) {
-    clearInterval(durationInterval)
-  }
   if (statsMonitor.value) {
     clearInterval(statsMonitor.value)
   }
 
-  // End call and leave room
-  try {
-    await webrtcStore.endCall()
-
-    if (roomInfo.value) {
-      await roomsStore.leaveRoom(roomInfo.value.room_id)
-    }
-  } catch (error) {
-    console.error('Cleanup error:', error)
-  }
+  // Use controller's cleanup
+  videoCall.reset()
+  chat.reset()
 })
 </script>
 
@@ -1479,115 +1156,3 @@ onUnmounted(async () => {
   padding-left: env(safe-area-inset-left);
 }
 </style>
-
-<script>
-export default {
-  data() {
-    return {
-      // Существующие свойства
-      isConnecting: false,
-      connectionMessage: 'Подключение к комнате...',
-      connectionProgress: 'Инициализация...',
-      connectionRetryCount: 0,
-      maxRetries: 3,
-      showMenu: false,
-      // Новые свойства для записи
-      isRecording: false,
-      mediaRecorder: null,
-      recordedChunks: []
-    };
-  },
-  methods: {
-    // Существующие методы
-    
-    toggleRecording() {
-      if (this.isRecording) {
-        this.stopRecording();
-      } else {
-        this.startRecording();
-      }
-    },
-  
-  startRecording() {
-    if (!this.localStream) {
-      this.$toast.error('Нет доступного потока для записи');
-      return;
-    }
-    
-    try {
-      // Получаем все аудио и видео потоки
-      const streams = [this.localStream];
-      this.participants.forEach(p => {
-        if (p.stream) streams.push(p.stream);
-      });
-      
-      // Создаем общий поток из всех потоков
-      const combinedStream = new MediaStream();
-      
-      // Добавляем все аудио и видео треки в общий поток
-      streams.forEach(stream => {
-        stream.getTracks().forEach(track => {
-          combinedStream.addTrack(track);
-        });
-      });
-      
-      // Создаем MediaRecorder
-      this.mediaRecorder = new MediaRecorder(combinedStream, {
-        mimeType: 'video/webm;codecs=vp9,opus'
-      });
-      
-      this.recordedChunks = [];
-      
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.recordedChunks.push(event.data);
-        }
-      };
-      
-      this.mediaRecorder.onstop = () => {
-        // Создаем Blob из записанных данных
-        const blob = new Blob(this.recordedChunks, {
-          type: 'video/webm'
-        });
-        
-        // Создаем URL для скачивания
-        const url = URL.createObjectURL(blob);
-        
-        // Создаем ссылку для скачивания
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = `videocall-recording-${new Date().toISOString()}.webm`;
-        
-        // Добавляем ссылку в DOM и кликаем по ней
-        document.body.appendChild(a);
-        a.click();
-        
-        // Удаляем ссылку из DOM
-        setTimeout(() => {
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }, 100);
-        
-        this.$toast.success('Запись сохранена');
-      };
-      
-      // Начинаем запись
-      this.mediaRecorder.start();
-      this.isRecording = true;
-      this.$toast.info('Запись начата');
-    } catch (error) {
-      console.error('Ошибка при начале записи:', error);
-      this.$toast.error('Не удалось начать запись');
-    }
-  },
-  
-  stopRecording() {
-    if (this.mediaRecorder && this.isRecording) {
-      this.mediaRecorder.stop();
-      this.isRecording = false;
-    }
-  }
-}
-}
-</script>

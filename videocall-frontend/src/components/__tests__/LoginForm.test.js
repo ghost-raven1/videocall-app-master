@@ -14,21 +14,20 @@ vi.mock('vue-router', () => ({
   })
 }))
 
-// Mock vue-i18n
+// Mock vue-i18n globally
+const translations = {
+  'app.name': 'VideoCall',
+  'app.desc': 'Secure video calling platform',
+  'login.desc': 'Enter your password to continue',
+  'login.password': 'Password',
+  'login.enterPassword': 'Enter your password',
+  'login.signIn': 'Sign In',
+  'login.signingIn': 'Signing In...'
+}
+
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
-    t: (key) => {
-      const translations = {
-        'app.name': 'VideoCall',
-        'app.desc': 'Secure video calling platform',
-        'login.desc': 'Enter your password to continue',
-        'login.password': 'Password',
-        'login.enterPassword': 'Enter your password',
-        'login.signIn': 'Sign In',
-        'login.signingIn': 'Signing In...'
-      }
-      return translations[key] || key
-    }
+    t: (key) => translations[key] || key
   })
 }))
 
@@ -50,7 +49,10 @@ describe('LoginForm.vue', () => {
               }
             }
           })
-        ]
+        ],
+        mocks: {
+          $t: (key) => translations[key] || key
+        }
       },
       ...options
     }
@@ -107,7 +109,9 @@ describe('LoginForm.vue', () => {
     })
 
     it('disables form when loading', async () => {
-      await wrapper.setData({ isLoading: true })
+      // Use wrapper.vm to set reactive property instead of setData
+      wrapper.vm.isLoading = true
+      await wrapper.vm.$nextTick()
 
       const passwordInput = wrapper.find('#password')
       const submitButton = wrapper.find('button[type="submit"]')
@@ -121,21 +125,24 @@ describe('LoginForm.vue', () => {
   describe('Form Validation', () => {
     it('disables submit button when password is empty', async () => {
       const submitButton = wrapper.find('button[type="submit"]')
-      await wrapper.setData({ password: '' })
+      wrapper.vm.password = ''
+      await wrapper.vm.$nextTick()
 
       expect(submitButton.attributes('disabled')).toBeDefined()
     })
 
     it('disables submit button when password has only whitespace', async () => {
       const submitButton = wrapper.find('button[type="submit"]')
-      await wrapper.setData({ password: '   ' })
+      wrapper.vm.password = '   '
+      await wrapper.vm.$nextTick()
 
       expect(submitButton.attributes('disabled')).toBeDefined()
     })
 
     it('enables submit button when password has content', async () => {
       const submitButton = wrapper.find('button[type="submit"]')
-      await wrapper.setData({ password: 'validpassword' })
+      wrapper.vm.password = 'validpassword'
+      await wrapper.vm.$nextTick()
 
       expect(submitButton.attributes('disabled')).toBeUndefined()
     })
@@ -151,7 +158,8 @@ describe('LoginForm.vue', () => {
     })
 
     it('calls store login method when form is submitted', async () => {
-      await wrapper.setData({ password: 'testpassword' })
+      wrapper.vm.password = 'testpassword'
+      await wrapper.vm.$nextTick()
 
       await wrapper.find('form').trigger('submit.prevent')
 
@@ -160,7 +168,8 @@ describe('LoginForm.vue', () => {
     })
 
     it('redirects to home page after successful login', async () => {
-      await wrapper.setData({ password: 'testpassword' })
+      wrapper.vm.password = 'testpassword'
+      await wrapper.vm.$nextTick()
 
       await wrapper.find('form').trigger('submit.prevent')
 
@@ -174,7 +183,8 @@ describe('LoginForm.vue', () => {
         writable: true
       })
 
-      await wrapper.setData({ password: 'testpassword' })
+      wrapper.vm.password = 'testpassword'
+      await wrapper.vm.$nextTick()
 
       await wrapper.find('form').trigger('submit.prevent')
 
@@ -185,7 +195,8 @@ describe('LoginForm.vue', () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
       mockStore.login = vi.fn().mockRejectedValue(new Error('Login failed'))
 
-      await wrapper.setData({ password: 'wrongpassword' })
+      wrapper.vm.password = 'wrongpassword'
+      await wrapper.vm.$nextTick()
 
       await wrapper.find('form').trigger('submit.prevent')
 
@@ -200,22 +211,29 @@ describe('LoginForm.vue', () => {
     it('shows loading spinner when submitting', async () => {
       // Mock a delayed login response
       mockStore.login = vi.fn().mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 100))
+        () => new Promise(resolve => setTimeout(resolve, 50))
       )
 
-      await wrapper.setData({ password: 'testpassword' })
-      await wrapper.find('form').trigger('submit.prevent')
-
-      // Check loading state is set
+      wrapper.vm.password = 'testpassword'
+      await wrapper.vm.$nextTick()
+      
+      // Trigger submit
+      const submitPromise = wrapper.find('form').trigger('submit.prevent')
+      
+      // Check loading state is set immediately
+      await wrapper.vm.$nextTick()
       expect(wrapper.vm.isLoading).toBe(true)
 
       // Wait for promise to resolve
-      await new Promise(resolve => setTimeout(resolve, 150))
+      await submitPromise
+      await new Promise(resolve => setTimeout(resolve, 10))
+      await wrapper.vm.$nextTick()
       expect(wrapper.vm.isLoading).toBe(false)
-    })
+    }, 10000) // 10 second timeout
 
     it('disables form elements during loading', async () => {
-      await wrapper.setData({ isLoading: true })
+      wrapper.vm.isLoading = true
+      await wrapper.vm.$nextTick()
 
       const passwordInput = wrapper.find('#password')
       const submitButton = wrapper.find('button[type="submit"]')

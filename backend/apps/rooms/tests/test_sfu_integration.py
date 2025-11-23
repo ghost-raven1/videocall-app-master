@@ -282,7 +282,8 @@ class FullIntegrationTestCase(TestCase):
             self.test_room_id = f"integration-test-{int(time.time())}"
 
     @unittest.skipIf(not hasattr(settings, 'SFU_API_BASE_URL') or
-                     settings.SFU_API_BASE_URL == 'http://localhost:8080/api')
+                     not settings.SFU_API_BASE_URL,
+                     "SFU_API_BASE_URL not configured")
     def test_full_room_lifecycle_integration(self):
         """Test complete room lifecycle with real SFU server"""
         if not self.sfu_available:
@@ -325,7 +326,8 @@ class FullIntegrationTestCase(TestCase):
         self.assertTrue(delete_response['success'])
 
     @unittest.skipIf(not hasattr(settings, 'SFU_API_BASE_URL') or
-                     settings.SFU_API_BASE_URL == 'http://localhost:8080/api')
+                     not settings.SFU_API_BASE_URL,
+                     "SFU_API_BASE_URL not configured")
     def test_health_check_integration(self):
         """Test health check with real SFU server"""
         if not self.sfu_available:
@@ -336,7 +338,8 @@ class FullIntegrationTestCase(TestCase):
         self.assertEqual(response['status'], 'healthy')
 
     @unittest.skipIf(not hasattr(settings, 'SFU_API_BASE_URL') or
-                     settings.SFU_API_BASE_URL == 'http://localhost:8080/api')
+                     not settings.SFU_API_BASE_URL,
+                     "SFU_API_BASE_URL not configured")
     def test_server_stats_integration(self):
         """Test server stats with real SFU server"""
         if not self.sfu_available:

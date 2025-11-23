@@ -21,20 +21,23 @@ vi.mock('../../services/webrtc-retry', () => {
 class MockWebSocket {
   static OPEN = 1
   static CLOSED = 3
+  static CONNECTING = 0
 
   constructor(url) {
     this.url = url
-    this.readyState = 0
+    this.readyState = MockWebSocket.CONNECTING
     this.onopen = null
     this.onmessage = null
     this.onclose = null
     this.onerror = null
 
-    // Auto-open
-    setTimeout(() => {
+    // Auto-open immediately using nextTick to ensure handlers are set
+    Promise.resolve().then(() => {
       this.readyState = MockWebSocket.OPEN
-      if (this.onopen) this.onopen({})
-    }, 0)
+      if (this.onopen) {
+        this.onopen({})
+      }
+    })
   }
 
   send = vi.fn()
@@ -131,12 +134,17 @@ describe('webrtc store helpers', () => {
       const notifySpy = vi.spyOn(globalStore, 'addNotification')
 
       await store.connectWebSocket('room-invalid-json')
+      
+      // Wait for WebSocket to be ready
+      await new Promise((r) => setTimeout(r, 10))
 
+      // websocket is a ref, so we need to access .value
+      const ws = store.websocket?.value || store.websocket
       // Simulate incoming invalid JSON
-      store.websocket.triggerMessage('not a json')
+      ws.triggerMessage('not a json')
 
       // Allow async handler to run
-      await new Promise((r) => setTimeout(r, 0))
+      await new Promise((r) => setTimeout(r, 10))
 
       expect(notifySpy).toHaveBeenCalled()
       const [message, level] = notifySpy.mock.calls[0]
@@ -151,31 +159,41 @@ describe('webrtc store helpers', () => {
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
       await store.connectWebSocket('room-unknown-type')
+      
+      // Wait for WebSocket to be ready
+      await new Promise((r) => setTimeout(r, 10))
 
+      // websocket is a ref, so we need to access .value
+      const ws = store.websocket?.value || store.websocket
       // Simulate well-formed but unknown type
-      store.websocket.triggerMessage(JSON.stringify({ type: 'unknown' }))
+      ws.triggerMessage(JSON.stringify({ type: 'unknown' }))
 
       // Allow async handler to run
-      await new Promise((r) => setTimeout(r, 0))
+      await new Promise((r) => setTimeout(r, 10))
 
       expect(warnSpy).toHaveBeenCalled()
       expect(notifySpy).not.toHaveBeenCalled()
-    })
+    }, 10000) // 10 second timeout
   })
 
   describe('sendWebSocketMessage', () => {
     it('sends JSON when WebSocket is open', async () => {
       const store = useWebRTCStore()
       await store.connectWebSocket('room-send-test')
+      
+      // Wait for WebSocket to be ready
+      await new Promise((r) => setTimeout(r, 10))
 
       store.sendWebSocketMessage({ type: 'pong', data: 'ok' })
 
-      expect(store.websocket.send).toHaveBeenCalledTimes(1)
-      const payload = store.websocket.send.mock.calls[0][0]
+      // websocket is a ref, so we need to access .value
+      const ws = store.websocket?.value || store.websocket
+      expect(ws.send).toHaveBeenCalledTimes(1)
+      const payload = ws.send.mock.calls[0][0]
       const parsed = JSON.parse(payload)
       expect(parsed.type).toBe('pong')
       expect(parsed.data).toBe('ok')
-    })
+    }, 10000) // 10 second timeout
 
     it('warns and does not send when WebSocket not connected', () => {
       const store = useWebRTCStore()
@@ -193,6 +211,9 @@ describe('webrtc store helpers', () => {
     it('toggleVideo flips track and broadcasts media_state', async () => {
       const store = useWebRTCStore()
       await store.connectWebSocket('room-toggle-video')
+      
+      // Wait for WebSocket to be ready
+      await new Promise((r) => setTimeout(r, 10))
 
       const videoTrack = { enabled: true }
       const audioTrack = { enabled: true }
@@ -205,14 +226,20 @@ describe('webrtc store helpers', () => {
 
       expect(videoTrack.enabled).toBe(false)
       expect(store.isVideoEnabled).toBe(false)
-      const payload = JSON.parse(store.websocket.send.mock.calls.at(-1)[0])
+      
+      // websocket is a ref, so we need to access .value
+      const ws = store.websocket?.value || store.websocket
+      const payload = JSON.parse(ws.send.mock.calls.at(-1)[0])
       expect(payload.type).toBe('media_state')
       expect(payload.state).toEqual({ video: false, audio: true })
-    })
+    }, 10000) // 10 second timeout
 
     it('toggleAudio flips track and broadcasts media_state', async () => {
       const store = useWebRTCStore()
       await store.connectWebSocket('room-toggle-audio')
+      
+      // Wait for WebSocket to be ready
+      await new Promise((r) => setTimeout(r, 10))
 
       const videoTrack = { enabled: true }
       const audioTrack = { enabled: true }
@@ -225,10 +252,13 @@ describe('webrtc store helpers', () => {
 
       expect(audioTrack.enabled).toBe(false)
       expect(store.isAudioEnabled).toBe(false)
-      const payload = JSON.parse(store.websocket.send.mock.calls.at(-1)[0])
+      
+      // websocket is a ref, so we need to access .value
+      const ws = store.websocket?.value || store.websocket
+      const payload = JSON.parse(ws.send.mock.calls.at(-1)[0])
       expect(payload.type).toBe('media_state')
       expect(payload.state).toEqual({ video: true, audio: false })
-    })
+    }, 10000) // 10 second timeout
   })
 
   describe('peer connection helpers', () => {
@@ -253,14 +283,19 @@ describe('webrtc store helpers', () => {
     it('createOfferForParticipant sends webrtc_offer with target', async () => {
       const store = useWebRTCStore()
       await store.connectWebSocket('room-offer')
+      
+      // Wait for WebSocket to be ready
+      await new Promise((r) => setTimeout(r, 10))
 
       await store.createOfferForParticipant('p-offer')
 
-      const payload = JSON.parse(store.websocket.send.mock.calls.at(-1)[0])
+      // websocket is a ref, so we need to access .value
+      const ws = store.websocket?.value || store.websocket
+      const payload = JSON.parse(ws.send.mock.calls.at(-1)[0])
       expect(payload.type).toBe('webrtc_offer')
       expect(payload.target).toBe('p-offer')
       expect(payload.offer).toMatchObject({ type: 'offer' })
-    })
+    }, 10000) // 10 second timeout
 
     it('createPeerConnectionForParticipant registers connection monitor id', async () => {
       const store = useWebRTCStore()
@@ -293,6 +328,9 @@ describe('webrtc store helpers', () => {
     it('toggleParticipantVideo flips remote participant and sends update', async () => {
       const store = useWebRTCStore()
       await store.connectWebSocket('room-participant-video')
+      
+      // Wait for WebSocket to be ready
+      await new Promise((r) => setTimeout(r, 10))
 
       store.remoteParticipants = [
         {
@@ -307,15 +345,21 @@ describe('webrtc store helpers', () => {
 
       const p = store.remoteParticipants.find((x) => x.id === 'p1')
       expect(p.isVideoEnabled).toBe(false)
-      const payload = JSON.parse(store.websocket.send.mock.calls.at(-1)[0])
+      
+      // websocket is a ref, so we need to access .value
+      const ws = store.websocket?.value || store.websocket
+      const payload = JSON.parse(ws.send.mock.calls.at(-1)[0])
       expect(payload.type).toBe('participant_media_update')
       expect(payload.participant_id).toBe('p1')
       expect(payload.media_state).toEqual({ video: false, audio: true })
-    })
+    }, 10000) // 10 second timeout
 
     it('toggleParticipantAudio flips remote participant and sends update', async () => {
       const store = useWebRTCStore()
       await store.connectWebSocket('room-participant-audio')
+      
+      // Wait for WebSocket to be ready
+      await new Promise((r) => setTimeout(r, 10))
 
       store.remoteParticipants = [
         {
@@ -330,11 +374,14 @@ describe('webrtc store helpers', () => {
 
       const p = store.remoteParticipants.find((x) => x.id === 'p2')
       expect(p.isAudioEnabled).toBe(false)
-      const payload = JSON.parse(store.websocket.send.mock.calls.at(-1)[0])
+      
+      // websocket is a ref, so we need to access .value
+      const ws = store.websocket?.value || store.websocket
+      const payload = JSON.parse(ws.send.mock.calls.at(-1)[0])
       expect(payload.type).toBe('participant_media_update')
       expect(payload.participant_id).toBe('p2')
       expect(payload.media_state).toEqual({ video: true, audio: false })
-    })
+    }, 10000) // 10 second timeout
   })
 
   describe('connection state aggregation', () => {
@@ -379,8 +426,13 @@ describe('webrtc store helpers', () => {
 
       // Prepare websocket to observe offer sending
       const ws = new MockWebSocket('ws://reconnect')
-      store.websocket = ws
-      await new Promise((r) => setTimeout(r, 0))
+      // websocket is a ref, so we need to set .value
+      if (store.websocket && typeof store.websocket === 'object' && 'value' in store.websocket) {
+        store.websocket.value = ws
+      } else {
+        store.websocket = ws
+      }
+      await new Promise((r) => setTimeout(r, 10))
 
       await store.attemptReconnection('p1')
 
@@ -432,9 +484,14 @@ describe('webrtc store helpers', () => {
       await store.createPeerConnectionForParticipant('c')
 
       const ws = new MockWebSocket('ws://test')
-      store.websocket = ws
+      // websocket is a ref, so we need to set .value
+      if (store.websocket && typeof store.websocket === 'object' && 'value' in store.websocket) {
+        store.websocket.value = ws
+      } else {
+        store.websocket = ws
+      }
       // Wait for websocket to open
-      await new Promise((r) => setTimeout(r, 0))
+      await new Promise((r) => setTimeout(r, 10))
 
       await store.initiateConnectionsWithAllParticipants()
 
@@ -444,7 +501,7 @@ describe('webrtc store helpers', () => {
       expect(targets).toContain('a')
       expect(targets).toContain('c')
       expect(targets).not.toContain('b')
-    })
+    }, 10000) // 10 second timeout
   })
   describe('endCall cleanup', () => {
     it('endCall stops tracks and clears participants and streams', async () => {

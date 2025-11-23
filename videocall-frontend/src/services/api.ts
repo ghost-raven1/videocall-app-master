@@ -54,21 +54,34 @@ apiClient.interceptors.request.use(
   },
 )
 
-// Response interceptor for handling JWT authentication errors
+// Response interceptor for handling JWT authentication errors and showing user-friendly messages
 apiClient.interceptors.response.use(
   (response) => {
     console.log(`API Response: ${response.status} ${response.config.url}`)
     return response
   },
   async (error) => {
+    const errorStatus = error.response?.status
+    const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message
+    const errorUrl = error.config?.url
+
     console.error('API Response Error:', {
-      status: error.response?.status,
-      message: error.response?.data?.error || error.message,
-      url: error.config?.url,
+      status: errorStatus,
+      message: errorMessage,
+      url: errorUrl,
     })
 
+    // Try to get global store for notifications
+    let globalStore = null
+    try {
+      const { useGlobalStore } = await import('../stores/global')
+      globalStore = useGlobalStore()
+    } catch (e) {
+      // Store not available, skip notifications
+    }
+
     // Handle JWT-specific error cases
-    if (error.response?.status === 401) {
+    if (errorStatus === 401) {
       // Unauthorized - token might be expired
       console.log('Unauthorized access - token may be expired')
 
@@ -85,22 +98,54 @@ apiClient.interceptors.response.use(
           tokenManager.clearTokens()
           // Dispatch custom event for auth state change
           window.dispatchEvent(new CustomEvent('auth:token-expired'))
+          
+          if (globalStore) {
+            globalStore.addNotification('Session expired. Please log in again.', 'warning', 5000)
+          }
         }
       } else {
         // Clear invalid tokens if retry also failed
         tokenManager.clearTokens()
         // Dispatch custom event for auth state change
         window.dispatchEvent(new CustomEvent('auth:token-expired'))
+        
+        if (globalStore) {
+          globalStore.addNotification('Session expired. Please log in again.', 'warning', 5000)
+        }
       }
-    } else if (error.response?.status === 403) {
+    } else if (errorStatus === 403) {
       // Forbidden - insufficient permissions
       console.log('Forbidden access - insufficient permissions')
-    } else if (error.response?.status === 429) {
+      if (globalStore) {
+        globalStore.addNotification('You do not have permission to perform this action.', 'error', 5000)
+      }
+    } else if (errorStatus === 404) {
+      // Not found
+      if (globalStore && !errorUrl?.includes('/health/')) {
+        globalStore.addNotification('Resource not found.', 'error', 4000)
+      }
+    } else if (errorStatus === 429) {
       // Rate limited
       console.log('Rate limit exceeded')
-    } else if (error.response?.status >= 500) {
+      if (globalStore) {
+        globalStore.addNotification('Too many requests. Please wait a moment and try again.', 'warning', 5000)
+      }
+    } else if (errorStatus >= 500) {
       // Server error
       console.log('Server error occurred')
+      if (globalStore) {
+        globalStore.addNotification('Server error. Please try again later.', 'error', 6000)
+      }
+    } else if (!error.response) {
+      // Network error
+      console.error('Network error - no response from server')
+      if (globalStore) {
+        globalStore.addNotification('Network error. Please check your connection.', 'error', 5000)
+      }
+    } else if (errorMessage && globalStore && errorStatus !== 401 && errorStatus !== 403) {
+      // Show user-friendly error message for other errors
+      const userMessage = typeof errorMessage === 'string' ? errorMessage : 'An error occurred. Please try again.'
+      globalStore.addNotification(userMessage, 'error', 5000)
     }
 
     return Promise.reject(error)
@@ -279,6 +324,23 @@ export const apiService = {
    */
   async deleteRoom(roomId) {
     return apiClient.delete(`/rooms/${roomId}/delete/`)
+  },
+
+  /**
+   * Проверка здоровья комнаты и SFU
+   * @param {string} roomId
+   * @returns {Promise<import('axios').AxiosResponse<any>>}
+   */
+  async getRoomHealth(roomId) {
+    return apiClient.get(`/rooms/${roomId}/health/`)
+  },
+
+  /**
+   * Получение статистики SFU сервера
+   * @returns {Promise<import('axios').AxiosResponse<any>>}
+   */
+  async getSFUServerStats() {
+    return apiClient.get('/rooms/sfu/server/stats/')
   },
 
   // System endpoints
