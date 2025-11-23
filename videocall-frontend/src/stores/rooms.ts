@@ -24,12 +24,12 @@ export const useRoomsStore = defineStore('rooms', () => {
   const canJoinRoom = computed(() => !isJoiningRoom.value && !hasActiveRoom.value)
 
   // Actions
-  const createRoom = async () => {
+  const createRoom = async (participantName?: string, roomPassword?: string) => {
     try {
       isCreatingRoom.value = true
       globalStore.setLoading(true, 'Creating room...')
 
-      const response = await apiService.createRoom()
+      const response = await apiService.createRoom(participantName, roomPassword)
       const roomData = response.data
 
       currentRoom.value = {
@@ -57,7 +57,7 @@ export const useRoomsStore = defineStore('rooms', () => {
     }
   }
 
-  const joinRoom = async (roomIdentifier) => {
+  const joinRoom = async (roomIdentifier: string, roomPassword?: string, participantName?: string) => {
     try {
       isJoiningRoom.value = true
       globalStore.setLoading(true, 'Joining room...')
@@ -78,7 +78,10 @@ export const useRoomsStore = defineStore('rooms', () => {
         }
       }
 
-      const response = await apiService.joinRoom(cleanIdentifier)
+      // Get participant name from localStorage if not provided
+      const finalParticipantName = participantName || localStorage.getItem('userName') || undefined
+
+      const response = await apiService.joinRoom(cleanIdentifier, roomPassword, finalParticipantName)
       const roomData = response.data
 
       currentRoom.value = {

@@ -10,9 +10,18 @@
       ref="videoRef"
       autoplay
       playsinline
-      muted
+      :muted="isLocal"
       :class="videoClasses"
       @loadedmetadata="onVideoLoaded"
+    />
+    
+    <!-- Audio element for remote participants (hidden, plays audio) -->
+    <audio
+      v-if="!isLocal && participant.stream"
+      ref="audioRef"
+      autoplay
+      :muted="!participant.isAudioEnabled"
+      style="display: none;"
     />
 
     <!-- Avatar placeholder when no video -->
@@ -182,6 +191,7 @@ const emit = defineEmits(['toggle-video', 'toggle-audio', 'card-click'])
 
 // Template refs
 const videoRef = ref(null)
+const audioRef = ref(null)
 
 // Reactive state
 const isHovered = ref(false)
@@ -202,7 +212,8 @@ const cardClasses = computed(() => {
       'connecting': isConnecting.value,
       'connected': props.participant.connectionState === 'connected',
       'video-disabled': !showVideo.value,
-      'audio-disabled': !props.participant.isAudioEnabled
+      'audio-disabled': !props.participant.isAudioEnabled,
+      'speaking': props.participant.audioLevel > 30 // Add speaking class when audio level is high
     }
   ]
 })
@@ -271,6 +282,14 @@ const shouldMirrorLocal = computed(() => {
   return props.isLocal && props.size !== 'fullscreen'
 })
 
+const audioLevelClass = computed(() => {
+  const level = props.participant.audioLevel || 0
+  if (level > 70) return 'high'
+  if (level > 40) return 'medium'
+  if (level > 30) return 'low'
+  return ''
+})
+
 // Methods
 const onVideoLoaded = () => {
   // Handle video loaded event if needed
@@ -302,6 +321,7 @@ watch(() => props.participant.stream, (newStream) => {
         hasAudioTracks: newStream.getAudioTracks().length > 0,
         streamActive: newStream.active,
         videoTrackEnabled: newStream.getVideoTracks()[0]?.enabled,
+        audioTrackEnabled: newStream.getAudioTracks()[0]?.enabled,
         participantName: props.participant.name
       })
       
@@ -313,25 +333,76 @@ watch(() => props.participant.stream, (newStream) => {
       videoRef.value.srcObject = null
       console.log(`ParticipantCard: Removed stream for ${props.participant.id}`)
     }
+    
+    // Handle audio for remote participants
+    if (!props.isLocal && audioRef.value && newStream) {
+      // Always set the stream, but control mute state
+      audioRef.value.srcObject = newStream
+      audioRef.value.muted = !props.participant.isAudioEnabled
+      // Ensure audio plays
+      audioRef.value.play().catch(err => {
+        console.warn(`Failed to autoplay audio for participant ${props.participant.id}:`, err)
+      })
+      console.log(`ParticipantCard: Audio stream set for ${props.participant.id}`, {
+        muted: audioRef.value.muted,
+        isAudioEnabled: props.participant.isAudioEnabled,
+        hasAudioTracks: newStream.getAudioTracks().length > 0
+      })
+    } else if (!props.isLocal && audioRef.value && !newStream) {
+      audioRef.value.srcObject = null
+      console.log(`ParticipantCard: Audio stream removed for ${props.participant.id}`)
+    }
   })
 }, { immediate: true })
 
+// Watch for audio enabled state changes
+watch(() => props.participant.isAudioEnabled, (isEnabled) => {
+  if (!props.isLocal && audioRef.value) {
+    audioRef.value.muted = !isEnabled
+    if (isEnabled && props.participant.stream) {
+      // Ensure audio plays when enabled
+      audioRef.value.play().catch(err => {
+        console.warn(`Failed to play audio after enabling for ${props.participant.id}:`, err)
+      })
+    }
+    console.log(`ParticipantCard: Audio ${isEnabled ? 'unmuted' : 'muted'} for ${props.participant.id}`)
+  }
+})
+
 // Lifecycle
 onMounted(() => {
-  if (props.participant.stream && videoRef.value) {
-    videoRef.value.srcObject = props.participant.stream
-    console.log(`ParticipantCard: Mounted with stream for ${props.participant.id}`)
+  if (props.participant.stream) {
+    if (videoRef.value) {
+      videoRef.value.srcObject = props.participant.stream
+      console.log(`ParticipantCard: Mounted with stream for ${props.participant.id}`)
+      
+      // Ensure video plays
+      videoRef.value.play().catch(err => {
+        console.warn(`Failed to autoplay video on mount for participant ${props.participant.id}:`, err)
+      })
+    }
     
-    // Ensure video plays
-    videoRef.value.play().catch(err => {
-      console.warn(`Failed to autoplay video on mount for participant ${props.participant.id}:`, err)
-    })
+    // Setup audio for remote participants
+    if (!props.isLocal && audioRef.value) {
+      audioRef.value.srcObject = props.participant.stream
+      audioRef.value.muted = !props.participant.isAudioEnabled
+      audioRef.value.play().catch(err => {
+        console.warn(`Failed to autoplay audio on mount for participant ${props.participant.id}:`, err)
+      })
+      console.log(`ParticipantCard: Audio setup on mount for ${props.participant.id}`, {
+        muted: audioRef.value.muted,
+        isAudioEnabled: props.participant.isAudioEnabled
+      })
+    }
   }
 })
 
 onUnmounted(() => {
   if (videoRef.value) {
     videoRef.value.srcObject = null
+  }
+  if (audioRef.value) {
+    audioRef.value.srcObject = null
   }
 })
 </script>
@@ -344,6 +415,46 @@ onUnmounted(() => {
 
 .participant-card:hover {
   @apply shadow-xl;
+}
+
+/* Speaking indicator - pulsing border */
+.participant-card.speaking {
+  animation: speaking-pulse 0.5s ease-in-out infinite;
+  border: 3px solid;
+  border-color: rgba(34, 197, 94, 0.8);
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+}
+
+@keyframes speaking-pulse {
+  0%, 100% {
+    border-color: rgba(34, 197, 94, 0.8);
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+    transform: scale(1);
+  }
+  50% {
+    border-color: rgba(34, 197, 94, 1);
+    box-shadow: 0 0 30px rgba(34, 197, 94, 0.8);
+    transform: scale(1.02);
+  }
+}
+
+/* Dynamic pulse based on audio level */
+.participant-card.speaking[data-audio-level="high"] {
+  animation-duration: 0.3s;
+  border-width: 4px;
+  box-shadow: 0 0 40px rgba(34, 197, 94, 1);
+}
+
+.participant-card.speaking[data-audio-level="medium"] {
+  animation-duration: 0.5s;
+  border-width: 3px;
+  box-shadow: 0 0 30px rgba(34, 197, 94, 0.8);
+}
+
+.participant-card.speaking[data-audio-level="low"] {
+  animation-duration: 0.7s;
+  border-width: 2px;
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
 }
 
 /* Size variants */

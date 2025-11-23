@@ -298,10 +298,19 @@ export const apiService = {
   // Room management endpoints (no CSRF needed for JWT)
   /**
    * Создание комнаты
+   * @param participantName - Имя участника (необязательно)
+   * @param roomPassword - Пароль комнаты (необязательно)
    * @returns {Promise<import('axios').AxiosResponse<any>>}
    */
-  async createRoom() {
-    return apiClient.post('/rooms/create/')
+  async createRoom(participantName?: string, roomPassword?: string) {
+    const payload: any = {}
+    if (participantName) {
+      payload.participant_name = participantName
+    }
+    if (roomPassword) {
+      payload.room_password = roomPassword
+    }
+    return apiClient.post('/rooms/create/', Object.keys(payload).length > 0 ? payload : undefined)
   },
 
   /**
@@ -313,11 +322,21 @@ export const apiService = {
 
   /**
    * Присоединение к комнате
+   * @param roomIdentifier - Код или ID комнаты
+   * @param roomPassword - Пароль комнаты (необязательно)
+   * @param participantName - Имя участника (необязательно)
    */
-  async joinRoom(roomIdentifier: string) {
-    return apiClient.post('/rooms/join/', {
+  async joinRoom(roomIdentifier: string, roomPassword?: string, participantName?: string) {
+    const payload: any = {
       room_identifier: roomIdentifier,
-    })
+    }
+    if (roomPassword) {
+      payload.room_password = roomPassword
+    }
+    if (participantName) {
+      payload.participant_name = participantName
+    }
+    return apiClient.post('/rooms/join/', payload)
   },
 
   /**

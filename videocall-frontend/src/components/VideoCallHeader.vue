@@ -17,8 +17,12 @@
         {{ formattedDuration }}
       </div>
 
-      <!-- Participants count -->
-      <div class="flex items-center space-x-1 text-sm text-gray-300">
+      <!-- Participants count (clickable to show participants list) -->
+      <button
+        @click="$emit('show-participants')"
+        class="flex items-center space-x-1 text-sm text-gray-300 hover:text-white transition-colors cursor-pointer"
+        :title="`${participantCount} participant${participantCount !== 1 ? 's' : ''}`"
+      >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
             stroke-linecap="round"
@@ -28,7 +32,7 @@
           ></path>
         </svg>
         <span>{{ participantCount }}</span>
-      </div>
+      </button>
 
       <!-- Chat button -->
       <button
@@ -197,7 +201,8 @@ defineEmits([
   'share-room',
   'toggle-recording',
   'toggle-stats',
-  'end-call'
+  'end-call',
+  'show-participants'
 ])
 
 const formattedDuration = computed(() => {

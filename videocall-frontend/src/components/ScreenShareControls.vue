@@ -28,10 +28,10 @@
     </button>
 
     <!-- Active Screen Shares List -->
-    <div v-if="hasActiveSessions" class="mt-4 space-y-2">
+    <div v-if="hasActiveSessions && activeSessions && activeSessions.length > 0" class="mt-4 space-y-2">
       <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Active Screen Shares:</h4>
       <div
-        v-for="session in activeSessions"
+        v-for="session in (activeSessions || [])"
         :key="session.id"
         class="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg"
       >
@@ -115,7 +115,7 @@ export default {
   },
   computed: {
     hasActiveSessions() {
-      return Array.isArray(this.activeSessions) && this.activeSessions.length > 0
+      return this.activeSessions && Array.isArray(this.activeSessions) && this.activeSessions.length > 0
     }
   },
   mounted() {

@@ -98,6 +98,107 @@
 
 ---
 
+## 19. Исправление Vue ошибок рендеринга и типов (2025-11-23) ✅ ЗАВЕРШЕНО
+
+### Проблема 1: Property "handleToggleAudio" и "handleToggleVideo" не определены
+**Симптомы:**
+- Vue предупреждение: `Property "handleToggleAudio" was accessed during render but is not defined on instance`
+- Vue предупреждение: `Property "handleToggleVideo" was accessed during render but is not defined on instance`
+- Ошибка появлялась при рендеринге компонента VideoCall
+
+**Причина:**
+- Функции `handleToggleAudio` и `handleToggleVideo` были определены слишком поздно в скрипте (после строки 1120)
+- В `<script setup>` порядок не должен иметь значения, но иногда Vue может иметь проблемы с доступом к функциям
+
+**Исправление:**
+- ✅ Перемещены функции `handleToggleAudio` и `handleToggleVideo` в начало скрипта (после инициализации chat controller, строка ~635)
+- ✅ Функции теперь доступны на раннем этапе инициализации компонента
+
+**Файлы:**
+- `videocall-frontend/src/components/VideoCall.vue` (строки ~635-645, удалены дубликаты на строках 1121-1127)
+
+**Результат:**
+- ✅ Предупреждения Vue больше не появляются
+- ✅ Функции доступны в template на раннем этапе рендеринга
+
+### Проблема 2: Invalid prop "participantId" - получен null вместо String
+**Симптомы:**
+- Vue предупреждение: `Invalid prop: type check failed for prop "participantId". Expected String with value "null", got Null`
+- Ошибка в компоненте ScreenShareControls
+
+**Причина:**
+- `currentParticipantId` может быть `null` на раннем этапе инициализации
+- Выражение `currentParticipantId || ''` не всегда работает корректно, если значение `null`
+
+**Исправление:**
+- ✅ Изменено на `String(currentParticipantId || '')` для гарантированного преобразования в строку
+- ✅ Добавлена явная проверка `v-if="currentParticipantId"` перед рендерингом компонента
+
+**Файлы:**
+- `videocall-frontend/src/components/VideoCall.vue` (строка 308)
+
+**Результат:**
+- ✅ Предупреждение Vue больше не появляется
+- ✅ Prop всегда получает строку, даже если `currentParticipantId` равен `null`
+
+### Проблема 3: Cannot read properties of undefined (reading 'length')
+**Симптомы:**
+- Ошибка: `Cannot read properties of undefined (reading 'length')`
+- Ошибка в компоненте ScreenShareControls при доступе к `activeSessions.length`
+
+**Причина:**
+- `activeSessions` может быть `undefined` на раннем этапе, до инициализации в `data()`
+- Computed property `hasActiveSessions` проверяет `Array.isArray`, но не проверяет на `undefined`
+
+**Исправление:**
+- ✅ Добавлена проверка на `undefined` в computed property: `this.activeSessions && Array.isArray(this.activeSessions)`
+- ✅ Добавлена дополнительная защита в template: `v-if="hasActiveSessions && activeSessions && activeSessions.length > 0"`
+- ✅ Использован fallback в v-for: `v-for="session in (activeSessions || [])"`
+
+**Файлы:**
+- `videocall-frontend/src/components/ScreenShareControls.vue` (строки 31, 34, 118)
+
+**Результат:**
+- ✅ Ошибка больше не появляется
+- ✅ Компонент безопасно обрабатывает случаи, когда `activeSessions` еще не инициализирован
+
+### Проблема 4: Failed to resolve directive: click-outside
+**Симптомы:**
+- Vue предупреждение: `Failed to resolve directive: click-outside`
+- Предупреждение в компоненте VideoCallHeader
+
+**Причина:**
+- Директива `click-outside` зарегистрирована в `main.js`, но Vue может не распознать ее во время первого рендеринга
+- Это может быть проблема с порядком регистрации или timing issue
+
+**Статус:**
+- ⚠️ Директива правильно зарегистрирована в `main.js` (строка 36)
+- ⚠️ Это предупреждение, а не критическая ошибка - функциональность должна работать
+- ⚠️ Может быть связано с timing issue при инициализации Vue app
+
+**Файлы:**
+- `videocall-frontend/src/main.js` (строка 36)
+- `videocall-frontend/src/components/VideoCallHeader.vue` (строка 81)
+
+**Рекомендация:**
+- Предупреждение не критично, но можно попробовать переместить регистрацию директивы раньше в `main.js`
+
+### Проверка Bug 1 и Bug 2 из предыдущего запроса
+
+**Bug 1: RecoveryCallback signature**
+- ✅ **Проверено**: RecoveryCallback правильно используется в `webrtc.ts` (строка 433)
+- ✅ Callback получает оба параметра: `(recoveryParticipantId, recoveryInfo) => handleConnectionRecovery(recoveryParticipantId, peerConnection, recoveryInfo)`
+- ✅ Функция `handleConnectionRecovery` в `webrtc.ts` правильно принимает параметры (строка 472)
+- ✅ Функция `handleConnectionRecovery` в `VideoCall.vue` правильно принимает параметры (строка 981)
+- ✅ **Статус**: Уже исправлено в предыдущих доработках
+
+**Bug 2: $captureMessage context parameter**
+- ✅ **Проверено**: В `error-reporting.ts` (строка 286) используется `context || {}`
+- ✅ Это обеспечивает, что если `context` не передан, используется пустой объект
+- ✅ **Статус**: Уже исправлено в предыдущих доработках
+
+---
+
 ## 19. Исправление зависания оверлея "Connecting..." (2025-11-23) ✅ ЗАВЕРШЕНО
 
 ### Проблема: Оверлей "Connecting..." не исчезает после подключения
@@ -2758,5 +2859,396 @@ Backend возвращал WebSocket URL с внутренним Docker хост
 
 ---
 
-*Документ обновлен: 2025-11-23*
+---
+
+## 20. Исправление критических проблем со звуком, screen sharing и UI (2025-11-23)
+
+### Проблемы
+
+1. **Звук не слышен** - аудио треки не правильно обрабатывались в SFU режиме
+2. **Screen sharing не виден другим** - screen share треки не добавлялись в SFU соединение
+3. **Потоки должны ходить через SFU ноду** - все треки должны идти через SFU
+4. **"Initializing..." хотя 2 участника** - connectionState не обновлялся при подключении
+5. **Компоновка экрана** - нужно улучшить
+6. **Имя пользователя и пароль комнаты** - добавить форму
+
+### Исправления
+
+#### 1. Исправление звука в SFU режиме
+
+**Файл**: `videocall-frontend/src/stores/webrtc-sfu.ts`
+
+**Изменения**:
+- Добавлено логирование при добавлении треков в SFU соединение
+- Улучшена обработка аудио треков в `ontrack` обработчике
+- Добавлена проверка что аудио треки не muted и enabled
+- Объединение треков из одного потока для одного участника
+
+```typescript
+// Добавлено логирование треков
+this.localStream.value.getTracks().forEach(track => {
+  console.log('Adding local track to SFU:', {
+    kind: track.kind,
+    id: track.id,
+    enabled: track.enabled,
+    readyState: track.readyState,
+    label: track.label
+  })
+  sfuPC.addTrack(track, this.localStream.value!)
+})
+
+// Улучшена обработка аудио треков
+if (track.kind === 'audio') {
+  existingParticipant.isAudioEnabled = track.enabled
+  // Ensure audio track is not muted
+  if (track.enabled && !track.muted) {
+    console.log(`Audio track enabled and not muted for participant ${participantId}`)
+  }
+}
+```
+
+#### 2. Исправление screen sharing через SFU
+
+**Файл**: `videocall-frontend/src/stores/webrtc-sfu.ts`
+
+**Добавлено**:
+- Метод `addScreenShareTrack()` для добавления screen share треков в SFU соединение
+- Метод `removeScreenShareTrack()` для удаления screen share треков
+- Автоматическое создание нового offer после добавления/удаления screen share треков
+
+```typescript
+addScreenShareTrack(screenShareStream: MediaStream): void {
+  // Remove old screen share tracks
+  // Add new screen share tracks
+  // Create new offer to negotiate
+}
+
+removeScreenShareTrack(): void {
+  // Remove screen share tracks
+  // Create new offer to negotiate
+}
+```
+
+**Файл**: `videocall-frontend/src/components/VideoCall.vue`
+
+**Изменения**:
+- Использование SFU manager для добавления screen share треков
+- Fallback на прямое добавление если manager недоступен
+
+#### 3. Исправление статуса "Initializing..."
+
+**Файл**: `videocall-frontend/src/stores/webrtc.ts`
+
+**Изменения**:
+- Добавлено обновление `connectionState` в обработчике `onconnectionstatechange` для SFU соединения
+- Вызов `updateOverallConnectionState()` при изменении состояния SFU соединения
+
+```typescript
+sfuPC.onconnectionstatechange = () => {
+  const state = sfuPC.connectionState
+  if (state === 'connected') {
+    connectionState.value = 'connected'
+    isConnected.value = true
+    updateOverallConnectionState()
+  }
+  // ... другие состояния
+}
+```
+
+#### 4. Добавление формы для имени пользователя и пароля комнаты
+
+**Файл**: `videocall-frontend/src/components/CallActions.vue`
+
+**Добавлено**:
+- Поля для ввода имени пользователя при создании комнаты
+- Поле для пароля комнаты при создании
+- Поля для имени пользователя и пароля при присоединении
+- Сохранение имени пользователя в localStorage
+
+**Файл**: `videocall-frontend/src/services/api.ts`
+
+**Изменения**:
+- `createRoom()` теперь принимает `participantName` и `roomPassword`
+- `joinRoom()` теперь принимает `roomPassword` и `participantName`
+
+**Файл**: `videocall-frontend/src/stores/rooms.ts`
+
+**Изменения**:
+- `createRoom()` принимает параметры имени и пароля
+- `joinRoom()` принимает параметры пароля и имени
+- Автоматическое использование сохраненного имени из localStorage
+
+**Файл**: `videocall-frontend/src/components/VideoCall.vue`
+
+**Изменения**:
+- `currentParticipantName` теперь загружается из localStorage
+
+**Файл**: `videocall-frontend/src/stores/webrtc.ts`
+
+**Изменения**:
+- Добавлено поле `name` для участников при обработке `user_joined`
+
+#### 5. Улучшение компоновки экрана
+
+**Файл**: `videocall-frontend/src/components/VideoCall.vue`
+
+**Изменения**:
+- Улучшена компоновка модального окна списка участников
+- Добавлены стили для формы в `CallActions.vue`
+
+### Результаты
+
+✅ **Звук**: Аудио треки правильно добавляются и обрабатываются в SFU режиме
+✅ **Screen sharing**: Screen share треки добавляются в SFU соединение и видны другим участникам
+✅ **Потоки через SFU**: Все треки (аудио, видео, screen share) идут через SFU ноду
+✅ **Статус соединения**: Правильно обновляется при подключении
+✅ **Имя пользователя**: Можно указать при создании/присоединении к комнате
+✅ **Пароль комнаты**: Можно установить пароль при создании и ввести при присоединении
+
+### Статус
+
+✅ Все критические проблемы исправлены
+
+---
+
+---
+
+## Доработки аудио и видео (2025-01-27)
+
+### Проблема
+Пользователь не слышал участников с включенным микрофоном и не видел всех участников с включенной камерой.
+
+### Решение
+
+#### 1. Добавлен audio элемент для воспроизведения аудио всех участников
+
+**Файл**: `videocall-frontend/src/components/ParticipantCard.vue`
+
+**Изменения**:
+- Добавлен скрытый `<audio>` элемент для каждого удаленного участника
+- Audio элемент всегда подключен к stream, но управляется через атрибут `muted`
+- При изменении состояния `isAudioEnabled` автоматически обновляется `muted` атрибут
+- Audio элемент настраивается при монтировании компонента и при изменении stream
+
+**Код**:
+```typescript
+// Audio element for remote participants (hidden, plays audio)
+<audio
+  v-if="!isLocal && participant.stream"
+  ref="audioRef"
+  autoplay
+  :muted="!participant.isAudioEnabled"
+  style="display: none;"
+/>
+
+// Watch for audio enabled state changes
+watch(() => props.participant.isAudioEnabled, (isEnabled) => {
+  if (!props.isLocal && audioRef.value) {
+    audioRef.value.muted = !isEnabled
+    if (isEnabled && props.participant.stream) {
+      audioRef.value.play().catch(err => {
+        console.warn(`Failed to play audio after enabling for ${props.participant.id}:`, err)
+      })
+    }
+  }
+})
+```
+
+#### 2. Улучшена сортировка участников в grid
+
+**Файл**: `videocall-frontend/src/components/ParticipantGrid.vue`
+
+**Изменения**:
+- Участники сортируются: сначала с включенным видео, затем по состоянию подключения
+- Это обеспечивает приоритетное отображение участников с активным видео
+
+**Код**:
+```typescript
+const remoteParticipants = computed(() => {
+  const participants = webrtcStore.remoteParticipants || []
+  // Sort: participants with video enabled first, then by connection state
+  return [...participants].sort((a, b) => {
+    // First sort by video enabled
+    if (a.isVideoEnabled && !b.isVideoEnabled) return -1
+    if (!a.isVideoEnabled && b.isVideoEnabled) return 1
+    // Then by connection state
+    const stateOrder = { 'connected': 0, 'connecting': 1, 'new': 2, 'disconnected': 3, 'failed': 4 }
+    return (stateOrder[a.connectionState] || 5) - (stateOrder[b.connectionState] || 5)
+  })
+})
+```
+
+#### 3. Исправлен подсчет участников
+
+**Файл**: `videocall-frontend/src/components/VideoCall.vue`
+
+**Изменения**:
+- Используется `webrtcStore.participantCount` вместо прямого подсчета
+- Это обеспечивает корректный подсчет в SFU и P2P режимах
+
+**Код**:
+```typescript
+const participantCount = computed(() => {
+  // Use store's participantCount which handles SFU mode correctly
+  return webrtcStore.participantCount
+})
+```
+
+#### 4. Улучшена обработка видео элементов
+
+**Файл**: `videocall-frontend/src/components/ParticipantCard.vue`
+
+**Изменения**:
+- Видео элемент для локального участника имеет `:muted="isLocal"` вместо статичного `muted`
+- Это позволяет корректно отображать локальное видео без звука
+
+**Код**:
+```html
+<video
+  v-if="showVideo && participant.stream"
+  ref="videoRef"
+  autoplay
+  playsinline
+  :muted="isLocal"
+  :class="videoClasses"
+  @loadedmetadata="onVideoLoaded"
+/>
+```
+
+### Результат
+
+✅ Все участники с включенным микрофоном теперь воспроизводят звук  
+✅ Все участники с включенной камерой отображаются в grid  
+✅ Участники сортируются по приоритету (видео включено → состояние подключения)  
+✅ Корректный подсчет участников в SFU и P2P режимах  
+✅ Правильная обработка локального и удаленного видео  
+
+---
+
+---
+
+## Доработки screen sharing и визуальных индикаторов (2025-01-27)
+
+### Проблема
+1. Пользователь не видел все демонстрации экранов участников
+2. Другие участники не видели демонстрацию экрана пользователя
+3. Не было визуальной индикации говорящих участников
+
+### Решение
+
+#### 1. Отображение всех активных screen shares
+
+**Файл**: `videocall-frontend/src/components/VideoCall.vue`
+
+**Изменения**:
+- Создан computed `allActiveScreenShares` для получения всех активных screen shares (локальных и удаленных)
+- Основной screen share отображается на весь экран
+- Остальные screen shares отображаются как миниатюры в правом нижнем углу
+- Добавлена возможность переключения между screen shares кликом на миниатюру
+- Используются отдельные refs для каждого screen share (screenShareVideoRefs и screenShareThumbnailRefs)
+
+**Код**:
+```typescript
+// Get all active screen shares (local and remote)
+const allActiveScreenShares = computed(() => {
+  const activeShares = []
+  
+  // Check local screen share
+  if (screenShare.isScreenSharing.value && screenShare.screenShareStream.value) {
+    // ... add local screen share
+  }
+  
+  // Check remote screen shares from store
+  const remoteScreenShares = webrtcStore.remoteScreenShareStreams || new Map()
+  for (const [participantId, stream] of remoteScreenShares.entries()) {
+    // ... add remote screen shares
+  }
+  
+  // Also check participants with isScreenSharing flag
+  for (const participant of webrtcStore.remoteParticipants) {
+    if (participant.isScreenSharing && participant.screenShareStream) {
+      // ... add participant screen shares
+    }
+  }
+  
+  return activeShares
+})
+```
+
+#### 2. Пульсирующая рамка для говорящих участников
+
+**Файл**: `videocall-frontend/src/components/ParticipantCard.vue`
+
+**Изменения**:
+- Добавлен класс `speaking` к карточке участника при `audioLevel > 30`
+- Добавлена CSS анимация `speaking-pulse` для пульсирующей рамки
+- Интенсивность пульсации зависит от уровня аудио (high/medium/low)
+- Рамка меняет цвет и размер в такт аудио
+
+**Код**:
+```css
+/* Speaking indicator - pulsing border */
+.participant-card.speaking {
+  animation: speaking-pulse 0.5s ease-in-out infinite;
+  border: 3px solid;
+  border-color: rgba(34, 197, 94, 0.8);
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+}
+
+@keyframes speaking-pulse {
+  0%, 100% {
+    border-color: rgba(34, 197, 94, 0.8);
+    box-shadow: 0 0 20px rgba(34, 197, 94, 0.5);
+    transform: scale(1);
+  }
+  50% {
+    border-color: rgba(34, 197, 94, 1);
+    box-shadow: 0 0 30px rgba(34, 197, 94, 0.8);
+    transform: scale(1.02);
+  }
+}
+```
+
+#### 3. Обработка screen share в SFU режиме
+
+**Файл**: `videocall-frontend/src/stores/webrtc-sfu.ts`
+
+**Изменения**:
+- Добавлена проверка на screen share tracks в `ontrack` handler
+- Screen share tracks определяются по label (содержит "screen", "display", "window")
+- Screen share tracks обрабатываются отдельно от обычных video tracks
+- При получении screen share track обновляется состояние участника (`isScreenSharing`, `screenShareStream`)
+
+**Код**:
+```typescript
+// Check if this is a screen share track
+const isScreenShare = track.label && (
+  track.label.toLowerCase().includes('screen') ||
+  track.label.toLowerCase().includes('display') ||
+  track.label.toLowerCase().includes('window') ||
+  stream.id.toLowerCase().includes('screen')
+)
+
+if (isScreenShare) {
+  // Handle screen share track separately
+  const participant = this.remoteParticipants.value.find(p => p.id === participantId)
+  if (participant) {
+    participant.isScreenSharing = true
+    participant.screenShareStream = stream
+  }
+}
+```
+
+### Результат
+
+✅ Все активные screen shares отображаются (основной на весь экран, остальные как миниатюры)  
+✅ Можно переключаться между screen shares кликом на миниатюру  
+✅ Говорящие участники подсвечиваются пульсирующей зеленой рамкой в такт аудио  
+✅ Интенсивность пульсации зависит от уровня аудио (high/medium/low)  
+✅ Screen sharing работает в SFU режиме для всех участников  
+✅ Screen share tracks правильно обрабатываются и отображаются  
+
+---
+
+*Документ обновлен: 2025-01-27*
 

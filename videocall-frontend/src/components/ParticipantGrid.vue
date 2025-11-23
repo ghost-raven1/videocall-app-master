@@ -232,7 +232,19 @@ const isTransitioning = ref(false)
 // Computed properties
 const participantCount = computed(() => webrtcStore.participantCount)
 
-const remoteParticipants = computed(() => webrtcStore.remoteParticipants)
+// Filter participants: show all participants, but prioritize those with video enabled
+const remoteParticipants = computed(() => {
+  const participants = webrtcStore.remoteParticipants || []
+  // Sort: participants with video enabled first, then by connection state
+  return [...participants].sort((a, b) => {
+    // First sort by video enabled
+    if (a.isVideoEnabled && !b.isVideoEnabled) return -1
+    if (!a.isVideoEnabled && b.isVideoEnabled) return 1
+    // Then by connection state
+    const stateOrder = { 'connected': 0, 'connecting': 1, 'new': 2, 'disconnected': 3, 'failed': 4 }
+    return (stateOrder[a.connectionState] || 5) - (stateOrder[b.connectionState] || 5)
+  })
+})
 
 const localParticipant = computed(() => ({
   id: 'local',

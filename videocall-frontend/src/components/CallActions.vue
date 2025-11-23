@@ -19,6 +19,33 @@
           <div class="card-icon">✨</div>
           <h2 class="card-title">Создать новый звонок</h2>
           <p class="card-description">Создайте новую комнату для видеозвонка и пригласите участников по уникальному коду</p>
+          
+          <!-- User name input -->
+          <div class="form-group">
+            <label for="userName" class="form-label">Ваше имя (необязательно)</label>
+            <input 
+              id="userName"
+              v-model="userName" 
+              type="text" 
+              placeholder="Введите ваше имя" 
+              class="form-input"
+              maxlength="50"
+            />
+          </div>
+          
+          <!-- Room password input -->
+          <div class="form-group">
+            <label for="roomPassword" class="form-label">Пароль комнаты (необязательно)</label>
+            <input 
+              id="roomPassword"
+              v-model="roomPassword" 
+              type="password" 
+              placeholder="Установите пароль для защиты комнаты" 
+              class="form-input"
+              maxlength="50"
+            />
+          </div>
+          
           <button 
             @click="createNewCall" 
             :disabled="isCreating"
@@ -37,8 +64,25 @@
           <div class="card-icon">🔗</div>
           <h2 class="card-title">Присоединиться к звонку</h2>
           <p class="card-description">Введите код комнаты для присоединения к существующему звонку</p>
-          <div class="join-input-group">
+          
+          <!-- User name input -->
+          <div class="form-group">
+            <label for="joinUserName" class="form-label">Ваше имя (необязательно)</label>
             <input 
+              id="joinUserName"
+              v-model="joinUserName" 
+              type="text" 
+              placeholder="Введите ваше имя" 
+              class="form-input"
+              maxlength="50"
+            />
+          </div>
+          
+          <!-- Room code input -->
+          <div class="form-group">
+            <label for="roomCode" class="form-label">Код комнаты</label>
+            <input 
+              id="roomCode"
               v-model="roomCode" 
               type="text" 
               placeholder="Введите код комнаты (например: ABC123)" 
@@ -47,18 +91,34 @@
               @keyup.enter="joinCall"
               maxlength="10"
             />
-            <button 
-              @click="joinCall" 
-              class="action-button secondary-button"
-              :disabled="!roomCode || isJoining"
-            >
-              <span v-if="!isJoining">→ Присоединиться</span>
-              <span v-else class="loading">
-                <span class="spinner"></span>
-                Присоединение...
-              </span>
-            </button>
           </div>
+          
+          <!-- Room password input -->
+          <div class="form-group">
+            <label for="joinRoomPassword" class="form-label">Пароль комнаты (если требуется)</label>
+            <input 
+              id="joinRoomPassword"
+              v-model="joinRoomPassword" 
+              type="password" 
+              placeholder="Введите пароль комнаты" 
+              class="form-input"
+              :disabled="isJoining"
+              @keyup.enter="joinCall"
+              maxlength="50"
+            />
+          </div>
+          
+          <button 
+            @click="joinCall" 
+            class="action-button secondary-button"
+            :disabled="!roomCode || isJoining"
+          >
+            <span v-if="!isJoining">→ Присоединиться</span>
+            <span v-else class="loading">
+              <span class="spinner"></span>
+              Присоединение...
+            </span>
+          </button>
           <p v-if="error" class="error-message">{{ error }}</p>
         </div>
       </div>
@@ -95,7 +155,7 @@
 </template>
 
 <script>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRoomsStore } from '../stores/rooms'
 
@@ -105,6 +165,10 @@ export default {
     const router = useRouter()
     const roomsStore = useRoomsStore()
     const roomCode = ref('')
+    const userName = ref('')
+    const roomPassword = ref('')
+    const joinUserName = ref('')
+    const joinRoomPassword = ref('')
     const error = ref('')
     const isCreating = ref(false)
     const isJoining = ref(false)
@@ -115,10 +179,14 @@ export default {
         isCreating.value = true
         error.value = ''
         
-        // Создаем комнату через API
-        const result = await roomsStore.createRoom()
+        // Создаем комнату через API с паролем если указан
+        const result = await roomsStore.createRoom(userName.value || undefined, roomPassword.value || undefined)
         
         if (result.success && result.room) {
+          // Сохраняем имя пользователя в localStorage для использования в звонке
+          if (userName.value) {
+            localStorage.setItem('userName', userName.value)
+          }
           // Переходим на страницу присоединения с кодом комнаты
           router.push(`/join/${result.room.short_code}`)
         } else {
@@ -143,14 +211,22 @@ export default {
         isJoining.value = true
         error.value = ''
         
-        // Проверяем существование комнаты и присоединяемся через API
-        const result = await roomsStore.joinRoom(roomCode.value.trim().toUpperCase())
+        // Сохраняем имя пользователя в localStorage
+        if (joinUserName.value) {
+          localStorage.setItem('userName', joinUserName.value)
+        }
+        
+        // Проверяем существование комнаты и присоединяемся через API с паролем если указан
+        const result = await roomsStore.joinRoom(
+          roomCode.value.trim().toUpperCase(),
+          joinRoomPassword.value || undefined
+        )
         
         if (result.success && result.room) {
           // Переходим в комнату
           router.push(`/call/${result.room.room_id}`)
         } else {
-          error.value = result.error || 'Комната не найдена. Проверьте код комнаты.'
+          error.value = result.error || 'Комната не найдена или неверный пароль. Проверьте код комнаты и пароль.'
         }
       } catch (err) {
         error.value = 'Не удалось присоединиться к комнате. Пожалуйста, попробуйте снова.'
@@ -160,8 +236,26 @@ export default {
       }
     }
 
+    // Загрузить сохраненное имя пользователя при монтировании
+    const loadSavedUserName = () => {
+      const savedName = localStorage.getItem('userName')
+      if (savedName) {
+        userName.value = savedName
+        joinUserName.value = savedName
+      }
+    }
+
+    // Загрузить сохраненное имя при монтировании
+    onMounted(() => {
+      loadSavedUserName()
+    })
+
     return {
       roomCode,
+      userName,
+      roomPassword,
+      joinUserName,
+      joinRoomPassword,
       error,
       isCreating,
       isJoining,
@@ -385,6 +479,40 @@ export default {
 }
 
 .room-code-input:disabled {
+  background-color: #f1f5f9;
+  cursor: not-allowed;
+}
+
+/* Form Groups */
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 0.5rem;
+}
+
+.form-input {
+  width: 100%;
+  padding: 0.75rem;
+  font-size: 1rem;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  transition: all 0.3s ease;
+  background-color: white;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-input:disabled {
   background-color: #f1f5f9;
   cursor: not-allowed;
 }

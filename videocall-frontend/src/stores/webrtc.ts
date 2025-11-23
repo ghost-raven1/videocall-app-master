@@ -103,7 +103,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   const sfuWebSocket = ref(null) // SFU WebSocket connection
   const sfuPeerConnection = ref(null) // WebRTC connection to SFU server
   const sfuRoomId = ref(null) // SFU room ID
-  const isSwitchingToSFU = ref(false) // Flag to prevent multiple simultaneous SFU switch attempts
+  const isSwitchingToSFU = ref(false)
+  const sfuConnectionFailed = ref(false) // Flag to prevent reconnection attempts after 1009 error // Flag to prevent multiple simultaneous SFU switch attempts
 
   // Retry and recovery state
   const retryOperations = ref(new Map()) // Map<operationId, retryInfo>
@@ -143,7 +144,14 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   const isCallActive = computed(
     () => isConnected.value && (hasLocalVideo.value || hasRemoteVideo.value),
   )
-  const participantCount = computed(() => remoteParticipants.value.length + 1)
+  const participantCount = computed(() => {
+    // In SFU mode, count from SFU manager's participants
+    if (sfuMode.value && sfuManager) {
+      return sfuManager.remoteParticipants.value.length + 1
+    }
+    // In P2P mode, count from remoteParticipants
+    return remoteParticipants.value.length + 1
+  })
   const isMultiUserCall = computed(() => participantCount.value > 2)
 
   // WebRTC configuration with STUN/TURN servers
@@ -191,7 +199,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     iceCandidatePoolSize: 10,
   }
 
-  // Initialize connection managers
+  // Initialize connection managers (updateOverallConnectionState will be defined later)
+  let updateConnectionStateCallback: (() => void) | undefined
   const sfuManager = new SFUConnectionManager(
     sfuWebSocket,
     sfuPeerConnection,
@@ -200,7 +209,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     localParticipantId,
     remoteStreams,
     remoteParticipants,
-    rtcConfiguration
+    rtcConfiguration,
+    () => updateConnectionStateCallback?.()
   )
 
   const p2pManager = new P2PConnectionManager(
@@ -446,9 +456,33 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   }
 
   const updateOverallConnectionState = () => {
+    // Check SFU connection first if in SFU mode
+    if (sfuMode.value && sfuPeerConnection.value) {
+      const sfuState = sfuPeerConnection.value.connectionState
+      if (sfuState === 'connected') {
+        connectionState.value = 'connected'
+        isConnected.value = true
+        return
+      } else if (sfuState === 'connecting' || sfuState === 'new') {
+        connectionState.value = 'connecting'
+        isConnected.value = false
+        return
+      } else if (sfuState === 'failed') {
+        connectionState.value = 'failed'
+        isConnected.value = false
+        return
+      }
+    }
+    
+    // Check P2P connections
     const connections = Array.from(peerConnections.value.values())
     if (connections.length === 0) {
-      connectionState.value = 'new'
+      // If WebSocket is connected but no peer connections yet, we're still connecting
+      if (websocket.value && websocket.value.readyState === WebSocket.OPEN) {
+        connectionState.value = 'connecting'
+      } else {
+        connectionState.value = 'new'
+      }
       isConnected.value = false
       return
     }
@@ -585,15 +619,44 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   }
 
   const switchToSFUMode = async (roomInfo = null) => {
-    // Prevent multiple simultaneous SFU switch attempts
-    if (sfuMode.value) {
-      console.log('Already in SFU mode, skipping switch', {
-        hasWebSocket: !!sfuWebSocket.value,
-        wsState: sfuWebSocket.value?.readyState,
-        hasPeerConnection: !!sfuPeerConnection.value,
-        pcState: sfuPeerConnection.value?.connectionState
-      })
-      return { success: true, alreadyInSFUMode: true }
+    // Check if SFU WebSocket is closed or not connected - need to reconnect
+    if (sfuMode.value && sfuWebSocket.value) {
+      const wsState = sfuWebSocket.value.readyState
+      if (wsState === WebSocket.OPEN && sfuPeerConnection.value) {
+        console.log('Already in SFU mode with active connection, skipping switch', {
+          hasWebSocket: !!sfuWebSocket.value,
+          wsState: wsState,
+          hasPeerConnection: !!sfuPeerConnection.value,
+          pcState: sfuPeerConnection.value.connectionState
+        })
+        return { success: true, alreadyInSFUMode: true }
+      } else {
+        // WebSocket is closed or closing - need to reconnect
+        // But don't reconnect if we've already failed with 1009 error
+        if (sfuConnectionFailed.value) {
+          console.log('SFU connection previously failed with 1009, skipping reconnection')
+          return { success: false, error: 'SFU connection failed: message too large' }
+        }
+        
+        console.log('SFU mode active but WebSocket not open, reconnecting...', {
+          wsState: wsState,
+          wsStateName: wsState === WebSocket.CONNECTING ? 'CONNECTING' 
+                     : wsState === WebSocket.OPEN ? 'OPEN'
+                     : wsState === WebSocket.CLOSING ? 'CLOSING'
+                     : wsState === WebSocket.CLOSED ? 'CLOSED'
+                     : 'NOT_CREATED'
+        })
+        // Reset SFU mode to allow reconnection
+        sfuMode.value = false
+        if (sfuWebSocket.value) {
+          sfuWebSocket.value.close()
+          sfuWebSocket.value = null
+        }
+        if (sfuPeerConnection.value) {
+          sfuPeerConnection.value.close()
+          sfuPeerConnection.value = null
+        }
+      }
     }
     
     // Prevent concurrent switch attempts
@@ -696,19 +759,42 @@ export const useWebRTCStore = defineStore('webrtc', () => {
         }
         
         sfuWebSocket.value.onclose = (event) => {
-          // Only reconnect if not a normal closure (1000) and we're still in SFU mode
-          // Don't reconnect if we're already switching (code 1000 = normal closure)
-          if (event.code !== 1000 && sfuMode.value && !isSwitchingToSFU.value) {
+          // Handle different close codes
+          if (event.code === 1000) {
+            // Normal closure
+            console.log('SFU WebSocket closed normally:', event.reason)
+            return
+          }
+          
+          if (event.code === 1009) {
+            // Message too big - don't retry immediately, fallback to P2P
+            console.error('SFU WebSocket closed: message too large (1009). Falling back to P2P mode.')
+            globalStore.addNotification('SFU connection failed: message too large. Using P2P mode.', 'error', 5000)
+            // Set flag to prevent reconnection attempts
+            sfuConnectionFailed.value = true
+            sfuMode.value = false
+            isSwitchingToSFU.value = false
+            if (sfuWebSocket.value) {
+              sfuWebSocket.value.close()
+              sfuWebSocket.value = null
+            }
+            if (sfuPeerConnection.value) {
+              sfuPeerConnection.value.close()
+              sfuPeerConnection.value = null
+            }
+            return
+          }
+          
+          // For other errors, attempt reconnection (but not if we've already failed with 1009)
+          if (sfuMode.value && !isSwitchingToSFU.value && !sfuConnectionFailed.value) {
             console.warn('SFU WebSocket closed unexpectedly, attempting reconnection...', event.code, event.reason)
             globalStore.addNotification('SFU connection lost, attempting reconnection...', 'warning', 5000)
             setTimeout(() => {
               // Double-check we're still in SFU mode and not already switching
-              if (sfuMode.value && !isSwitchingToSFU.value) {
+              if (sfuMode.value && !isSwitchingToSFU.value && !sfuConnectionFailed.value) {
                 switchToSFUMode(roomInfo).catch(console.error)
               }
             }, 3000)
-          } else if (event.code === 1000) {
-            console.log('SFU WebSocket closed normally:', event.reason)
           }
         }
       }
@@ -728,10 +814,31 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       
       // Handle connection state
       sfuPC.onconnectionstatechange = () => {
-        if (sfuPC.connectionState === 'failed' && sfuMode.value && !isSwitchingToSFU.value) {
-          console.warn('SFU peer connection failed, falling back to P2P')
-          globalStore.addNotification('SFU connection failed, falling back to P2P', 'error', 5000)
-          switchToP2PMode()
+        const state = sfuPC.connectionState
+        console.log('SFU peer connection state changed:', state)
+        
+        // Update global connection state
+        if (state === 'connected') {
+          connectionState.value = 'connected'
+          isConnected.value = true
+          updateOverallConnectionState()
+        } else if (state === 'connecting' || state === 'new') {
+          connectionState.value = 'connecting'
+          isConnected.value = false
+          updateOverallConnectionState()
+        } else if (state === 'failed') {
+          connectionState.value = 'failed'
+          isConnected.value = false
+          updateOverallConnectionState()
+          if (sfuMode.value && !isSwitchingToSFU.value) {
+            console.warn('SFU peer connection failed, falling back to P2P')
+            globalStore.addNotification('SFU connection failed, falling back to P2P', 'error', 5000)
+            switchToP2PMode()
+          }
+        } else if (state === 'disconnected') {
+          connectionState.value = 'disconnected'
+          isConnected.value = false
+          updateOverallConnectionState()
         }
       }
 
@@ -866,6 +973,11 @@ export const useWebRTCStore = defineStore('webrtc', () => {
                 console.log('WebSocket connected')
                 connectionAttemptCount.value = 0
                 lastConnectionAttempt.value = new Date()
+                // Update connection state when WebSocket connects
+                if (connectionState.value === 'new') {
+                  connectionState.value = 'connecting'
+                  updateOverallConnectionState()
+                }
                 resolve(undefined)
               }
 
@@ -1059,16 +1171,27 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       return
     }
 
-    // Check if participant already exists
+    // Check if participant already exists - more robust check
     const existingParticipant = remoteParticipants.value.find((p) => p.id === participantId)
     if (existingParticipant) {
-      console.log('Participant already exists, ignoring duplicate user_joined:', participantId)
+      console.log('Participant already exists, ignoring duplicate user_joined:', participantId, {
+        existingParticipant: existingParticipant.id,
+        currentCount: remoteParticipants.value.length
+      })
+      // Update existing participant info if needed
+      if (data.participant_name && existingParticipant.name !== data.participant_name) {
+        existingParticipant.name = data.participant_name
+      }
       return
     }
+    
+    // Additional check: ensure we don't have duplicates by filtering first
+    remoteParticipants.value = remoteParticipants.value.filter(p => p.id !== participantId)
     
     console.log('Adding new remote participant:', participantId, 'Total:', remoteParticipants.value.length + 1)
       remoteParticipants.value.push({
         id: participantId,
+        name: data.participant_name || `Participant ${participantId.slice(-4)}`,
         joined_at: data.timestamp,
         stream: null,
         connectionState: 'new', // new, connecting, connected, disconnected, failed
@@ -1079,6 +1202,12 @@ export const useWebRTCStore = defineStore('webrtc', () => {
         connectionQuality: 0,
         isRecording: false,
       })
+      
+      // Update connection state when participant joins
+      if (connectionState.value === 'new') {
+        connectionState.value = 'connecting'
+      }
+      updateOverallConnectionState()
 
     // Note: SFU mode is now enabled immediately when joining a room
     // This check is kept as a fallback in case SFU wasn't enabled during initialization
@@ -1465,6 +1594,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       remoteParticipants.value = []
       sfuMode.value = false
       connectionRecoveryInProgress.value = false
+      sfuConnectionFailed.value = false // Reset flag on call end
       fallbackLevels.value.clear()
 
       console.log('Call ended successfully')
@@ -1537,6 +1667,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     isConnected,
     isVideoEnabled,
     isAudioEnabled,
+    sfuManager, // Export SFU manager for use in components
     connectionState,
     remoteParticipants,
     localParticipantId,

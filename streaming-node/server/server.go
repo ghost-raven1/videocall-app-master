@@ -114,8 +114,8 @@ func NewServer(cfg *config.Config, sfuInstance *sfu.SFU) *Server {
 
 				return true
 			},
-			ReadBufferSize:  1024,
-			WriteBufferSize: 1024,
+			ReadBufferSize:  64 * 1024,  // 64KB for large SDP messages
+			WriteBufferSize: 64 * 1024,  // 64KB for large SDP messages
 		},
 	}
 
@@ -367,7 +367,8 @@ func (c *WebSocketConnection) readPump() {
 		c.conn.Close()
 	}()
 
-	c.conn.SetReadLimit(512)
+	// Increase read limit to handle large SDP offers (up to 128KB)
+	c.conn.SetReadLimit(128 * 1024)
 
 	for {
 		_, message, err := c.conn.ReadMessage()

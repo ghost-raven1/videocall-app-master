@@ -24,9 +24,10 @@ export class SFUConnectionManager {
   private localStream: Ref<MediaStream | null>
   private localParticipantId: Ref<string | null>
   private remoteStreams: Ref<Map<string, MediaStream>>
-  private remoteParticipants: Ref<any[]>
+  public remoteParticipants: Ref<any[]>
   private globalStore: ReturnType<typeof useGlobalStore>
   private rtcConfiguration: RTCConfiguration
+  private updateConnectionState?: () => void
 
   constructor(
     sfuWebSocket: Ref<WebSocket | null>,
@@ -36,7 +37,8 @@ export class SFUConnectionManager {
     localParticipantId: Ref<string | null>,
     remoteStreams: Ref<Map<string, MediaStream>>,
     remoteParticipants: Ref<any[]>,
-    rtcConfiguration: RTCConfiguration
+    rtcConfiguration: RTCConfiguration,
+    updateConnectionState?: () => void
   ) {
     this.sfuWebSocket = sfuWebSocket
     this.sfuPeerConnection = sfuPeerConnection
@@ -47,6 +49,7 @@ export class SFUConnectionManager {
     this.remoteParticipants = remoteParticipants
     this.globalStore = useGlobalStore()
     this.rtcConfiguration = rtcConfiguration
+    this.updateConnectionState = updateConnectionState
   }
 
   /**
@@ -202,10 +205,21 @@ export class SFUConnectionManager {
     const sfuPC = new RTCPeerConnection(this.rtcConfiguration)
     this.sfuPeerConnection.value = sfuPC
 
-    // Add local tracks to SFU connection
+    // Add local tracks to SFU connection (audio and video)
     this.localStream.value.getTracks().forEach(track => {
+      console.log('Adding local track to SFU:', {
+        kind: track.kind,
+        id: track.id,
+        enabled: track.enabled,
+        readyState: track.readyState,
+        label: track.label
+      })
       sfuPC.addTrack(track, this.localStream.value!)
     })
+    
+    // Add screen share stream if available
+    // Note: Screen share tracks should be added when screen sharing starts
+    // This is handled separately in handleToggleScreenShare
 
     // Handle remote tracks from SFU
     sfuPC.ontrack = (event) => {
@@ -235,25 +249,44 @@ export class SFUConnectionManager {
           }
         }
         
-        // If still no participant ID, try to match by checking existing participants
-        // or use a temporary ID that will be updated when peer-joined message arrives
+        // If still no participant ID, try to match by stream ID or use stream ID as fallback
         if (!participantId) {
-          // For now, use a temporary ID - will be updated when peer-joined arrives
-          participantId = `sfu_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-          console.warn('Could not extract participant ID from SFU track, using temporary ID:', participantId)
+          // Use stream ID as fallback participant ID
+          participantId = stream.id || `sfu_stream_${Date.now()}`
+          console.warn('Could not extract participant ID from SFU track, using stream ID as fallback:', participantId)
+        }
+        
+        // Check if we already have this stream to avoid duplicates
+        const existingStream = this.remoteStreams.value.get(participantId)
+        if (existingStream && existingStream.id === stream.id) {
+          console.log(`Stream ${stream.id} already exists for participant ${participantId}, skipping duplicate`)
+          return
         }
         
         this.remoteStreams.value.set(participantId, stream)
 
-        // Update or add participant
+        // Update or add participant - check by ID first to avoid duplicates
         const existingParticipant = this.remoteParticipants.value.find(p => p.id === participantId)
         if (existingParticipant) {
           // Update existing participant's stream
           existingParticipant.stream = stream
-          existingParticipant.isVideoEnabled = track.kind === 'video' ? track.enabled : existingParticipant.isVideoEnabled
-          existingParticipant.isAudioEnabled = track.kind === 'audio' ? track.enabled : existingParticipant.isAudioEnabled
+          // Merge tracks from same stream
+          if (track.kind === 'video') {
+            existingParticipant.isVideoEnabled = track.enabled
+          } else if (track.kind === 'audio') {
+            existingParticipant.isAudioEnabled = track.enabled
+            // Ensure audio track is not muted
+            if (track.enabled && !track.muted) {
+              console.log(`Audio track enabled and not muted for participant ${participantId}`)
+            }
+          }
           existingParticipant.connectionState = 'connected'
-          console.log(`Updated stream for existing participant ${participantId}`)
+          console.log(`Updated stream for existing participant ${participantId}`, {
+            hasVideo: track.kind === 'video',
+            hasAudio: track.kind === 'audio',
+            enabled: track.enabled,
+            muted: track.muted
+          })
         } else {
           // Add new participant
           this.remoteParticipants.value.push({
@@ -264,7 +297,56 @@ export class SFUConnectionManager {
             isAudioEnabled: track.kind === 'audio' ? track.enabled : false,
             connectionState: 'connected',
           })
-          console.log(`Added new participant ${participantId} from SFU track`)
+          console.log(`Added new participant ${participantId} from SFU track`, {
+            kind: track.kind,
+            enabled: track.enabled,
+            muted: track.muted
+          })
+        }
+        
+        // Ensure audio tracks are not muted and are enabled
+        if (track.kind === 'audio') {
+          // Ensure audio track is enabled and not muted
+          if (!track.enabled) {
+            track.enabled = true
+            console.log(`Enabled audio track for participant ${participantId}`)
+          }
+          if (track.muted) {
+            // Try to unmute (may not work if track is muted by browser)
+            console.warn(`Audio track is muted for participant ${participantId}, may need user interaction`)
+          }
+          console.log(`Audio track state for participant ${participantId}:`, {
+            enabled: track.enabled,
+            muted: track.muted,
+            readyState: track.readyState
+          })
+        }
+        
+        // Check if this is a screen share track
+        const isScreenShare = track.label && (
+          track.label.toLowerCase().includes('screen') ||
+          track.label.toLowerCase().includes('display') ||
+          track.label.toLowerCase().includes('window') ||
+          stream.id.toLowerCase().includes('screen')
+        )
+        
+        if (isScreenShare) {
+          // Handle screen share track separately
+          console.log(`Screen share track received from SFU for participant ${participantId}`, {
+            trackId: track.id,
+            trackLabel: track.label,
+            streamId: stream.id
+          })
+          
+          // Get or create screen share stream for this participant
+          // Note: remoteScreenShareStreams should be passed to constructor or accessed via store
+          // For now, we'll update the participant's screenShareStream property
+          const participant = this.remoteParticipants.value.find(p => p.id === participantId)
+          if (participant) {
+            participant.isScreenSharing = true
+            participant.screenShareStream = stream
+            console.log(`Screen share stream set for participant ${participantId}`)
+          }
         }
         
         // Listen for track ended
@@ -273,7 +355,19 @@ export class SFUConnectionManager {
           const participant = this.remoteParticipants.value.find(p => p.id === participantId)
           if (participant) {
             if (track.kind === 'video') {
-              participant.isVideoEnabled = false
+              // Check if it was a screen share track
+              const wasScreenShare = track.label && (
+                track.label.toLowerCase().includes('screen') ||
+                track.label.toLowerCase().includes('display') ||
+                track.label.toLowerCase().includes('window')
+              )
+              if (wasScreenShare) {
+                participant.isScreenSharing = false
+                participant.screenShareStream = null
+                console.log(`Screen share ended for participant ${participantId}`)
+              } else {
+                participant.isVideoEnabled = false
+              }
             } else if (track.kind === 'audio') {
               participant.isAudioEnabled = false
             }
@@ -319,6 +413,74 @@ export class SFUConnectionManager {
   }
 
   /**
+   * Add screen share track to SFU connection
+   */
+  addScreenShareTrack(screenShareStream: MediaStream): void {
+    if (!this.sfuPeerConnection.value) {
+      console.warn('SFU peer connection not available, cannot add screen share track')
+      return
+    }
+
+    console.log('Adding screen share tracks to SFU connection:', {
+      streamId: screenShareStream.id,
+      tracks: screenShareStream.getTracks().map(t => ({
+        kind: t.kind,
+        id: t.id,
+        enabled: t.enabled,
+        label: t.label
+      }))
+    })
+
+    // Add all tracks from screen share stream
+    screenShareStream.getTracks().forEach(track => {
+      // Remove old screen share track if exists
+      const senders = this.sfuPeerConnection.value!.getSenders()
+      const existingSender = senders.find(s => 
+        s.track && s.track.kind === track.kind && (s.track.label || '').includes('screen')
+      )
+      if (existingSender) {
+        this.sfuPeerConnection.value!.removeTrack(existingSender)
+        console.log('Removed existing screen share track before adding new one')
+      }
+
+      // Add new screen share track
+      this.sfuPeerConnection.value!.addTrack(track, screenShareStream)
+      console.log('Added screen share track to SFU:', {
+        kind: track.kind,
+        id: track.id,
+        label: track.label
+      })
+    })
+
+    // Create new offer to negotiate screen share
+    this.createAndSendOffer().catch(error => {
+      console.error('Failed to create offer after adding screen share:', error)
+    })
+  }
+
+  /**
+   * Remove screen share track from SFU connection
+   */
+  removeScreenShareTrack(): void {
+    if (!this.sfuPeerConnection.value) {
+      return
+    }
+
+    const senders = this.sfuPeerConnection.value.getSenders()
+    senders.forEach(sender => {
+      if (sender.track && (sender.track.label || '').includes('screen')) {
+        this.sfuPeerConnection.value!.removeTrack(sender)
+        console.log('Removed screen share track from SFU:', sender.track.id)
+      }
+    })
+
+    // Create new offer to negotiate removal
+    this.createAndSendOffer().catch(error => {
+      console.error('Failed to create offer after removing screen share:', error)
+    })
+  }
+
+  /**
    * Create and send offer to SFU
    */
   async createAndSendOffer(): Promise<void> {
@@ -329,6 +491,60 @@ export class SFUConnectionManager {
     const offer = await this.sfuPeerConnection.value.createOffer()
     await this.sfuPeerConnection.value.setLocalDescription(offer)
 
+    console.log('Created SFU offer:', {
+      type: offer.type,
+      sdpLines: offer.sdp.split('\n').filter(l => l.trim()).length,
+      hasAudio: offer.sdp.includes('audio'),
+      hasVideo: offer.sdp.includes('video')
+    })
+
+    // Check SDP size before sending (WebSocket has message size limits)
+    const sdpSize = new Blob([offer.sdp]).size
+    const messageSize = new Blob([JSON.stringify({
+      type: 'offer',
+      room_id: this.sfuRoomId.value || '',
+      peer_id: this.localParticipantId.value || '',
+      data: { sdp: offer.sdp, type: offer.type }
+    })]).size
+    
+    console.log('SDP offer size check:', {
+      sdpSize: sdpSize,
+      messageSize: messageSize,
+      sdpLines: offer.sdp.split('\n').length
+    })
+    
+    // Check if message is too large (limit is usually 64KB, but we'll be conservative)
+    if (messageSize > 60000) { // 60KB limit to be safe
+      console.warn('SDP offer message is too large, attempting to reduce size:', messageSize, 'bytes')
+      // Try to reduce SDP size by removing unnecessary candidates (keep only host candidates)
+      const lines = offer.sdp.split('\n')
+      const reducedLines = lines.filter(line => {
+        // Keep all non-candidate lines
+        if (!line.startsWith('a=candidate:')) return true
+        // For candidates, keep only host candidates (typ host)
+        return line.includes('typ host')
+      })
+      offer.sdp = reducedLines.join('\n')
+      
+      const newMessageSize = new Blob([JSON.stringify({
+        type: 'offer',
+        room_id: this.sfuRoomId.value || '',
+        peer_id: this.localParticipantId.value || '',
+        data: { sdp: offer.sdp, type: offer.type }
+      })]).size
+      
+      console.log('Reduced SDP offer size:', {
+        originalSize: messageSize,
+        newSize: newMessageSize,
+        reduction: ((messageSize - newMessageSize) / messageSize * 100).toFixed(1) + '%'
+      })
+      
+      // If still too large, throw error to fallback to P2P
+      if (newMessageSize > 60000) {
+        throw new Error(`SDP offer too large even after reduction: ${newMessageSize} bytes. Falling back to P2P mode.`)
+      }
+    }
+    
     // Send offer to SFU via WebSocket
     this.sendSFUWebSocketMessage({
       type: 'offer',

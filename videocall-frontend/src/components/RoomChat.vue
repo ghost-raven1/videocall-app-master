@@ -219,13 +219,13 @@
         <div class="flex-1 relative">
           <textarea
             ref="messageInput"
-            :value="newMessage"
+            v-model="newMessage"
             @input="handleMessageInput"
-            @keydown.enter.exact.prevent="sendMessage"
-            @keydown.enter.shift.exact.stop
-            placeholder="Type a message..."
+            @keydown.enter.exact.prevent="handleSendMessage"
+            @keydown.enter.shift.exact="handleShiftEnter"
+            placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
             rows="1"
-            class="w-full px-4 py-2 pr-12 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            class="w-full px-4 py-2 pr-12 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none transition-all"
             style="max-height: 120px; overflow-y: auto;"
           ></textarea>
           
@@ -242,10 +242,10 @@
 
         <!-- Send button -->
         <button
-          @click="sendMessage"
-          :disabled="(!newMessage || !newMessage.trim()) && !(selectedFile && selectedFile?.name)"
-          class="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          title="Send message (Enter)"
+          @click="handleSendMessage"
+          :disabled="isSending || ((!newMessage || !newMessage.trim()) && !(selectedFile && selectedFile?.name))"
+          class="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center min-w-[44px]"
+          :title="isSending ? 'Sending...' : 'Send message (Enter)'"
         >
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -336,6 +336,7 @@ export default {
       maxFileSize: 50 * 1024 * 1024, // 50MB
       uploadProgress: 0,
       isUploading: false,
+      isSending: false,
       uploadError: null
     }
   },
@@ -409,11 +410,7 @@ export default {
     },
     
     handleMessageInput(event) {
-      // Handle input event to update newMessage
-      const value = event.target.value || ''
-      this.newMessage = value
-      
-      // Auto-resize textarea
+      // v-model handles the value, but we need to auto-resize textarea
       this.$nextTick(() => {
         if (this.$refs.messageInput) {
           this.$refs.messageInput.style.height = 'auto'
@@ -424,48 +421,76 @@ export default {
     
     handleShiftEnter(event) {
       // Shift+Enter should allow newline - let default behavior happen
-      // No need to prevent default
+      // Insert newline at cursor position
+      const textarea = event.target
+      const cursorPos = textarea.selectionStart
+      const textBefore = this.newMessage.substring(0, cursorPos)
+      const textAfter = this.newMessage.substring(cursorPos)
+      this.newMessage = textBefore + '\n' + textAfter
+      this.$nextTick(() => {
+        textarea.selectionStart = textarea.selectionEnd = cursorPos + 1
+        this.handleMessageInput(event)
+      })
     },
     
-    async sendMessage() {
-      // Ensure newMessage is a string before checking
+    async handleSendMessage() {
+      // Prevent double-sending
+      if (this.isSending) {
+        return
+      }
+      
+      // Get message text and trim
       const messageText = (this.newMessage && typeof this.newMessage === 'string') ? this.newMessage.trim() : ''
+      
+      // Check if we have something to send
       if (!messageText && !this.selectedFile) {
         return
       }
+      
+      // Set sending state
+      this.isSending = true
+      this.uploadError = null
       
       try {
         if (this.selectedFile) {
           await this.uploadFile()
         } else {
-          const response = await fetch('/api/rooms/chat/messages/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              room_code: this.roomCode,
-              participant_id: this.participantId,
-              content: messageText,
-              message_type: 'text',
-              reply_to: this.replyingTo?.id
-            })
-          })
+          // Use apiService instead of fetch
+          const { apiService } = await import('@/services/api')
           
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`)
-          }
+          const response = await apiService.sendChatMessage(
+            this.roomCode,
+            this.participantId,
+            messageText,
+            'text',
+            this.replyingTo?.id
+          )
           
-          const data = await response.json()
-          if (data.success || response.status === 201 || response.status === 200) {
+          if (response && (response.status === 201 || response.status === 200 || response.data?.success)) {
             // Add message to local list immediately for better UX
-            if (data.message) {
-              this.messages.push(data.message)
+            const messageData = response.data?.message || response.data
+            if (messageData) {
+              this.messages.push({
+                id: messageData.id || `msg_${Date.now()}`,
+                room_id: this.roomCode,
+                participant_id: messageData.sender_id || this.participantId,
+                participant_name: messageData.participant?.display_name || 'You',
+                message: messageData.content || messageText,
+                timestamp: messageData.created_at || new Date().toISOString(),
+                message_type: 'text',
+                reply_to: this.replyingTo?.id
+              })
             }
             
             // Broadcast via WebSocket
             if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
               this.websocket.send(JSON.stringify({
                 type: 'chat_message',
-                message: data.message || { content: messageText, sender_id: this.participantId }
+                room_id: this.roomCode,
+                participant_id: this.participantId,
+                message: messageText,
+                timestamp: new Date().toISOString(),
+                reply_to: this.replyingTo?.id
               }))
             }
             
@@ -478,19 +503,31 @@ export default {
               if (this.$refs.messageInput) {
                 this.$refs.messageInput.value = ''
                 this.$refs.messageInput.style.height = 'auto'
+                this.$refs.messageInput.focus()
               }
               // Scroll to bottom to show new message
               this.scrollToBottom()
             })
           } else {
-            console.error('Failed to send message:', data.error || 'Unknown error')
-            alert('Failed to send message: ' + (data.error || 'Unknown error'))
+            const errorMsg = response?.data?.error || response?.data?.message || 'Unknown error'
+            console.error('Failed to send message:', errorMsg)
+            this.uploadError = `Failed to send message: ${errorMsg}`
+            setTimeout(() => { this.uploadError = null }, 5000)
           }
         }
       } catch (error) {
         console.error('Failed to send message:', error)
-        alert('Failed to send message. Please check your connection and try again.')
+        const errorMsg = error?.response?.data?.error || error?.message || 'Unknown error'
+        this.uploadError = `Failed to send message: ${errorMsg}`
+        setTimeout(() => { this.uploadError = null }, 5000)
+      } finally {
+        this.isSending = false
       }
+    },
+    
+    async sendMessage() {
+      // Alias for backward compatibility
+      await this.handleSendMessage()
     },
     
     async uploadFile() {

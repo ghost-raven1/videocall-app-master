@@ -1,4 +1,4 @@
-// src/services/utils.js - Utility functions
+// src/services/utils.ts - Utility functions
 export const utils = {
   /**
    * Generate random string

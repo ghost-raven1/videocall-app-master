@@ -21,6 +21,7 @@
       @toggle-recording="toggleRecording"
       @toggle-stats="showStats = !showStats"
       @end-call="handleEndCall"
+      @show-participants="showParticipantsList = true"
     />
 
     <!-- Video Container -->
@@ -34,22 +35,52 @@
         @close="chat.closeChat()"
         @new-message="onNewChatMessage"
       />
-      <!-- Screen Share Display (overlay) - local or remote -->
+      <!-- Screen Share Display (overlay) - show all active screen shares -->
       <div
-        v-show="activeScreenShareStream && activeScreenShareStream.active"
+        v-if="allActiveScreenShares.length > 0"
         class="absolute inset-0 z-30 bg-black"
       >
-        <video
-          ref="screenShareVideoRef"
-          autoplay
-          playsinline
-          muted
-          class="w-full h-full object-contain"
-        ></video>
-        <div class="absolute top-4 left-4 px-4 py-2 bg-gray-900 bg-opacity-75 text-white rounded-lg z-10">
-          <p class="text-sm font-medium">
-            {{ activeScreenShareParticipant && activeScreenShareParticipant.id === currentParticipantId ? 'Your Screen' : (activeScreenShareParticipant?.name || 'Someone') + "'s Screen" }}
-          </p>
+        <!-- Main screen share (first one) -->
+        <div
+          v-if="allActiveScreenShares[0]"
+          class="absolute inset-0"
+        >
+          <video
+            :ref="el => setScreenShareVideoRef(el, allActiveScreenShares[0].participantId)"
+            autoplay
+            playsinline
+            muted
+            class="w-full h-full object-contain"
+          ></video>
+          <div class="absolute top-4 left-4 px-4 py-2 bg-gray-900 bg-opacity-75 text-white rounded-lg z-10">
+            <p class="text-sm font-medium">
+              {{ allActiveScreenShares[0].participantId === currentParticipantId ? 'Your Screen' : (allActiveScreenShares[0].participantName || 'Someone') + "'s Screen" }}
+            </p>
+          </div>
+        </div>
+        
+        <!-- Other screen shares as thumbnails (if multiple) -->
+        <div
+          v-if="allActiveScreenShares.length > 1"
+          class="absolute bottom-4 right-4 flex gap-2 z-20"
+        >
+          <div
+            v-for="(screenShare, index) in allActiveScreenShares.slice(1)"
+            :key="screenShare.participantId"
+            class="w-48 h-32 bg-gray-800 rounded-lg overflow-hidden border-2 border-gray-600 cursor-pointer hover:border-green-500 transition-colors"
+            @click="switchToScreenShare(index + 1)"
+          >
+            <video
+              :ref="el => setScreenShareThumbnailRef(el, screenShare.participantId)"
+              autoplay
+              playsinline
+              muted
+              class="w-full h-full object-contain"
+            ></video>
+            <div class="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gray-900 bg-opacity-75 text-white text-xs">
+              {{ screenShare.participantName || 'Screen' }}
+            </div>
+          </div>
         </div>
         <!-- Close button for screen share -->
         <button
@@ -76,21 +107,21 @@
 
       <!-- Two-user call (existing layout for backward compatibility) -->
       <template v-else-if="webrtcStore.participantCount === 2">
-      <div class="two-user-layout">
+      <div class="two-user-layout relative w-full h-full">
         <!-- Remote Video (main) -->
-        <div v-if="webrtcStore.hasRemoteVideo" class="absolute inset-0">
+        <div v-if="webrtcStore.hasRemoteVideo" class="absolute inset-0 bg-black">
           <video
             ref="remoteVideoRef"
             autoplay
             playsinline
-            class="w-full h-full object-cover"
+            class="w-full h-full object-contain"
             @loadedmetadata="onRemoteVideoLoaded"
           ></video>
 
           <!-- Remote video overlay info -->
           <div
             v-if="showVideoInfo"
-            class="absolute top-4 left-4 bg-black bg-opacity-50 px-3 py-2 rounded-lg text-white text-sm"
+            class="absolute top-4 left-4 bg-black bg-opacity-70 px-4 py-2 rounded-lg text-white text-sm backdrop-blur-sm"
           >
             <p>{{ remoteVideoInfo }}</p>
           </div>
@@ -99,7 +130,7 @@
         <!-- No remote video placeholder -->
         <div
           v-else
-          class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900"
+          class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-800 via-gray-900 to-black"
         >
           <div class="text-center text-white max-w-md mx-auto p-8">
             <div
@@ -147,12 +178,12 @@
         <div
           v-if="webrtcStore.localStream && webrtcStore.hasLocalVideo"
           :class="[
-            'absolute z-20 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 cursor-pointer border-2',
+            'absolute z-20 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 cursor-pointer border-2 bg-black',
             localVideoSize === 'small'
-              ? 'w-32 h-24 bottom-4 right-4'
+              ? 'w-40 h-30 bottom-4 right-4'
               : localVideoSize === 'large'
-                ? 'w-64 h-48 bottom-4 right-4'
-                : 'w-48 h-36 bottom-4 right-4',
+                ? 'w-80 h-60 bottom-4 right-4'
+                : 'w-60 h-45 bottom-4 right-4',
             webrtcStore.isVideoEnabled ? 'border-green-400' : 'border-gray-600',
           ]"
           @click="toggleLocalVideoSize"
@@ -305,7 +336,7 @@
       <ScreenShareControls
         v-if="currentParticipantId"
         :room-code="roomInfo.short_code"
-        :participant-id="currentParticipantId || ''"
+        :participant-id="String(currentParticipantId || '')"
         :peer-connection="peerConnection"
         @screen-share-started="onScreenShareStarted"
         @screen-share-stopped="onScreenShareStopped"
@@ -398,6 +429,68 @@
 
           <div class="mt-6 flex justify-end">
             <button @click="showShareModal = false" class="btn-primary px-6 py-2">Close</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- Participants List Modal -->
+    <Teleport to="body">
+      <div
+        v-if="showParticipantsList"
+        class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
+        @click="showParticipantsList = false"
+      >
+        <div
+          class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col animate-slide-up"
+          @click.stop
+        >
+          <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <h2 class="text-xl font-bold text-gray-900 dark:text-white">Participants ({{ participantCount }})</h2>
+            <button
+              @click="showParticipantsList = false"
+              class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            >
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div class="flex-1 overflow-y-auto p-6">
+            <!-- Local participant -->
+            <div class="flex items-center space-x-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg mb-2">
+              <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+                {{ currentParticipantName?.charAt(0)?.toUpperCase() || 'Y' }}
+              </div>
+              <div class="flex-1">
+                <p class="font-medium text-gray-900 dark:text-white">{{ currentParticipantName || 'You' }}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">You</p>
+              </div>
+              <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+            </div>
+            <!-- Remote participants -->
+            <div
+              v-for="participant in webrtcStore.remoteParticipants"
+              :key="participant.id"
+              class="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2"
+            >
+              <div class="w-10 h-10 bg-gray-500 rounded-full flex items-center justify-center text-white font-semibold">
+                {{ participant.name?.charAt(0)?.toUpperCase() || 'U' }}
+              </div>
+              <div class="flex-1">
+                <p class="font-medium text-gray-900 dark:text-white">{{ participant.name || 'Unknown' }}</p>
+                <p class="text-sm text-gray-500 dark:text-gray-400">{{ participant.connectionState || 'connecting' }}</p>
+              </div>
+              <div
+                :class="[
+                  'w-2 h-2 rounded-full',
+                  participant.connectionState === 'connected' ? 'bg-green-500' : 'bg-yellow-500'
+                ]"
+              ></div>
+            </div>
+            <div v-if="webrtcStore.remoteParticipants.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-8">
+              No other participants yet
+            </div>
           </div>
         </div>
       </div>
@@ -583,7 +676,7 @@ import VideoCallSidebar from '@/components/VideoCallSidebar.vue'
 import { useVideoCallController } from '@/controllers/video-call/useVideoCallController'
 import { useRoomChatController } from '@/controllers/room/useRoomChatController'
 import * as webrtcService from '@/services/webrtc'
-import * as utils from '@/services/utils'
+import { utils } from '@/services/utils'
 
 const route = useRoute()
 const router = useRouter()
@@ -598,13 +691,16 @@ const { callState, media, screenShare, recording } = videoCall
 // Template refs - use ref for template refs (not shallowRef)
 const localVideoRef = ref<HTMLVideoElement | null>(null)
 const remoteVideoRef = ref<HTMLVideoElement | null>(null)
-const screenShareVideoRef = ref<HTMLVideoElement | null>(null)
+const screenShareVideoRefs = ref(new Map()) // Map<participantId, videoElement>
+const screenShareThumbnailRefs = ref(new Map()) // Map<participantId, videoElement>
+const currentScreenShareIndex = ref(0) // Index of currently displayed screen share
 
 // UI state (not business logic)
 const localVideoSize = ref('medium')
 const showShareModal = ref(false)
 const showStats = ref(false)
 const showMenu = ref(false)
+const showParticipantsList = ref(false)
 const roomCodeCopied = ref(false)
 const roomLinkCopied = ref(false)
 const shouldMirrorLocal = ref(true)
@@ -625,12 +721,23 @@ const showConnectionHelp = ref(false)
 // Chat state - initialize websocket and participant first
 const websocket = ref(null)
 const currentParticipantId = ref(null)
+// Get participant name from localStorage or use default
+const currentParticipantName = ref(typeof localStorage !== 'undefined' ? (localStorage.getItem('userName') || 'You') : 'You')
 const peerConnection = ref(null)
 
 // Chat controller - initialize after websocket and participant are available
 const chat = useRoomChatController()
 const showChat = computed(() => chat.isOpen.value)
 const unreadMessages = computed(() => chat.unreadCount.value)
+
+// Toggle handlers for VideoCallControls - defined early to ensure availability in template
+const handleToggleAudio = () => {
+  webrtcStore.toggleAudio()
+}
+
+const handleToggleVideo = () => {
+  webrtcStore.toggleVideo()
+}
 
 // Use roomInfo from controller
 const roomInfo = computed(() => videoCall.roomInfo.value)
@@ -645,7 +752,8 @@ const connectingSubMessage = computed(() => callState.connectingSubMessage.value
 const connectionProgress = computed(() => callState.connectionProgress.value)
 
 const participantCount = computed(() => {
-  return webrtcStore.remoteParticipants.length + 1 // +1 for local participant
+  // Use store's participantCount which handles SFU mode correctly
+  return webrtcStore.participantCount
 })
 
 const roomLink = computed(() => {
@@ -686,65 +794,102 @@ const connectionMessage = computed(() => {
 // Use screen share state from controller
 const isScreenSharing = computed(() => screenShare.isScreenSharing.value)
 
-// Find active screen share from remote participants
-const activeScreenShareStream = computed(() => {
-  // First check local screen share
+// Get all active screen shares (local and remote)
+const allActiveScreenShares = computed(() => {
+  const activeShares = []
+  
+  // Check local screen share
   if (screenShare.isScreenSharing.value && screenShare.screenShareStream.value) {
     const localStream = screenShare.screenShareStream.value
     const videoTracks = localStream.getVideoTracks()
-    // Only return stream if it's active and has live video tracks
     if (localStream.active && videoTracks.length > 0 && videoTracks[0].readyState === 'live') {
-      console.log('Active local screen share stream found', {
-        streamId: localStream.id,
-        videoTracks: videoTracks.length,
-        videoTrackEnabled: videoTracks[0].enabled,
-        videoTrackReadyState: videoTracks[0].readyState
+      activeShares.push({
+        participantId: String(currentParticipantId.value || 'local'),
+        participantName: 'You',
+        stream: localStream
       })
-      return localStream
     }
   }
   
-  // Then check remote screen shares
+  // Check remote screen shares from store
   const remoteScreenShares = webrtcStore.remoteScreenShareStreams || new Map()
-  if (remoteScreenShares.size > 0) {
-    // Find the first active screen share with live video tracks
-    for (const stream of remoteScreenShares.values()) {
+  for (const [participantId, stream] of remoteScreenShares.entries()) {
+    if (stream && stream.active) {
+      const videoTracks = stream.getVideoTracks()
+      if (videoTracks.length > 0 && videoTracks[0].readyState === 'live') {
+        const participant = webrtcStore.remoteParticipants.find(p => p.id === participantId)
+        activeShares.push({
+          participantId: participantId,
+          participantName: participant?.name || `Participant ${participantId.slice(-4)}`,
+          stream: stream
+        })
+      }
+    }
+  }
+  
+  // Also check participants with isScreenSharing flag and screenShareStream
+  for (const participant of webrtcStore.remoteParticipants) {
+    if (participant.isScreenSharing && participant.screenShareStream) {
+      const stream = participant.screenShareStream
       if (stream && stream.active) {
         const videoTracks = stream.getVideoTracks()
         if (videoTracks.length > 0 && videoTracks[0].readyState === 'live') {
-          console.log('Active remote screen share stream found', {
-            streamId: stream.id,
-            videoTracks: videoTracks.length
-          })
-          return stream
+          // Check if already added
+          if (!activeShares.find(s => s.participantId === participant.id)) {
+            activeShares.push({
+              participantId: participant.id,
+              participantName: participant.name || `Participant ${participant.id.slice(-4)}`,
+              stream: stream
+            })
+          }
         }
       }
     }
   }
   
-  return null
+  return activeShares
+})
+
+// Legacy computed for backward compatibility
+const activeScreenShareStream = computed(() => {
+  return allActiveScreenShares.value.length > 0 ? allActiveScreenShares.value[currentScreenShareIndex.value]?.stream : null
 })
 
 const activeScreenShareParticipant = computed(() => {
-  // Check local screen share
-  if (screenShare.isScreenSharing.value && screenShare.screenShareStream.value) {
+  if (allActiveScreenShares.value.length > 0) {
+    const share = allActiveScreenShares.value[currentScreenShareIndex.value]
     return {
-      id: currentParticipantId.value,
-      name: 'You'
+      id: share.participantId,
+      name: share.participantName
     }
   }
-  
-  // Find remote participant with active screen share
-  const remoteScreenShares = webrtcStore.remoteScreenShareStreams || new Map()
-  for (const [participantId, stream] of remoteScreenShares.entries()) {
-    const participant = webrtcStore.remoteParticipants.find(p => p.id === participantId)
-    if (participant && participant.isScreenSharing) {
-      return participant
-    }
-  }
-  
   return null
 })
+
+// Helper function to set screen share video ref
+const setScreenShareVideoRef = (el, participantId) => {
+  if (el) {
+    screenShareVideoRefs.value.set(participantId, el)
+  } else {
+    screenShareVideoRefs.value.delete(participantId)
+  }
+}
+
+// Helper function to set screen share thumbnail ref
+const setScreenShareThumbnailRef = (el, participantId) => {
+  if (el) {
+    screenShareThumbnailRefs.value.set(participantId, el)
+  } else {
+    screenShareThumbnailRefs.value.delete(participantId)
+  }
+}
+
+// Function to switch to a different screen share
+const switchToScreenShare = (index) => {
+  if (index >= 0 && index < allActiveScreenShares.value.length) {
+    currentScreenShareIndex.value = index
+  }
+}
 
 // Use recording state from controller
 const isRecording = computed(() => recording.isRecording.value)
@@ -1052,21 +1197,44 @@ const handleToggleScreenShare = async () => {
     // Add tracks to peer connections (P2P or SFU)
     try {
       if (webrtcStore.sfuMode && webrtcStore.sfuPeerConnection) {
-        // SFU mode: add to SFU peer connection
-        const sfuPc = webrtcStore.sfuPeerConnection
-        stream.getTracks().forEach(track => {
-          // Remove old screen share track if exists
-          const senders = sfuPc.getSenders()
-          const sender = senders.find(s => 
-            s.track && s.track.kind === track.kind && (s.track.label || '').includes('screen')
-          )
-          if (sender) {
-            sfuPc.removeTrack(sender)
+        // SFU mode: use SFU manager to add screen share track
+        // Access SFU manager from store - it should be available
+        if (webrtcStore.sfuManager) {
+          webrtcStore.sfuManager.addScreenShareTrack(stream)
+          console.log('Screen share track added to SFU peer connection via manager')
+        } else {
+          // Fallback: add directly to SFU peer connection
+          const sfuPc = webrtcStore.sfuPeerConnection
+          stream.getTracks().forEach(track => {
+            // Remove old screen share track if exists
+            const senders = sfuPc.getSenders()
+            const sender = senders.find(s => 
+              s.track && s.track.kind === track.kind && (s.track.label || '').includes('screen')
+            )
+            if (sender) {
+              sfuPc.removeTrack(sender)
+            }
+            // Add new screen share track
+            sfuPc.addTrack(track, stream)
+          })
+          console.log('Screen share track added to SFU peer connection (fallback)')
+          
+          // Create new offer to negotiate screen share
+          const offer = await sfuPc.createOffer()
+          await sfuPc.setLocalDescription(offer)
+          // Send offer via WebSocket
+          if (webrtcStore.sfuWebSocket && webrtcStore.sfuWebSocket.readyState === WebSocket.OPEN) {
+            webrtcStore.sfuWebSocket.send(JSON.stringify({
+              type: 'offer',
+              room_id: webrtcStore.sfuRoomId || '',
+              peer_id: webrtcStore.localParticipantId || '',
+              data: {
+                sdp: offer.sdp,
+                type: offer.type,
+              },
+            }))
           }
-          // Add new screen share track
-          sfuPc.addTrack(track, stream)
-        })
-        console.log('Screen share track added to SFU peer connection')
+        }
       } else if (!webrtcStore.sfuMode && webrtcStore.peerConnections && webrtcStore.peerConnections.size > 0) {
         // P2P mode: add to all existing peer connections
         webrtcStore.peerConnections.forEach((pc, participantId) => {
@@ -1099,6 +1267,24 @@ const handleToggleScreenShare = async () => {
   } else if (!screenShare.isScreenSharing.value && wasSharing) {
     // Screen share stopped - remove from all peer connections
     webrtcStore.localScreenShareStream = null
+    
+    // Remove from SFU if in SFU mode
+    if (webrtcStore.sfuMode && webrtcStore.sfuPeerConnection) {
+      if (webrtcStore.sfuManager) {
+        webrtcStore.sfuManager.removeScreenShareTrack()
+        console.log('Screen share track removed from SFU peer connection via manager')
+      } else {
+        // Fallback: remove directly
+        const sfuPc = webrtcStore.sfuPeerConnection
+        const senders = sfuPc.getSenders()
+        senders.forEach(sender => {
+          if (sender.track && (sender.track.label || '').includes('screen')) {
+            sfuPc.removeTrack(sender)
+          }
+        })
+        console.log('Screen share track removed from SFU peer connection (fallback)')
+      }
+    }
   }
 }
 
@@ -1115,15 +1301,6 @@ const onScreenShareStarted = async ({ session, stream }) => {
 const onScreenShareStopped = async ({ session }) => {
   console.log('Screen share stopped:', session)
   // Controller already handles stopping
-}
-
-// Toggle handlers for VideoCallControls
-const handleToggleAudio = () => {
-  webrtcStore.toggleAudio()
-}
-
-const handleToggleVideo = () => {
-  webrtcStore.toggleVideo()
 }
 
 // Recording handlers - use controller
@@ -1243,21 +1420,31 @@ watch(
   () => webrtcStore.remoteStream,
   (newStream) => {
     nextTick(() => {
-      if (remoteVideoRef.value && newStream) {
-        remoteVideoRef.value.srcObject = newStream
-        console.log('Remote video stream attached to video element', {
-          hasVideoTracks: newStream.getVideoTracks().length > 0,
-          hasAudioTracks: newStream.getAudioTracks().length > 0,
-          streamActive: newStream.active
-        })
-        
-        // Ensure video plays
-        remoteVideoRef.value.play().catch(err => {
-          console.warn('Failed to autoplay remote video:', err)
-        })
-      } else if (remoteVideoRef.value && !newStream) {
-        remoteVideoRef.value.srcObject = null
-        console.log('Remote video stream removed')
+      if (remoteVideoRef.value) {
+        if (newStream && newStream.active) {
+          // Only set srcObject if it's different to avoid unnecessary updates
+          if (remoteVideoRef.value.srcObject !== newStream) {
+            remoteVideoRef.value.srcObject = newStream
+          }
+          console.log('Remote video stream attached to video element', {
+            hasVideoTracks: newStream.getVideoTracks().length > 0,
+            hasAudioTracks: newStream.getAudioTracks().length > 0,
+            streamActive: newStream.active
+          })
+          
+          // Ensure video plays
+          remoteVideoRef.value.play().catch(err => {
+            console.warn('Failed to autoplay remote video:', err)
+          })
+        } else {
+          if (remoteVideoRef.value.srcObject) {
+            remoteVideoRef.value.srcObject = null
+          }
+          console.log('Remote video stream removed or not active', {
+            hasStream: !!newStream,
+            streamActive: newStream?.active
+          })
+        }
       }
     })
   },
@@ -1265,70 +1452,55 @@ watch(
 )
 
 // Watch for screen share stream changes (local or remote)
+// Watch for screen share stream changes (all active screen shares)
 watch(
-  () => activeScreenShareStream.value,
-  (newStream) => {
-    // Retry logic to ensure ref is available
-    const attachStreamToVideo = (retries = 0) => {
-      nextTick(() => {
-        if (!screenShareVideoRef.value) {
-          // Retry a few times if ref is not available yet
-          if (retries < 5) {
-            setTimeout(() => attachStreamToVideo(retries + 1), 100)
-            return
+  () => allActiveScreenShares.value,
+  (newShares) => {
+    nextTick(() => {
+      // Update main screen share video
+      if (newShares.length > 0 && currentScreenShareIndex.value < newShares.length) {
+        const currentShare = newShares[currentScreenShareIndex.value]
+        const videoRef = screenShareVideoRefs.value.get(currentShare.participantId)
+        if (videoRef && currentShare.stream) {
+          if (videoRef.srcObject !== currentShare.stream) {
+            videoRef.srcObject = currentShare.stream
           }
-          console.warn('Screen share video ref not available after retries')
-          return
-        }
-        
-        if (newStream && newStream.active) {
-          const videoTracks = newStream.getVideoTracks()
-          const hasLiveVideo = videoTracks.length > 0 && videoTracks.some(track => track.readyState === 'live')
-          
-          if (hasLiveVideo) {
-            screenShareVideoRef.value.srcObject = newStream
-            console.log('Screen share stream attached to video element (local or remote)', {
-              stream: newStream,
-              streamId: newStream.id,
-              videoTracks: videoTracks.length,
-              videoTrackId: videoTracks[0]?.id,
-              videoTrackEnabled: videoTracks[0]?.enabled,
-              videoTrackReadyState: videoTracks[0]?.readyState,
-              streamActive: newStream.active
-            })
-            
-            // Force play and wait a bit for stream to be ready
-            setTimeout(() => {
-              if (screenShareVideoRef.value && screenShareVideoRef.value.srcObject) {
-                screenShareVideoRef.value.play().catch(err => {
-                  console.warn('Failed to autoplay screen share video:', err)
-                })
-              }
-            }, 100)
-          } else {
-            console.warn('Screen share stream has no live video tracks', {
-              videoTracks: videoTracks.length,
-              readyStates: videoTracks.map(t => t.readyState)
-            })
-            if (screenShareVideoRef.value) {
-              screenShareVideoRef.value.srcObject = null
-            }
-          }
-        } else {
-          if (screenShareVideoRef.value) {
-            screenShareVideoRef.value.srcObject = null
-          }
-          console.log('Screen share stream removed or not active', {
-            hasStream: !!newStream,
-            streamActive: newStream?.active
+          videoRef.play().catch(err => {
+            console.warn('Failed to autoplay screen share video:', err)
           })
         }
+      }
+      
+      // Update thumbnail videos
+      newShares.forEach((share, index) => {
+        if (index > 0) { // Skip first one (main display)
+          const thumbnailRef = screenShareThumbnailRefs.value.get(share.participantId)
+          if (thumbnailRef && share.stream) {
+            if (thumbnailRef.srcObject !== share.stream) {
+              thumbnailRef.srcObject = share.stream
+            }
+            thumbnailRef.play().catch(err => {
+              console.warn('Failed to autoplay screen share thumbnail:', err)
+            })
+          }
+        }
       })
-    }
-    
-    attachStreamToVideo()
+      
+      // Clear refs for removed screen shares
+      const activeParticipantIds = new Set(newShares.map(s => s.participantId))
+      screenShareVideoRefs.value.forEach((ref, participantId) => {
+        if (!activeParticipantIds.has(participantId) && ref) {
+          ref.srcObject = null
+        }
+      })
+      screenShareThumbnailRefs.value.forEach((ref, participantId) => {
+        if (!activeParticipantIds.has(participantId) && ref) {
+          ref.srcObject = null
+        }
+      })
+    })
   },
-  { immediate: true },
+  { immediate: true, deep: true }
 )
 
 // Update call duration
