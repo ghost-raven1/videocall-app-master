@@ -1,23 +1,23 @@
 <template>
-  <div class="room-chat flex flex-col h-full bg-white dark:bg-gray-800 rounded-lg shadow-lg">
+  <div class="room-chat card flex flex-col h-full overflow-hidden">
     <!-- Chat Header -->
-    <div class="chat-header flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+    <div class="chat-header flex items-center justify-between px-4 py-3 sm:p-4 border-b border-warp-border/70 bg-warp-surfaceAlt/80">
       <div class="flex items-center space-x-2">
-        <svg class="w-6 h-6 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-5 h-5 text-warp-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
         </svg>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white">Chat</h3>
+        <h3 class="text-xs font-semibold tracking-[0.18em] uppercase text-warp-muted">Chat</h3>
       </div>
       
-      <div class="flex items-center space-x-2">
+      <div class="flex items-center space-x-1.5">
         <!-- File attachments button -->
         <button
-          @click="showAttachments = !showAttachments"
-          class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          :class="{ 'bg-blue-100 dark:bg-blue-900': showAttachments }"
+          @click="toggleAttachments"
+          class="p-2 rounded-lg hover:bg-warp-surfaceAlt/80 transition-colors border border-transparent"
+          :class="{ 'border-warp-accent/70 bg-warp-surfaceAlt/90': showAttachments }"
           title="View attachments"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
           </svg>
         </button>
@@ -25,10 +25,10 @@
         <!-- Close chat button -->
         <button
           @click="$emit('close')"
-          class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          class="p-2 rounded-lg hover:bg-warp-surfaceAlt/80 transition-colors"
           title="Close chat"
         >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
           </svg>
         </button>
@@ -36,36 +36,39 @@
     </div>
 
     <!-- Attachments Panel -->
-    <div v-if="showAttachments" class="attachments-panel p-4 border-b border-gray-200 dark:border-gray-700 max-h-48 overflow-y-auto">
-      <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Shared Files</h4>
-      <div v-if="!attachments || attachments.length === 0" class="text-sm text-gray-500 dark:text-gray-400">
+    <div
+      v-if="showAttachments"
+      class="attachments-panel px-4 py-3 sm:p-4 border-b border-warp-border/70 max-h-48 overflow-y-auto bg-warp-surface/80"
+    >
+      <h4 class="text-xs font-semibold tracking-wide text-warp-muted uppercase mb-2">Shared Files</h4>
+      <div v-if="!attachments || attachments.length === 0" class="text-sm text-warp-muted">
         No files shared yet
       </div>
       <div v-else class="space-y-2">
         <div
           v-for="attachment in attachments"
           :key="attachment.id"
-          class="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-700 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors"
+          class="flex items-center justify-between p-2 bg-warp-surfaceAlt/80 rounded-lg hover:bg-warp-surfaceAlt transition-colors border border-warp-border/40"
         >
           <div class="flex items-center space-x-2 flex-1 min-w-0">
             <svg class="w-5 h-5 flex-shrink-0" :class="getFileIconColor(attachment.file_type)" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
             <div class="flex-1 min-w-0">
-              <p class="text-sm font-medium text-gray-900 dark:text-white truncate">
+              <p class="text-sm font-medium text-warp-text truncate">
                 {{ attachment.original_filename }}
               </p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">
+              <p class="text-xs text-warp-muted">
                 {{ formatFileSize(attachment.file_size) }} • {{ attachment.uploaded_by }}
               </p>
             </div>
           </div>
           <button
             @click="downloadAttachment(attachment)"
-            class="ml-2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-500 transition-colors"
+            class="ml-2 p-1 rounded hover:bg-warp-surfaceAlt/80 transition-colors"
             title="Download"
           >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
             </svg>
           </button>
@@ -74,8 +77,8 @@
     </div>
 
     <!-- Messages Container -->
-    <div ref="messagesContainer" class="messages-container flex-1 overflow-y-auto p-4 space-y-3">
-      <div v-if="!messages || messages.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-8">
+    <div ref="messagesContainer" class="messages-container flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 bg-transparent">
+      <div v-if="!messages || messages.length === 0" class="text-center text-warp-muted py-8 text-sm">
         No messages yet. Start the conversation!
       </div>
       
@@ -87,45 +90,51 @@
       >
         <!-- System message -->
         <div v-if="message.message_type === 'system'" class="text-center">
-          <span class="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full">
+          <span class="badge badge-muted text-xs">
             {{ message.content }}
           </span>
         </div>
         
         <!-- Regular message -->
         <div v-else class="flex" :class="{ 'justify-end': isOwnMessage(message) }">
-          <div class="max-w-[70%]">
+            <div class="max-w-[70%]">
             <!-- Sender name (if not own message) -->
-            <div v-if="!isOwnMessage(message)" class="text-xs text-gray-600 dark:text-gray-400 mb-1 px-1">
-              {{ message.participant?.display_name || 'Unknown' }}
+            <div v-if="!isOwnMessage(message)" class="text-[11px] text-warp-muted mb-1 px-1">
+              {{ getSenderName(message) }}
             </div>
             
             <!-- Reply preview -->
-            <div v-if="message.reply_to" class="mb-1 px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-lg text-xs border-l-2 border-blue-500">
-              <span class="text-gray-600 dark:text-gray-400">Replying to:</span>
-              <p class="text-gray-800 dark:text-gray-200 truncate">{{ getReplyContent(message.reply_to) }}</p>
+            <div
+              v-if="message.reply_to"
+              class="mb-1 px-3 py-1 bg-warp-surfaceAlt/80 rounded-lg text-[11px] border-l-2 border-warp-accent/80"
+            >
+              <span class="text-warp-muted">Replying to:</span>
+              <p class="text-warp-text truncate">{{ getReplyContent(message.reply_to) }}</p>
             </div>
             
             <!-- Message bubble -->
             <div
-              class="message-bubble px-4 py-2 rounded-2xl"
-              :class="isOwnMessage(message) 
-                ? 'bg-blue-500 text-white rounded-br-none' 
-                : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-bl-none'"
+              class="message-bubble px-3.5 py-2 rounded-2xl shadow-warp-sm border border-transparent"
+              :class="isOwnMessage(message)
+                ? 'bg-warp-accent2 text-white rounded-br-none border-warp-accent/70'
+                : 'bg-warp-surfaceAlt/80 text-warp-text rounded-bl-none border-warp-border/40'"
             >
               <!-- File attachment -->
-              <div v-if="message.message_type === 'file' && message.attachments && message.attachments.length > 0" class="space-y-2">
+              <div
+                v-if="message.message_type === 'file' && message.attachments && message.attachments.length > 0"
+                class="space-y-2 mb-1"
+              >
                 <div
                   v-for="attachment in message.attachments"
                   :key="attachment.id"
-                  class="flex items-center space-x-2 p-2 bg-white bg-opacity-20 rounded-lg"
+                  class="flex items-center space-x-2 p-2 bg-warp-surface/60 rounded-lg border border-warp-border/30"
                 >
-                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg class="w-5 h-5 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                   </svg>
                   <div class="flex-1 min-w-0">
                     <p class="text-sm font-medium truncate">{{ attachment.original_filename }}</p>
-                    <p class="text-xs opacity-75">{{ formatFileSize(attachment.file_size) }}</p>
+                    <p class="text-[11px] text-warp-muted">{{ formatFileSize(attachment.file_size) }}</p>
                   </div>
                 </div>
               </div>
@@ -136,17 +145,17 @@
               </p>
               
               <!-- Message metadata -->
-              <div class="flex items-center justify-between mt-1 space-x-2">
-                <span class="text-xs opacity-75">
+              <div class="flex items-center justify-between mt-1 space-x-2 text-[11px] text-warp-muted">
+                <span>
                   {{ formatTime(message.created_at) }}
-                  <span v-if="message.edited_at" class="ml-1">(edited)</span>
+                  <span v-if="message.edited_at" class="ml-1 opacity-75">(edited)</span>
                 </span>
                 
                 <!-- Message actions -->
                 <div v-if="isOwnMessage(message)" class="flex items-center space-x-1">
                   <button
                     @click="editMessage(message)"
-                    class="p-1 rounded hover:bg-white hover:bg-opacity-20 transition-colors"
+                    class="p-1 rounded hover:bg-warp-surface/40 transition-colors"
                     title="Edit"
                   >
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -155,7 +164,7 @@
                   </button>
                   <button
                     @click="deleteMessage(message)"
-                    class="p-1 rounded hover:bg-white hover:bg-opacity-20 transition-colors"
+                    class="p-1 rounded hover:bg-warp-surface/40 transition-colors"
                     title="Delete"
                   >
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -166,7 +175,7 @@
                 <button
                   v-else
                   @click="replyToMessage(message)"
-                  class="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  class="p-1 rounded hover:bg-warp-surface/40 transition-colors"
                   title="Reply"
                 >
                   <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -181,15 +190,20 @@
     </div>
 
     <!-- Reply Preview -->
-    <div v-if="replyingTo" class="reply-preview p-3 bg-gray-50 dark:bg-gray-700 border-t border-gray-200 dark:border-gray-600">
+    <div
+      v-if="replyingTo"
+      class="reply-preview px-4 py-3 bg-warp-surface/90 border-t border-warp-border/70 flex-shrink-0"
+    >
       <div class="flex items-center justify-between">
         <div class="flex-1 min-w-0">
-          <p class="text-xs text-gray-600 dark:text-gray-400">Replying to {{ replyingTo.participant?.display_name }}</p>
-          <p class="text-sm text-gray-900 dark:text-white truncate">{{ replyingTo.content }}</p>
+          <p class="text-[11px] text-warp-muted mb-0.5">
+            Replying to {{ getSenderName(replyingTo) }}
+          </p>
+          <p class="text-sm text-warp-text truncate">{{ replyingTo.content }}</p>
         </div>
         <button
           @click="cancelReply"
-          class="ml-2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+          class="ml-2 p-1 rounded hover:bg-warp-surfaceAlt/80 transition-colors"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -199,10 +213,10 @@
     </div>
 
     <!-- Message Input -->
-    <div class="message-input p-4 border-t border-gray-200 dark:border-gray-700">
+    <div class="message-input px-3 py-3 sm:p-4 border-t border-warp-border/70 bg-warp-surface/90 flex-shrink-0">
       <div class="flex items-end space-x-2">
         <!-- File upload button -->
-        <label class="cursor-pointer p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+        <label class="cursor-pointer p-2 rounded-lg hover:bg-warp-surfaceAlt/80 transition-colors">
           <input
             ref="fileInput"
             type="file"
@@ -210,7 +224,7 @@
             @change="handleFileSelect"
             :accept="acceptedFileTypes"
           />
-          <svg class="w-6 h-6 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-6 h-6 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
           </svg>
         </label>
@@ -219,22 +233,22 @@
         <div class="flex-1 relative">
           <textarea
             ref="messageInput"
-            v-model="newMessage"
-            @input="handleMessageInput"
+            :value="newMessage"
+            @input="onMessageChange"
             @keydown.enter.exact.prevent="handleSendMessage"
             @keydown.enter.shift.exact="handleShiftEnter"
             placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
             rows="1"
-            class="w-full px-4 py-2 pr-12 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none transition-all"
+            class="w-full px-3.5 py-2 pr-10 bg-warp-surfaceAlt/80 text-warp-text placeholder:text-warp-muted rounded-lg focus:outline-none focus:ring-2 focus:ring-warp-accent/70 resize-none transition-all"
             style="max-height: 120px; overflow-y: auto;"
           ></textarea>
           
           <!-- Emoji button (placeholder) -->
           <button
-            class="absolute right-2 bottom-2 p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+            class="absolute right-1.5 bottom-1.5 p-1 rounded hover:bg-warp-surface/60 transition-colors"
             title="Emoji (coming soon)"
           >
-            <svg class="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </button>
@@ -243,32 +257,32 @@
         <!-- Send button -->
         <button
           @click="handleSendMessage"
-          :disabled="isSending || ((!newMessage || !newMessage.trim()) && !(selectedFile && selectedFile?.name))"
-          class="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center min-w-[44px]"
+          :disabled="isSending || !canSend"
+          class="btn-primary flex items-center justify-center min-w-[44px] h-11 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
           :title="isSending ? 'Sending...' : 'Send message (Enter)'"
         >
-          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
           </svg>
         </button>
       </div>
       
       <!-- File upload preview -->
-      <div v-if="selectedFile" class="mt-2 p-2 bg-blue-50 dark:bg-blue-900 rounded-lg">
+      <div v-if="selectedFile" class="mt-3 p-2.5 bg-warp-surfaceAlt/80 rounded-lg border border-warp-border/60">
         <div class="flex items-center justify-between mb-2">
           <div class="flex items-center space-x-2 flex-1 min-w-0">
-            <svg class="w-5 h-5 text-blue-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-5 h-5 text-warp-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
             </svg>
             <div class="flex-1 min-w-0">
-              <span class="text-sm text-gray-900 dark:text-white block truncate">{{ selectedFile?.name || '' }}</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">({{ selectedFile?.size ? formatFileSize(selectedFile.size) : '' }})</span>
+              <span class="text-sm text-warp-text block truncate">{{ selectedFile?.name || '' }}</span>
+              <span class="text-xs text-warp-muted">({{ selectedFile?.size ? formatFileSize(selectedFile.size) : '' }})</span>
             </div>
           </div>
           <button
             v-if="!isUploading"
             @click="clearFileSelection"
-            class="p-1 rounded hover:bg-blue-100 dark:hover:bg-blue-800 transition-colors ml-2 flex-shrink-0"
+            class="p-1 rounded hover:bg-warp-surface/60 transition-colors ml-2 flex-shrink-0"
             title="Remove file"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -280,24 +294,24 @@
         <!-- Upload progress bar -->
         <div v-if="isUploading" class="mt-2">
           <div class="flex items-center justify-between mb-1">
-            <span class="text-xs text-gray-600 dark:text-gray-400">Uploading...</span>
-            <span class="text-xs text-gray-600 dark:text-gray-400">{{ uploadProgress }}%</span>
+            <span class="text-[11px] text-warp-muted">Uploading...</span>
+            <span class="text-[11px] text-warp-muted">{{ uploadProgress }}%</span>
           </div>
-          <div class="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+          <div class="w-full bg-warp-surface/80 rounded-full h-1.5 overflow-hidden">
             <div
-              class="bg-blue-500 h-2 rounded-full transition-all duration-300"
+              class="bg-warp-accent h-1.5 rounded-full transition-all duration-300"
               :style="{ width: uploadProgress + '%' }"
             ></div>
           </div>
         </div>
         
         <!-- Upload error -->
-        <div v-if="uploadError" class="mt-2 p-2 bg-red-50 dark:bg-red-900 rounded-lg">
+        <div v-if="uploadError" class="mt-2 p-2 bg-red-500/10 rounded-lg">
           <div class="flex items-center space-x-2">
-            <svg class="w-4 h-4 text-red-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-4 h-4 text-red-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span class="text-xs text-red-700 dark:text-red-300">{{ uploadError }}</span>
+            <span class="text-xs text-red-300">{{ uploadError }}</span>
           </div>
         </div>
       </div>
@@ -346,6 +360,9 @@ export default {
     this.setupWebSocketListeners()
   },
   methods: {
+    toggleAttachments() {
+      this.showAttachments = !this.showAttachments
+    },
     async loadChatHistory() {
       try {
         const response = await fetch(`/api/rooms/chat/messages/history/?room_code=${this.roomCode}&limit=100`)
@@ -409,8 +426,9 @@ export default {
       }
     },
     
-    handleMessageInput(event) {
-      // v-model handles the value, but we need to auto-resize textarea
+    // v-model handles syncing; we only adjust sizing on input
+    handleMessageInput() {
+      // Auto-resize textarea based on content
       this.$nextTick(() => {
         if (this.$refs.messageInput) {
           this.$refs.messageInput.style.height = 'auto'
@@ -418,18 +436,30 @@ export default {
         }
       })
     },
+
+    onMessageChange(event) {
+      // Manual sync of textarea value to reactive state
+      const val = event && event.target ? event.target.value : ''
+      this.newMessage = typeof val === 'string' ? val : ''
+      this.handleMessageInput()
+    },
+
     
     handleShiftEnter(event) {
-      // Shift+Enter should allow newline - let default behavior happen
-      // Insert newline at cursor position
-      const textarea = event.target
+      // Shift+Enter should allow newline - insert newline at cursor position
+      const textarea = event && event.target
+      if (!textarea || typeof textarea.selectionStart !== 'number') {
+        this.newMessage = (this.newMessage || '') + '\n'
+        this.handleMessageInput()
+        return
+      }
       const cursorPos = textarea.selectionStart
-      const textBefore = this.newMessage.substring(0, cursorPos)
-      const textAfter = this.newMessage.substring(cursorPos)
+      const textBefore = (this.newMessage || '').substring(0, cursorPos)
+      const textAfter = (this.newMessage || '').substring(cursorPos)
       this.newMessage = textBefore + '\n' + textAfter
       this.$nextTick(() => {
         textarea.selectionStart = textarea.selectionEnd = cursorPos + 1
-        this.handleMessageInput(event)
+        this.handleMessageInput()
       })
     },
     
@@ -443,7 +473,7 @@ export default {
       const messageText = (this.newMessage && typeof this.newMessage === 'string') ? this.newMessage.trim() : ''
       
       // Check if we have something to send
-      if (!messageText && !this.selectedFile) {
+      if (!this.canSend) {
         return
       }
       
@@ -530,6 +560,13 @@ export default {
       await this.handleSendMessage()
     },
     
+    canSendMessage() {
+      // Backward-compatible alias: keep method for any external callers
+      const hasText = typeof this.newMessage === 'string' && this.newMessage.trim().length > 0
+      const hasFile = !!(this.selectedFile && this.selectedFile.name)
+      return hasText || hasFile
+    },
+
     async uploadFile() {
       if (!this.selectedFile) return
       
@@ -736,8 +773,36 @@ export default {
       window.open(`/api/rooms/chat/attachments/${attachment.id}/download/`, '_blank')
     },
     
+    getSenderId(message) {
+      // Normalized sender/participant id from different payload shapes
+      const rawId = message.participant_id || message.sender_id || message.participant?.id || null
+      return rawId != null ? String(rawId) : ''
+    },
+
     isOwnMessage(message) {
-      return message.participant?.id === this.participantId
+      const senderId = this.getSenderId(message)
+      return senderId && senderId === String(this.participantId)
+    },
+
+    getSenderName(message) {
+      if (this.isOwnMessage(message)) {
+        return 'You'
+      }
+
+      if (message.participant_name) {
+        return message.participant_name
+      }
+
+      if (message.participant && message.participant.display_name) {
+        return message.participant.display_name
+      }
+
+      if (message.sender_id) {
+        const id = String(message.sender_id)
+        return `User ${id.slice(-4)}`
+      }
+
+      return 'Participant'
     },
     
     getReplyContent(replyToId) {
@@ -758,10 +823,10 @@ export default {
     
     getFileIconColor(fileType) {
       const colors = {
-        image: 'text-green-500',
-        document: 'text-blue-500',
-        archive: 'text-yellow-500',
-        other: 'text-gray-500'
+        image: 'text-emerald-400',
+        document: 'text-blue-400',
+        archive: 'text-amber-400',
+        other: 'text-warp-muted'
       }
       return colors[fileType] || colors.other
     },
@@ -770,6 +835,14 @@ export default {
       if (this.$refs.messagesContainer) {
         this.$refs.messagesContainer.scrollTop = this.$refs.messagesContainer.scrollHeight
       }
+    }
+  },
+  computed: {
+    // Prefer computed property in template to avoid calling possibly shadowed option
+    canSend() {
+      const hasText = typeof this.newMessage === 'string' && this.newMessage.trim().length > 0
+      const hasFile = !!(this.selectedFile && this.selectedFile.name)
+      return hasText || hasFile
     }
   },
   beforeUnmount() {
@@ -783,7 +856,7 @@ export default {
 <style scoped>
 .messages-container {
   scrollbar-width: thin;
-  scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+  scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
 }
 
 .messages-container::-webkit-scrollbar {
@@ -795,12 +868,12 @@ export default {
 }
 
 .messages-container::-webkit-scrollbar-thumb {
-  background-color: rgba(156, 163, 175, 0.5);
+  background: linear-gradient(to bottom, rgba(79, 70, 229, 0.5), rgba(56, 189, 248, 0.5));
   border-radius: 3px;
 }
 
 .messages-container::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(156, 163, 175, 0.7);
+  background: linear-gradient(to bottom, rgba(79, 70, 229, 0.8), rgba(56, 189, 248, 0.8));
 }
 
 textarea {

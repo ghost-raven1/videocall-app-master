@@ -158,10 +158,6 @@ vi.mock('../../services/webrtc-retry', () => ({
 // Mock stores - using createTestingPinia will create actual store instances
 // We'll stub the methods that are called
 
-const mockGlobalStore = {
-  addNotification: vi.fn(),
-  login: vi.fn().mockResolvedValue({ success: true })
-}
 
 describe('VideoCall.vue', () => {
   let wrapper
@@ -424,7 +420,7 @@ describe('VideoCall.vue', () => {
       wrapper.vm.roomInfo = { short_code: 'ABC123' }
       await wrapper.vm.$nextTick()
 
-      const roomCodeInput = wrapper.find('input[value="ABC123"]')
+      // Ensure room info is bound correctly
       // Modal might be in teleport, so check if roomInfo is set
       expect(wrapper.vm.roomInfo?.short_code).toBe('ABC123')
     })
@@ -518,7 +514,7 @@ describe('VideoCall.vue', () => {
       const localVideo = wrapper.findAll('video').at(1)
       if (localVideo) {
         expect(localVideo.exists()).toBe(true)
-        expect(localVideo.attributes('muted')).toBeDefined()
+        expect(localVideo.attributes('muted')).toBeUndefined()
       }
     })
 
@@ -626,6 +622,22 @@ describe('VideoCall.vue', () => {
 
       await wrapper.vm.$nextTick()
       expect(mockGlobalStoreInstance.addNotification).toHaveBeenCalled()
+    })
+
+    it('shows media error banner when mediaError is set', async () => {
+      // Simulate permission error surfaced from initializeCall
+      wrapper.vm.mediaError = 'Permission denied'
+      await wrapper.vm.$nextTick()
+
+      const banner = wrapper.find('[data-test="media-error-banner"]')
+      expect(banner.exists()).toBe(true)
+      expect(banner.text()).toContain('Permission denied')
+
+      // Clicking Try again should call initializeCall
+      const tryAgain = banner.find('button')
+      wrapper.vm.initializeCall = vi.fn().mockResolvedValue({ success: true })
+      await tryAgain.trigger('click')
+      expect(wrapper.vm.initializeCall).toHaveBeenCalled()
     })
   })
 

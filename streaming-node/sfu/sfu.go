@@ -3,6 +3,7 @@ package sfu
 import (
 	"fmt"
 	"sync"
+	"strings"
 
 	"streaming-node/config"
 
@@ -39,6 +40,30 @@ func NewSFU(cfg *config.Config) *SFU {
 	// Create a setting engine with custom logger
 	settingEngine := webrtc.SettingEngine{}
 	settingEngine.LoggerFactory = &loggerFactory{}
+
+	// If a UDP port range is configured, restrict ICE to that range.
+	// This is critical when running SFU inside Docker with a fixed
+	// port mapping (e.g. 8081-8090/udp), otherwise Pion will pick
+	// random ephemeral ports that are not exposed.
+	if cfg.WebRTC.UDPPortMin > 0 && cfg.WebRTC.UDPPortMax >= cfg.WebRTC.UDPPortMin {
+		settingEngine.SetEphemeralUDPPortRange(uint16(cfg.WebRTC.UDPPortMin), uint16(cfg.WebRTC.UDPPortMax))
+	}
+
+	// If NAT1To1 IPs are configured, use them in ICE candidates so that
+	// browsers connect to the host (e.g. 127.0.0.1 / host.docker.internal)
+	// instead of the internal Docker IP of the container.
+	if len(cfg.WebRTC.NAT1To1IPs) > 0 {
+		candidateType := webrtc.ICECandidateTypeHost
+		switch strings.ToLower(cfg.WebRTC.NAT1To1CandidateType) {
+		case "srflx":
+			candidateType = webrtc.ICECandidateTypeSrflx
+		case "relay":
+			candidateType = webrtc.ICECandidateTypeRelay
+		case "prflx":
+			candidateType = webrtc.ICECandidateTypePrflx
+		}
+		settingEngine.SetNAT1To1IPs(cfg.WebRTC.NAT1To1IPs, candidateType)
+	}
 
 	api := webrtc.NewAPI(webrtc.WithSettingEngine(settingEngine))
 

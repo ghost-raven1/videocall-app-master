@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"github.com/pion/webrtc/v3"
 	"github.com/rs/cors"
 	"github.com/sirupsen/logrus"
 )
@@ -37,6 +38,7 @@ type WebSocketConnection struct {
 	peerID string
 	logger *logrus.Logger
 	sfu    *sfu.SFU
+	peer   *sfu.Peer // SFU peer connection
 }
 
 // Message represents a WebSocket message
@@ -364,21 +366,50 @@ func (s *Server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 func (c *WebSocketConnection) readPump() {
 	defer func() {
+		// Clean up peer connection when WebSocket closes
+		if c.peer != nil {
+			room, err := c.sfu.GetRoom(c.roomID)
+			if err == nil {
+				room.RemovePeer(c.peerID)
+			}
+		}
 		c.conn.Close()
+		c.logger.WithFields(logrus.Fields{
+			"roomID": c.roomID,
+			"peerID": c.peerID,
+		}).Info("WebSocket readPump closed")
 	}()
 
 	// Increase read limit to handle large SDP offers (up to 128KB)
 	c.conn.SetReadLimit(128 * 1024)
+	
+	c.logger.WithFields(logrus.Fields{
+		"roomID": c.roomID,
+		"peerID": c.peerID,
+	}).Info("Starting WebSocket readPump")
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		messageType, message, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				c.logger.WithError(err).Error("WebSocket error")
+			} else {
+				c.logger.WithFields(logrus.Fields{
+					"error": err.Error(),
+					"roomID": c.roomID,
+					"peerID": c.peerID,
+				}).Info("WebSocket read ended (normal or expected close)")
 			}
 			break
 		}
 
+		c.logger.WithFields(logrus.Fields{
+			"roomID": c.roomID,
+			"peerID": c.peerID,
+			"messageSize": len(message),
+			"messageType": messageType,
+		}).Info("Read message from WebSocket, calling handleMessage")
+		
 		c.handleMessage(message)
 	}
 }
@@ -425,9 +456,20 @@ func (c *WebSocketConnection) writePump() {
 }
 
 func (c *WebSocketConnection) handleMessage(message []byte) {
+	previewLen := 100
+	if len(message) < previewLen {
+		previewLen = len(message)
+	}
+	c.logger.WithFields(logrus.Fields{
+		"messageSize": len(message),
+		"messagePreview": string(message[:previewLen]),
+	}).Info("Raw WebSocket message received")
+	
 	var msg Message
 	if err := json.Unmarshal(message, &msg); err != nil {
-		c.logger.WithError(err).Error("Failed to unmarshal message")
+		c.logger.WithError(err).WithFields(logrus.Fields{
+			"message": string(message),
+		}).Error("Failed to unmarshal message")
 		return
 	}
 
@@ -435,12 +477,21 @@ func (c *WebSocketConnection) handleMessage(message []byte) {
 		"type":   msg.Type,
 		"roomID": msg.RoomID,
 		"peerID": msg.PeerID,
-	}).Debug("Received WebSocket message")
+		"hasData": msg.Data != nil,
+	}).Info("Received WebSocket message")
 
 	// Handle different message types
 	switch msg.Type {
 	case "offer", "answer", "ice-candidate":
+		c.logger.WithFields(logrus.Fields{
+			"type":   msg.Type,
+			"roomID": msg.RoomID,
+			"peerID": msg.PeerID,
+		}).Info("Handling signaling message")
 		c.handleSignalingMessage(msg)
+	case "ice-candidates-batch":
+		// Handle batched ICE candidates for large data streams
+		c.handleBatchedICECandidates(msg)
 	case "subscribe":
 		c.handleSubscribeMessage(msg)
 	case "unsubscribe":
@@ -451,15 +502,394 @@ func (c *WebSocketConnection) handleMessage(message []byte) {
 }
 
 func (c *WebSocketConnection) handleSignalingMessage(msg Message) {
-	// Forward signaling messages between peers in the same room
+	// Get or create room if it doesn't exist
 	room, err := c.sfu.GetRoom(c.roomID)
 	if err != nil {
-		c.logger.WithError(err).Error("Room not found")
+		// Room doesn't exist, create it
+		c.logger.WithFields(logrus.Fields{
+			"roomID": c.roomID,
+		}).Info("Room not found, creating it")
+		room, err = c.sfu.CreateRoom(c.roomID)
+		if err != nil {
+			c.logger.WithError(err).Error("Failed to create room")
+			return
+		}
+	}
+
+	// Handle offer - create peer connection on server side for SFU
+	if msg.Type == "offer" {
+		c.logger.WithFields(logrus.Fields{
+			"roomID": c.roomID,
+			"peerID": c.peerID,
+		}).Info("Received offer, creating peer connection on server")
+		c.handleOffer(room, msg)
 		return
 	}
 
-	// Broadcast to other peers in the room
+	// Handle answer - set remote description
+	if msg.Type == "answer" {
+		c.handleAnswer(msg)
+		return
+	}
+
+	// Handle ICE candidate
+	if msg.Type == "ice-candidate" {
+		c.handleICECandidate(msg)
+		return
+	}
+
+	// For other signaling messages, forward to other peers
 	room.BroadcastToAll(c.peerID, msg)
+}
+
+func (c *WebSocketConnection) handleOffer(room *sfu.Room, msg Message) {
+	c.logger.WithFields(logrus.Fields{
+		"roomID": c.roomID,
+		"peerID": c.peerID,
+		"msgRoomID": msg.RoomID,
+		"msgPeerID": msg.PeerID,
+	}).Info("Creating peer connection on server for SFU")
+	
+	// Create peer connection on server side using room's API
+	// Use empty config - ICE servers are configured at API level in SFU
+	pc, err := room.GetAPI().NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		c.logger.WithError(err).Error("Failed to create peer connection")
+		return
+	}
+	
+	c.logger.WithFields(logrus.Fields{
+		"roomID": c.roomID,
+		"peerID": c.peerID,
+	}).Info("Peer connection created successfully")
+
+	// Handle ICE candidates from server side
+	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
+		if candidate != nil {
+			iceMsg := Message{
+				Type:   "ice-candidate",
+				RoomID: c.roomID,
+				PeerID: c.peerID,
+				Data: map[string]interface{}{
+					"candidate":      candidate.ToJSON().Candidate,
+					"sdpMLineIndex":  candidate.ToJSON().SDPMLineIndex,
+					"sdpMid":         candidate.ToJSON().SDPMid,
+				},
+			}
+			iceBytes, _ := json.Marshal(iceMsg)
+			c.send <- iceBytes
+		}
+	})
+
+	// Add peer to room (OnTrack handler will be set up in room.AddPeer)
+	peer, err := room.AddPeer(c.peerID, pc)
+	if err != nil {
+		c.logger.WithError(err).Error("Failed to add peer to room")
+		pc.Close()
+		return
+	}
+
+	c.peer = peer
+
+	// Handle negotiation needed when tracks are added after connection is established
+	peer.OnNegotiationNeeded(func() {
+		c.logger.WithFields(logrus.Fields{
+			"roomID": c.roomID,
+			"peerID": c.peerID,
+		}).Info("Negotiation needed - creating new offer for added tracks")
+		
+		// Create new offer with added tracks
+		pc := peer.GetPeerConnection()
+		if pc == nil {
+			return
+		}
+		
+		offer, err := pc.CreateOffer(nil)
+		if err != nil {
+			c.logger.WithError(err).Error("Failed to create offer for renegotiation")
+			return
+		}
+		
+		err = pc.SetLocalDescription(offer)
+		if err != nil {
+			c.logger.WithError(err).Error("Failed to set local description for renegotiation")
+			return
+		}
+		
+		// Send new offer to client
+		offerMsg := Message{
+			Type:   "offer",
+			RoomID: c.roomID,
+			PeerID: c.peerID,
+			Data: map[string]interface{}{
+				"sdp":  offer.SDP,
+				"type": offer.Type.String(),
+			},
+		}
+		
+		offerBytes, err := json.Marshal(offerMsg)
+		if err != nil {
+			c.logger.WithError(err).Error("Failed to marshal renegotiation offer")
+			return
+		}
+		
+		c.logger.WithFields(logrus.Fields{
+			"roomID": c.roomID,
+			"peerID": c.peerID,
+		}).Info("Sending renegotiation offer to client")
+		
+		c.send <- offerBytes
+	})
+
+	// Set remote description from offer
+	dataMap, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		c.logger.Error("Invalid offer data format")
+		return
+	}
+
+	sdpStr, ok := dataMap["sdp"].(string)
+	if !ok {
+		c.logger.Error("Invalid SDP in offer")
+		return
+	}
+
+	c.logger.WithFields(logrus.Fields{
+		"roomID": c.roomID,
+		"peerID": c.peerID,
+		"sdpLength": len(sdpStr),
+	}).Info("Setting remote description from offer")
+	
+	err = pc.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeOffer,
+		SDP:  sdpStr,
+	})
+	if err != nil {
+		c.logger.WithError(err).Error("Failed to set remote description")
+		return
+	}
+	
+	c.logger.WithFields(logrus.Fields{
+		"roomID": c.roomID,
+		"peerID": c.peerID,
+		"signalingState": pc.SignalingState().String(),
+		"connectionState": pc.ConnectionState().String(),
+		"iceConnectionState": pc.ICEConnectionState().String(),
+	}).Info("Remote description set successfully, waiting for tracks")
+	
+	// Log transceivers to see if tracks are expected
+	transceivers := pc.GetTransceivers()
+	c.logger.WithFields(logrus.Fields{
+		"roomID": c.roomID,
+		"peerID": c.peerID,
+		"transceiversCount": len(transceivers),
+	}).Info("Transceivers after setting remote description")
+	for i, tr := range transceivers {
+		c.logger.WithFields(logrus.Fields{
+			"roomID": c.roomID,
+			"peerID": c.peerID,
+			"transceiverIndex": i,
+			"direction": tr.Direction().String(),
+			"kind": tr.Kind().String(),
+			"receiver": tr.Receiver() != nil,
+			"sender": tr.Sender() != nil,
+		}).Info("Transceiver info")
+	}
+
+	// Add existing tracks from other peers BEFORE creating answer
+	// This ensures all tracks are included in the initial SDP
+	existingTracks := room.GetPeerTracks()
+	for existingPeerID, tracks := range existingTracks {
+		if existingPeerID != c.peerID {
+			for _, track := range tracks {
+				// Use existingPeerID (the original sender) so that the
+				// forwarded track IDs remain consistent for all receivers.
+				if err := peer.AddTrack(track, existingPeerID); err != nil {
+					c.logger.WithFields(logrus.Fields{
+						"existingPeerID": existingPeerID,
+						"trackID":        track.ID(),
+					}).Error("Failed to add existing track before answer")
+				} else {
+					c.logger.WithFields(logrus.Fields{
+						"existingPeerID": existingPeerID,
+						"trackID":        track.ID(),
+					}).Info("Added existing track before answer")
+				}
+			}
+		}
+	}
+
+	// Create answer (will include all added tracks)
+	answer, err := pc.CreateAnswer(nil)
+	if err != nil {
+		c.logger.WithError(err).Error("Failed to create answer")
+		return
+	}
+
+	err = pc.SetLocalDescription(answer)
+	if err != nil {
+		c.logger.WithError(err).Error("Failed to set local description")
+		return
+	}
+
+	// Send answer back to client
+	answerMsg := Message{
+		Type:   "answer",
+		RoomID: c.roomID,
+		PeerID: c.peerID,
+		Data: map[string]interface{}{
+			"sdp":  answer.SDP,
+			"type": answer.Type.String(),
+		},
+	}
+
+	answerBytes, err := json.Marshal(answerMsg)
+	if err != nil {
+		c.logger.WithError(err).Error("Failed to marshal answer message")
+		return
+	}
+	
+	c.logger.WithFields(logrus.Fields{
+		"roomID": c.roomID,
+		"peerID": c.peerID,
+		"answerSize": len(answerBytes),
+	}).Info("Sending answer to client")
+	
+	c.send <- answerBytes
+
+	// Notify other peers about new peer joining
+	peerJoinedMsg := Message{
+		Type:   "peer-joined",
+		RoomID: c.roomID,
+		PeerID: c.peerID,
+	}
+	room.BroadcastToAll(c.peerID, peerJoinedMsg)
+
+	c.logger.WithFields(logrus.Fields{
+		"roomID": c.roomID,
+		"peerID": c.peerID,
+	}).Info("Created peer connection and sent answer")
+}
+
+func (c *WebSocketConnection) handleAnswer(msg Message) {
+	if c.peer == nil {
+		c.logger.Warn("Received answer but no peer connection exists")
+		return
+	}
+
+	pc := c.peer.GetPeerConnection()
+	if pc == nil {
+		return
+	}
+
+	dataMap, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		c.logger.Error("Invalid answer data format")
+		return
+	}
+
+	sdpStr, ok := dataMap["sdp"].(string)
+	if !ok {
+		c.logger.Error("Invalid SDP in answer")
+		return
+	}
+
+	err := pc.SetRemoteDescription(webrtc.SessionDescription{
+		Type: webrtc.SDPTypeAnswer,
+		SDP:  sdpStr,
+	})
+	if err != nil {
+		c.logger.WithError(err).Error("Failed to set remote description from answer")
+	}
+}
+
+func (c *WebSocketConnection) handleICECandidate(msg Message) {
+	if c.peer == nil {
+		c.logger.Warn("Received ICE candidate but no peer connection exists")
+		return
+	}
+
+	pc := c.peer.GetPeerConnection()
+	if pc == nil {
+		return
+	}
+
+	dataMap, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		c.logger.Error("Invalid ICE candidate data format")
+		return
+	}
+
+	candidateStr, ok := dataMap["candidate"].(string)
+	if !ok {
+		c.logger.Error("Invalid candidate in ICE candidate message")
+		return
+	}
+
+	iceCandidate := webrtc.ICECandidateInit{
+		Candidate: candidateStr,
+	}
+
+	if sdpMid, ok := dataMap["sdpMid"].(string); ok {
+		iceCandidate.SDPMid = &sdpMid
+	}
+
+	if sdpMLineIndex, ok := dataMap["sdpMLineIndex"].(float64); ok {
+		index := uint16(sdpMLineIndex)
+		iceCandidate.SDPMLineIndex = &index
+	}
+
+	err := pc.AddICECandidate(iceCandidate)
+	if err != nil {
+		c.logger.WithError(err).Error("Failed to add ICE candidate")
+	}
+}
+
+func (c *WebSocketConnection) handleBatchedICECandidates(msg Message) {
+	// Handle batched ICE candidates: expand into individual ice-candidate
+	// messages and apply them to this peer's server-side PeerConnection,
+	// just like in handleICECandidate. We DO NOT broadcast these candidates
+	// to other peers, they are only for the SFU <-> client connection.
+
+	dataMap, ok := msg.Data.(map[string]interface{})
+	if !ok {
+		c.logger.Warn("Invalid batch ICE candidates data format")
+		return
+	}
+
+	candidates, ok := dataMap["candidates"].([]interface{})
+	if !ok {
+		c.logger.Warn("Invalid candidates array in batch message")
+		return
+	}
+
+	c.logger.WithFields(logrus.Fields{
+		"roomID":         c.roomID,
+		"peerID":         c.peerID,
+		"candidateCount": len(candidates),
+	}).Info("Processing batched ICE candidates")
+
+	for _, candidateData := range candidates {
+		candidateMap, ok := candidateData.(map[string]interface{})
+		if !ok {
+			c.logger.Warn("Invalid candidate data in batch")
+			continue
+		}
+
+		iceMsg := Message{
+			Type:   "ice-candidate",
+			RoomID: msg.RoomID,
+			PeerID: msg.PeerID,
+			Data: map[string]interface{}{
+				"candidate":      candidateMap["candidate"],
+				"sdpMLineIndex": candidateMap["sdpMLineIndex"],
+				"sdpMid":        candidateMap["sdpMid"],
+			},
+		}
+
+		// Apply candidate to this peer's PeerConnection (same logic as handleICECandidate)
+		c.handleICECandidate(iceMsg)
+	}
 }
 
 func (c *WebSocketConnection) handleSubscribeMessage(msg Message) {

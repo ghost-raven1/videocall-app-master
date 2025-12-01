@@ -251,6 +251,55 @@ describe('SFUConnectionManager', () => {
 
       vi.useRealTimers()
     })
+
+    it('should use nginx proxy on port 3000 when frontend runs on 3001', async () => {
+      const originalLocation = window.location
+      // Stub window.location to simulate dev server on :3001
+      Object.defineProperty(window, 'location', {
+        value: {
+          protocol: 'http:',
+          hostname: 'localhost',
+          host: 'localhost:3001',
+          port: '3001'
+        } as any,
+        configurable: true
+      })
+
+      const sfuWsUrl = 'ws://localhost:8080/ws'
+      const roomId = 'room-x'
+      const peerId = 'peer-y'
+
+      let capturedUrl: string | null = null
+
+      global.WebSocket = vi.fn().mockImplementation((url: string) => {
+        capturedUrl = url
+        const ws = {
+          readyState: WebSocket.OPEN,
+          send: vi.fn(),
+          close: vi.fn(),
+          onopen: null,
+          onerror: null,
+          onclose: null,
+          CONNECTING: 0,
+          OPEN: 1,
+          CLOSING: 2,
+          CLOSED: 3
+        }
+        // Immediately invoke onopen if present
+        setTimeout(() => {
+          if (ws.onopen) ws.onopen({} as Event)
+        }, 0)
+        return ws
+      }) as any
+
+      await expect(manager.connectToSFUWebSocket(sfuWsUrl, roomId, peerId)).resolves.toBeUndefined()
+      expect(capturedUrl).toBeTruthy()
+      // Expect proxy to target port 3000
+      expect(capturedUrl).toMatch(/ws:\/\/localhost:3000\/sfu\/ws\//)
+
+      // Restore original location
+      Object.defineProperty(window, 'location', { value: originalLocation })
+    })
   })
 
   describe('createSFUPeerConnection', () => {
@@ -585,4 +634,3 @@ describe('SFUConnectionManager', () => {
     })
   })
 })
-

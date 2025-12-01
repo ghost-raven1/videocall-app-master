@@ -1,6 +1,6 @@
 // src/App.vue - Main application component
 <template>
-  <div id="app" class="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+  <div id="app" class="warp-page transition-colors">
     <router-view v-slot="{ Component }">
       <transition name="page" mode="out-in">
         <component :is="Component" />
@@ -13,9 +13,9 @@
         v-if="globalStore.isLoading"
         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
       >
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 shadow-xl">
-          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto"></div>
-          <p class="mt-4 text-gray-600 dark:text-gray-300 text-sm">{{ globalStore.loadingMessage }}</p>
+        <div class="card rounded-2xl p-6 shadow-warp-md bg-warp-surface">
+          <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-warp-accent mx-auto"></div>
+          <p class="mt-4 text-warp-muted text-sm">{{ globalStore.loadingMessage }}</p>
         </div>
       </div>
     </Teleport>
@@ -27,11 +27,10 @@
           v-for="notification in globalStore.notifications"
           :key="notification.id"
           :class="[
-            'notification',
-            notification.type === 'error' ? 'bg-red-500' :
-            notification.type === 'success' ? 'bg-green-500' : 'bg-blue-500'
+            'notification text-white p-4 rounded-lg shadow-warp-md max-w-sm animate-slide-in',
+            notification.type === 'error' ? 'bg-red-600/95' :
+            notification.type === 'success' ? 'bg-emerald-600/95' : 'bg-warp-accent/95'
           ]"
-          class="text-white p-4 rounded-lg shadow-lg max-w-sm animate-slide-in"
         >
           <div class="flex items-center justify-between">
             <p class="text-sm font-medium">{{ notification.message }}</p>

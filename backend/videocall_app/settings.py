@@ -112,12 +112,15 @@ TEMPLATES = [
 WSGI_APPLICATION = 'videocall_app.wsgi.application'
 ASGI_APPLICATION = 'videocall_app.asgi.application'
 
+# Detect test environment (pytest)
+TESTING = os.environ.get('PYTEST_RUNNING') == 'true'
+
 # Database configuration
-# Use PostgreSQL in production, SQLite for development
-USE_POSTGRESQL = config('USE_POSTGRESQL', default=not DEBUG, cast=bool)
+# Use PostgreSQL in production, SQLite for development and tests
+USE_POSTGRESQL = config('USE_POSTGRESQL', default=not DEBUG, cast=bool) and not TESTING
 
 # Database URL configuration for production deployments (e.g., Heroku, Railway, etc.)
-DATABASE_URL = config('DATABASE_URL', default=None)
+DATABASE_URL = None if TESTING else config('DATABASE_URL', default=None)
 
 if DATABASE_URL:
     # Use database URL if provided (modern cloud deployment standard)
@@ -191,6 +194,26 @@ CACHES = {
         'TIMEOUT': 300,  # 5 minutes default timeout
     }
 }
+
+# For tests, use in-memory DB, cache and channel layer to avoid external services
+if TESTING:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
+    CHANNEL_LAYERS = {
+        'default': {
+            'BACKEND': 'channels.layers.InMemoryChannelLayer',
+        },
+    }
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'videocall-test-cache',
+        }
+    }
 
 # Session configuration with fallback
 SESSION_ENGINE = 'django.contrib.sessions.backends.db'  # Use database sessions when Redis is unavailable

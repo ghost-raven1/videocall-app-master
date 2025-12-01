@@ -133,9 +133,6 @@ describe('VideoCallHeader', () => {
 
   it('should emit toggle-menu when menu button is clicked', async () => {
     wrapper = createWrapper()
-    const menuButton = wrapper.findAll('button').find(btn => 
-      btn.find('svg') && btn.find('svg').attributes('viewBox') === '0 0 24 24'
-    )
     // Find the menu button (the one with three dots)
     const buttons = wrapper.findAll('button')
     const menuBtn = buttons[buttons.length - 1] // Menu button is usually last
@@ -217,4 +214,3 @@ describe('VideoCallHeader', () => {
     }
   })
 })
-

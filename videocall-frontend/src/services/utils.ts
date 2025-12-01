@@ -1,6 +1,14 @@
 // src/services/utils.ts - Utility functions
 export const utils = {
   /**
+   * Normalize Vue Router param/query to string
+   * Ensures `string | string[] | null | undefined` becomes a safe `string`
+   */
+  normalizeRouteParam(raw: string | string[] | null | undefined): string {
+    if (Array.isArray(raw)) return String(raw[0] ?? '').trim()
+    return String(raw ?? '').trim()
+  },
+  /**
    * Generate random string
    */
   generateRandomString(length = 8) {

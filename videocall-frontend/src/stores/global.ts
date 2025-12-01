@@ -6,6 +6,7 @@ import { apiService } from '../services/api'
 export const useGlobalStore = defineStore('global', () => {
   // State
   const isAuthenticated = ref(false)
+  const user = ref<any | null>(null)
   const isLoading = ref(false)
   const loadingMessage = ref('')
   const notifications = ref([])
@@ -21,8 +22,9 @@ export const useGlobalStore = defineStore('global', () => {
   const canUseApp = computed(() => isAuthenticated.value && isOnline.value)
 
   // Actions
-  const setAuthenticated = (value) => {
+  const setAuthenticated = (value, userData: any | null = null) => {
     isAuthenticated.value = value
+    user.value = userData
   }
 
   const setLoading = (loading, message = '') => {
@@ -74,7 +76,8 @@ export const useGlobalStore = defineStore('global', () => {
     try {
       setLoading(true, 'Checking authentication...')
       const response = await apiService.checkAuth()
-      setAuthenticated(response.data.authenticated)
+      const userData = response.data.user || null
+      setAuthenticated(response.data.authenticated, userData)
 
       // Listen for token expiration events
       window.addEventListener('auth:token-expired', () => {
@@ -105,7 +108,8 @@ export const useGlobalStore = defineStore('global', () => {
       const response = await apiService.login(password)
 
       if (response.data.success) {
-        setAuthenticated(true)
+        const userData = (response.data && response.data.user) || null
+        setAuthenticated(true, userData)
         addNotification('Login successful', 'success', 3000)
         return { success: true }
       } else {
@@ -123,12 +127,12 @@ export const useGlobalStore = defineStore('global', () => {
   const logout = async () => {
     try {
       await apiService.logout()
-      setAuthenticated(false)
+      setAuthenticated(false, null)
       addNotification('Logged out successfully', 'info', 3000)
     } catch (error) {
       console.error('Logout failed:', error)
       // Force logout even if API call fails
-      setAuthenticated(false)
+      setAuthenticated(false, null)
       addNotification('Logged out', 'info', 3000)
     }
   }
@@ -171,6 +175,7 @@ export const useGlobalStore = defineStore('global', () => {
   return {
     // State
     isAuthenticated,
+    user,
     isLoading,
     loadingMessage,
     notifications,

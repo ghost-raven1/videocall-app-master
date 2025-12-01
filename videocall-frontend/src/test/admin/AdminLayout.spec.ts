@@ -13,14 +13,14 @@ vi.mock('vue-router', () => {
 
 // Mock global store used for logout
 const logout = vi.fn(async () => {})
-// Cast to any to satisfy TS in test context
-;(vi as unknown as any).mock('@/stores/global', () => ({
+// Mock global store module for logout handling
+vi.mock('@/stores/global', () => ({
   useGlobalStore: () => ({ logout }),
 }))
 
 // Provide global $t for script-setup direct usage
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-(globalThis as any).$t = (k: string) => k
+;(globalThis as any).$t = (k: string) => k
 
 describe('AdminLayout.vue', () => {
   it('переключает сайдбар и закрывает по overlay', async () => {

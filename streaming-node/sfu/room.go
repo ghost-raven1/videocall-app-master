@@ -21,22 +21,31 @@ type Room struct {
 	peersMutex   sync.RWMutex
 	closed       bool
 	closedMutex  sync.RWMutex
+	// Store tracks from each peer to forward to new participants
+	peerTracks   map[string][]*webrtc.TrackRemote // peerID -> []tracks
+	tracksMutex  sync.RWMutex
 }
 
 // NewRoom creates a new room
 func NewRoom(roomID string, api *webrtc.API, cfg *config.Config, logger *logrus.Logger) *Room {
 	return &Room{
-		id:     roomID,
-		config: cfg,
-		api:    api,
-		logger: logger,
-		peers:  make(map[string]*Peer),
+		id:         roomID,
+		config:     cfg,
+		api:        api,
+		logger:     logger,
+		peers:      make(map[string]*Peer),
+		peerTracks: make(map[string][]*webrtc.TrackRemote),
 	}
 }
 
 // ID returns the room ID
 func (r *Room) ID() string {
 	return r.id
+}
+
+// GetAPI returns the WebRTC API for creating peer connections
+func (r *Room) GetAPI() *webrtc.API {
+	return r.api
 }
 
 // AddPeer adds a peer to the room
@@ -75,6 +84,10 @@ func (r *Room) AddPeer(peerID string, pc *webrtc.PeerConnection) (*Peer, error) 
 		r.handleICEConnectionStateChange(peerID, state)
 	})
 
+	// Note: Existing tracks will be added in handleOffer BEFORE creating answer
+	// This ensures all tracks are included in the initial SDP
+	// If tracks are added later (after connection is established), OnNegotiationNeeded will handle it
+
 	return peer, nil
 }
 
@@ -90,6 +103,11 @@ func (r *Room) RemovePeer(peerID string) error {
 
 	peer.Close()
 	delete(r.peers, peerID)
+
+	// Remove tracks for this peer
+	r.tracksMutex.Lock()
+	delete(r.peerTracks, peerID)
+	r.tracksMutex.Unlock()
 
 	r.logger.WithFields(logrus.Fields{
 		"roomID": r.id,
@@ -133,6 +151,20 @@ func (r *Room) GetPeerCount() int {
 	return len(r.peers)
 }
 
+// GetPeerTracks returns all tracks from all peers in the room
+func (r *Room) GetPeerTracks() map[string][]*webrtc.TrackRemote {
+	r.tracksMutex.RLock()
+	defer r.tracksMutex.RUnlock()
+
+	tracks := make(map[string][]*webrtc.TrackRemote)
+	for peerID, peerTracks := range r.peerTracks {
+		tracks[peerID] = make([]*webrtc.TrackRemote, len(peerTracks))
+		copy(tracks[peerID], peerTracks)
+	}
+
+	return tracks
+}
+
 // BroadcastToAll sends data to all peers except the sender
 func (r *Room) BroadcastToAll(senderID string, data interface{}) {
 	r.peersMutex.RLock()
@@ -154,19 +186,46 @@ func (r *Room) handleNewTrack(peerID string, track *webrtc.TrackRemote, receiver
 		"kind":    track.Kind(),
 	}).Info("New track received")
 
+	// Store track for forwarding to future participants
+	r.tracksMutex.Lock()
+	if r.peerTracks[peerID] == nil {
+		r.peerTracks[peerID] = make([]*webrtc.TrackRemote, 0)
+	}
+	// Check if track already exists
+	trackExists := false
+	for _, existingTrack := range r.peerTracks[peerID] {
+		if existingTrack.ID() == track.ID() {
+			trackExists = true
+			break
+		}
+	}
+	if !trackExists {
+		r.peerTracks[peerID] = append(r.peerTracks[peerID], track)
+	}
+	r.tracksMutex.Unlock()
+
 	// Forward track to all other peers
 	r.peersMutex.RLock()
 	defer r.peersMutex.RUnlock()
 
 	for otherPeerID, peer := range r.peers {
 		if otherPeerID != peerID {
-			if err := peer.AddTrack(track); err != nil {
+			// Pass the ORIGINAL peerID (the sender) into AddTrack so that
+			// the forwarded track/stream IDs encode the sender identity.
+			if err := peer.AddTrack(track, peerID); err != nil {
 				r.logger.WithFields(logrus.Fields{
-					"roomID":       r.id,
-					"peerID":       peerID,
-					"otherPeerID":  otherPeerID,
-					"trackID":      track.ID(),
+					"roomID":      r.id,
+					"peerID":      peerID,
+					"otherPeerID": otherPeerID,
+					"trackID":     track.ID(),
 				}).Error("Failed to add track to peer")
+			} else {
+				r.logger.WithFields(logrus.Fields{
+					"roomID":      r.id,
+					"peerID":      peerID,
+					"otherPeerID": otherPeerID,
+					"trackID":     track.ID(),
+				}).Info("Forwarded track to peer")
 			}
 		}
 	}

@@ -95,6 +95,25 @@ export function useVideoCallController(roomId?: string): VideoCallController {
           joined_at: new Date().toISOString(),
         }
       }
+
+      // Auto-join the room (important for direct link navigation)
+      try {
+        const joinIdentifier = roomResult.room.short_code || targetRoomId
+        const joinRes = await roomsStore.joinRoom(joinIdentifier)
+        if (!joinRes.success) {
+          const errMsg = joinRes.error || 'Failed to join room'
+          globalStore.addNotification(errMsg, 'error')
+          callState.endCall()
+          router.push('/')
+          return { success: false, error: errMsg }
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : 'Failed to join room'
+        globalStore.addNotification(errMsg, 'error')
+        callState.endCall()
+        router.push('/')
+        return { success: false, error: errMsg }
+      }
       
       callState.setConnectingMessage('Accessing camera and microphone...', 'Step 2/4: Setting up media devices')
       callState.setConnectionProgress('Step 2/4: Setting up media devices')
@@ -311,4 +330,3 @@ export function useVideoCallController(roomId?: string): VideoCallController {
     reset
   }
 }
-

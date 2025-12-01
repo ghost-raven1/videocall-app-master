@@ -1,8 +1,8 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
+  <div class="min-h-screen warp-page flex items-center justify-center p-4">
     <div class="text-center max-w-md mx-auto">
       <div
-        class="w-24 h-24 bg-red-100 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-6"
+        class="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6 border border-red-500/40 shadow-warp-md"
       >
         <svg
           class="w-12 h-12 text-red-500 dark:text-red-400"
@@ -19,9 +19,9 @@
         </svg>
       </div>
 
-      <h1 class="text-6xl font-bold text-gray-900 dark:text-white mb-4">404</h1>
-      <h2 class="text-2xl font-semibold text-gray-700 dark:text-gray-300 mb-4">Page Not Found</h2>
-      <p class="text-gray-600 dark:text-gray-400 mb-8">
+      <h1 class="text-6xl font-bold text-warp-text mb-4">404</h1>
+      <h2 class="text-2xl font-semibold text-warp-text mb-4">Page Not Found</h2>
+      <p class="text-warp-muted mb-8">
         The page you're looking for doesn't exist or may have been moved.
       </p>
 

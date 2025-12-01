@@ -39,8 +39,8 @@ services:
       context: ./streaming-node
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
-      - "8081-8090:8081-8090"  # WebRTC port range
+      - "8080:8080"                     # HTTP / signaling (TCP)
+      - "8081-8090:8081-8090/udp"       # WebRTC media (UDP port range)
     env_file: .env.dev
     environment:
       SERVER_PORT: 8080
@@ -48,6 +48,13 @@ services:
       DJANGO_URL: backend:8000
       LOG_LEVEL: debug
       SECURITY_JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-change-in-production}
+      # Restrict Pion's ICE UDP port range to the ports exposed by Docker
+      WEBRTC_UDP_PORT_MIN: 8081
+      WEBRTC_UDP_PORT_MAX: 8090
+      # Use host address in ICE candidates so the browser connects to
+      # 127.0.0.1:8081-8090 on the host, which Docker forwards into the
+      # container.
+      WEBRTC_NAT_1TO1_IPS: 127.0.0.1
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -55,6 +62,33 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
+    networks:
+      - app-network
+
+  turn:
+    image: coturn/coturn:4.5.2
+    restart: unless-stopped
+    ports:
+      - "3478:3478"           # STUN/TURN UDP/TCP
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49160-49200:49160-49200/udp"  # media relay ports
+    command: >
+      turnserver
+        --no-tls
+        --no-dtls
+        --listening-ip=0.0.0.0
+        --listening-port=3478
+        --fingerprint
+        --lt-cred-mech
+        --user=turnuser:turnpassword
+        --realm=videocall.local
+        --total-quota=100
+        --bps-capacity=0
+        --no-stdout-log
+        --log-file=stdout
+        --min-port=49160
+        --max-port=49200
     networks:
       - app-network
 

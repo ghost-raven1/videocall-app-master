@@ -3,7 +3,6 @@
  * Handles screen share start/stop, permissions, and error handling
  */
 import { ref, computed, type Ref } from 'vue'
-import { useWebRTCStore } from '@/stores/webrtc'
 import { useGlobalStore } from '@/stores/global'
 
 export interface ScreenShareController {
@@ -30,7 +29,6 @@ export interface ScreenShareController {
  * Creates a screen share controller
  */
 export function useScreenShareController(): ScreenShareController {
-  const webrtcStore = useWebRTCStore()
   const globalStore = useGlobalStore()
   
   const isScreenSharing = ref(false)

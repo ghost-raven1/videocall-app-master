@@ -1,6 +1,6 @@
 <!-- src/components/VideoCallControls.vue - Controls component extracted from VideoCall.vue -->
 <template>
-  <div class="bg-gray-900 p-4 safe-area-inset">
+  <div class="bg-warp-surface/95 backdrop-blur-md p-3 sm:p-4 safe-area-inset border-t border-warp-border/80 shadow-warp-md">
     <!-- Recording Controls (Enterprise feature) -->
     <div v-if="roomCode" class="mb-4 flex justify-center">
       <RecordingControls
@@ -15,14 +15,18 @@
     <MultiUserControls
       v-if="isMultiUserCall"
       :participant-count="participantCount"
+      :is-screen-sharing="isScreenSharing"
+      :is-recording="isRecording"
+      :adaptive-level="adaptiveLevel"
       @layout-changed="$emit('layout-changed', $event)"
       @screen-share-toggled="$emit('screen-share-toggled', $event)"
       @recording-toggled="$emit('recording-toggled', $event)"
       @participant-pinned="$emit('participant-pinned', $event)"
+      @quality-settings-changed="$emit('quality-settings-changed', $event)"
     />
 
     <!-- Standard controls for 2-user calls (backward compatibility) -->
-    <div v-else class="max-w-md mx-auto flex items-center justify-center space-x-6">
+    <div v-else class="max-w-md mx-auto flex items-center justify-center space-x-3 sm:space-x-6 px-2">
       <!-- Toggle Audio -->
       <button
         @click="$emit('toggle-audio')"
@@ -152,7 +156,19 @@ defineProps({
   isVideoEnabled: {
     type: Boolean,
     default: true
-  }
+  },
+  isScreenSharing: {
+    type: Boolean,
+    default: false
+  },
+  isRecording: {
+    type: Boolean,
+    default: false
+  },
+  adaptiveLevel: {
+    type: String,
+    default: 'high',
+  },
 })
 
 defineEmits([
@@ -162,10 +178,11 @@ defineEmits([
   'screen-share-toggled',
   'recording-toggled',
   'participant-pinned',
+  'quality-settings-changed',
   'toggle-audio',
   'toggle-video',
   'share-room',
-  'end-call'
+  'end-call',
 ])
 </script>
 

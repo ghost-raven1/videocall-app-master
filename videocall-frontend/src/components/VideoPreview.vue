@@ -112,11 +112,11 @@
       <!-- No video placeholder -->
       <div
         v-if="!webrtcStore.hasLocalVideo || !webrtcStore.isVideoEnabled"
-        class="absolute inset-0 flex items-center justify-center bg-gray-800"
+        class="absolute inset-0 flex items-center justify-center bg-warp-surface"
       >
         <div class="text-center">
           <div
-            class="w-20 h-20 bg-gray-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse-slow"
+            class="w-20 h-20 bg-warp-surfaceAlt rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse-slow shadow-warp-md"
           >
             <svg
               class="w-10 h-10 text-gray-400"
@@ -132,10 +132,10 @@
               ></path>
             </svg>
           </div>
-          <p class="text-gray-400 text-lg font-medium">
+          <p class="text-warp-muted text-lg font-medium">
             {{ !webrtcStore.hasLocalVideo ? 'No camera detected' : 'Camera is off' }}
           </p>
-          <p class="text-gray-500 text-sm mt-2">
+          <p class="text-warp-muted text-sm mt-2">
             {{
               !webrtcStore.hasLocalVideo
                 ? 'Check your camera connection'
@@ -237,11 +237,11 @@
 
     <!-- Settings Panel -->
     <div v-if="showSettings" class="mt-4 card p-4 animate-slide-up">
-      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Video Settings</h3>
+      <h3 class="text-lg font-semibold text-warp-text mb-4">Video Settings</h3>
 
       <!-- Video Devices -->
       <div v-if="videoDevices.length > 0" class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+        <label class="block text-sm font-medium text-warp-muted mb-2"
           >Camera</label
         >
         <select v-model="selectedVideoDevice" @change="switchVideoDevice" class="input-field">
@@ -253,7 +253,7 @@
 
       <!-- Audio Devices -->
       <div v-if="audioDevices.length > 0" class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+        <label class="block text-sm font-medium text-warp-muted mb-2"
           >Microphone</label
         >
         <select v-model="selectedAudioDevice" @change="switchAudioDevice" class="input-field">
@@ -265,7 +265,7 @@
 
       <!-- Video Quality Settings -->
       <div class="mb-4">
-        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+        <label class="block text-sm font-medium text-warp-muted mb-2"
           >Video Quality</label
         >
         <select v-model="selectedQuality" @change="changeVideoQuality" class="input-field">
@@ -277,13 +277,13 @@
 
       <!-- Mirror Video -->
       <div class="flex items-center justify-between">
-        <label class="text-sm font-medium text-gray-700 dark:text-gray-300">Mirror video</label>
+        <label class="text-sm font-medium text-warp-muted">Mirror video</label>
         <button
           @click="shouldMirror = !shouldMirror"
-          :class="[
-            'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2',
-            shouldMirror ? 'bg-green-500' : 'bg-gray-200 dark:bg-gray-600',
-          ]"
+            :class="[
+              'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-warp-accent focus:ring-offset-2',
+              shouldMirror ? 'bg-warp-accent2' : 'bg-warp-surfaceAlt',
+            ]"
         >
           <span
             :class="[

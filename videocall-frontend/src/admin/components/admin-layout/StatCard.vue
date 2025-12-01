@@ -1,16 +1,16 @@
 // src/admin/components/admin-layout/StatCard.vue - Statistics card component
 <template>
-  <div class="stat-card bg-white dark:bg-gray-800 rounded-lg shadow p-6 border border-gray-200 dark:border-gray-700">
+  <div class="stat-card bg-warp-surface rounded-lg shadow-warp-sm p-6 border border-warp-border/70">
     <div class="flex items-center justify-between">
       <div class="flex-1">
-        <p class="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
+        <p class="text-sm font-medium text-warp-muted mb-1">
           {{ title }}
         </p>
         <div class="flex items-center space-x-2">
           <div v-if="loading" class="animate-pulse">
-            <div class="h-8 w-16 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div class="h-8 w-16 bg-warp-surfaceAlt rounded"></div>
           </div>
-          <p v-else class="text-2xl font-bold text-gray-900 dark:text-white">
+          <p v-else class="text-2xl font-bold text-warp-text">
             {{ formattedValue }}
           </p>
         </div>

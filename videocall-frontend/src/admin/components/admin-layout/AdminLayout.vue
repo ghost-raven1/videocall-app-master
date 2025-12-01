@@ -1,6 +1,6 @@
 // src/admin/components/admin-layout/AdminLayout.vue - Main admin layout component
 <template>
-  <div class="admin-layout min-h-screen bg-gray-100 dark:bg-gray-900">
+  <div class="admin-layout min-h-screen bg-warp-bg text-warp-text">
     <!-- Sidebar -->
     <AdminSidebar
       :is-open="sidebarOpen"
@@ -126,19 +126,18 @@ onUnmounted(() => {
 }
 
 .admin-main::-webkit-scrollbar-track {
-  @apply bg-gray-100 dark:bg-gray-800;
+  @apply bg-warp-surface;
 }
 
 .admin-main::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+  @apply bg-warp-border rounded-full;
 }
 
 .admin-main::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400 dark:bg-gray-500;
+  @apply bg-warp-accent;
 }
 
-/* Dark mode adjustments */
+/* Dark mode adjustments handled by Warp theme; keep hook for future tweaks */
 .dark .admin-layout {
-  @apply bg-gray-900;
 }
 </style>

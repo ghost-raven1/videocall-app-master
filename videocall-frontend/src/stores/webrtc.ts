@@ -159,11 +159,20 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   const getIceServers = () => {
     const iceServers = []
     
+    // Helper function to validate URL
+    const isValidUrl = (url: string): boolean => {
+      if (!url || url.trim().length === 0) return false
+      // Must start with stun: or turn: or turns:
+      const trimmed = url.trim()
+      return trimmed.startsWith('stun:') || trimmed.startsWith('turn:') || trimmed.startsWith('turns:')
+    }
+    
     // Get STUN servers from env or use defaults
     const stunServers = (import.meta.env.VITE_STUN_SERVERS || 'stun:stun.l.google.com:19302,stun:stun1.l.google.com:19302').split(',')
     stunServers.forEach(url => {
-      if (url.trim()) {
-        iceServers.push({ urls: url.trim() })
+      const trimmed = url.trim()
+      if (trimmed && isValidUrl(trimmed)) {
+        iceServers.push({ urls: trimmed })
       }
     })
     
@@ -171,9 +180,23 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     const turnServers = import.meta.env.VITE_TURN_SERVERS
     if (turnServers) {
       turnServers.split(',').forEach(turnConfig => {
-        const parts = turnConfig.trim().split(':')
+        const trimmed = turnConfig.trim()
+        // Skip empty values
+        if (!trimmed || trimmed === 'turn' || trimmed === 'stun') {
+          return
+        }
+        
+        const parts = trimmed.split(':')
         if (parts.length >= 3) {
           const urls = parts[0]
+          // Validate URL before adding
+          if (!isValidUrl(urls)) {
+            // Only warn if it's not just a protocol name
+            if (urls !== 'turn' && urls !== 'stun' && urls !== 'turns') {
+              console.warn('Invalid TURN URL format, skipping:', urls)
+            }
+            return
+          }
           const username = parts[1]
           const credential = parts.slice(2).join(':') // Handle credentials with colons
           iceServers.push({
@@ -182,16 +205,49 @@ export const useWebRTCStore = defineStore('webrtc', () => {
             credential
           })
         } else if (parts.length === 1) {
-          // Just URL without credentials
-          iceServers.push({ urls: parts[0] })
+          // Just URL without credentials - validate it
+          if (isValidUrl(parts[0])) {
+            iceServers.push({ urls: parts[0] })
+          } else {
+            // Only warn if it's not just a protocol name
+            if (parts[0] !== 'turn' && parts[0] !== 'stun' && parts[0] !== 'turns') {
+              console.warn('Invalid TURN URL format, skipping:', parts[0])
+            }
+          }
         }
       })
     }
     
-    return iceServers.length > 0 ? iceServers : [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-    ]
+    // Add TURN server for local development (if available)
+    // TURN server is running on localhost:3478 with credentials turnuser:turnpassword
+    const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    if (isLocalDev) {
+      // Check if TURN server is already in the list
+      const hasTurn = iceServers.some(server => 
+        server.urls && (
+          (Array.isArray(server.urls) && server.urls.some((url: string) => url.includes('turn:localhost:3478'))) ||
+          (typeof server.urls === 'string' && server.urls.includes('turn:localhost:3478'))
+        )
+      )
+      
+      if (!hasTurn) {
+        iceServers.push({
+          urls: 'turn:localhost:3478',
+          username: 'turnuser',
+          credential: 'turnpassword'
+        })
+      }
+    }
+    
+    // Always return at least default STUN servers
+    if (iceServers.length === 0) {
+      return [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ]
+    }
+    
+    return iceServers
   }
 
   const rtcConfiguration = {
@@ -313,6 +369,25 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       )
 
       const peerConnection = result
+
+      // If local screen share is active, ensure its tracks are added to this new connection
+      if (localScreenShareStream.value && localScreenShareStream.value.active) {
+        try {
+          const screenStream = localScreenShareStream.value
+          screenStream.getTracks().forEach((track) => {
+            const senders = peerConnection.getSenders()
+            const alreadySending = senders.some(
+              (sender) => sender.track && sender.track.id === track.id
+            )
+            if (!alreadySending) {
+              peerConnection.addTrack(track, screenStream)
+            }
+          })
+          console.log(`Attached existing local screen share tracks to new peer connection for ${participantId}`)
+        } catch (error) {
+          console.error(`Failed to attach local screen share tracks to peer ${participantId}:`, error)
+        }
+      }
 
       // Handle remote stream for this participant
       peerConnection.ontrack = (event) => {
@@ -458,16 +533,32 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   const updateOverallConnectionState = () => {
     // Check SFU connection first if in SFU mode
     if (sfuMode.value && sfuPeerConnection.value) {
-      const sfuState = sfuPeerConnection.value.connectionState
-      if (sfuState === 'connected') {
+      const pc = sfuPeerConnection.value
+      const sfuState = pc.connectionState
+      const iceState = pc.iceConnectionState
+
+      // Treat either WebRTC connectionState or ICE connectionState being
+      // "connected" / "completed" as overall "connected". This is more
+      // robust across browser implementations and prevents the UI from
+      // being stuck in "connecting" when media is already flowing.
+      const isSfuConnected =
+        sfuState === 'connected' ||
+        iceState === 'connected' ||
+        iceState === 'completed'
+
+      if (isSfuConnected) {
         connectionState.value = 'connected'
         isConnected.value = true
         return
-      } else if (sfuState === 'connecting' || sfuState === 'new') {
+      }
+
+      if (sfuState === 'connecting' || sfuState === 'new' || iceState === 'checking') {
         connectionState.value = 'connecting'
         isConnected.value = false
         return
-      } else if (sfuState === 'failed') {
+      }
+
+      if (sfuState === 'failed' || iceState === 'failed' || iceState === 'disconnected') {
         connectionState.value = 'failed'
         isConnected.value = false
         return
@@ -740,6 +831,12 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       const sfuWsUrl = roomInfo.sfu_ws_url
       const peerId = localParticipantId.value || `peer_${Date.now()}`
       
+      // Save peer ID to localParticipantId so it's available for all SFU messages
+      if (!localParticipantId.value) {
+        localParticipantId.value = peerId
+        console.log('✅ Set localParticipantId for SFU:', peerId)
+      }
+      
       await sfuManager.connectToSFUWebSocket(sfuWsUrl, sfuRoomId.value, peerId)
       
       // Ensure WebSocket is fully connected before proceeding
@@ -856,58 +953,6 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       isSwitchingToSFU.value = false
       const errorObj = error instanceof Error ? error : new Error(String(error))
       return { success: false, error: errorObj.message }
-    }
-  }
-
-  const sendSFUWebSocketMessage = (message) => {
-    if (sfuWebSocket.value && sfuWebSocket.value.readyState === WebSocket.OPEN) {
-      sfuWebSocket.value.send(JSON.stringify(message))
-    } else {
-      console.warn('SFU WebSocket not connected, cannot send message:', message)
-    }
-  }
-
-  const handleSFUWebSocketMessage = async (data) => {
-    console.log('Received SFU WebSocket message:', data.type)
-
-    switch (data.type) {
-      case 'answer':
-        if (sfuPeerConnection.value && data.data) {
-          await sfuPeerConnection.value.setRemoteDescription(
-            new RTCSessionDescription({
-              type: 'answer',
-              sdp: data.data.sdp,
-            })
-          )
-        }
-        break
-
-      case 'ice-candidate':
-        if (sfuPeerConnection.value && data.data) {
-          await sfuPeerConnection.value.addIceCandidate(
-            new RTCIceCandidate({
-              candidate: data.data.candidate,
-              sdpMLineIndex: data.data.sdpMLineIndex,
-              sdpMid: data.data.sdpMid,
-            })
-          )
-        }
-        break
-
-      case 'peer-joined':
-        console.log('Peer joined via SFU:', data.peer_id)
-        // SFU will handle peer connections automatically
-        break
-
-      case 'peer-left':
-        console.log('Peer left via SFU:', data.peer_id)
-        // Remove participant
-        remoteParticipants.value = remoteParticipants.value.filter(p => p.id !== data.peer_id)
-        remoteStreams.value.delete(data.peer_id)
-        break
-
-      default:
-        console.log('Unknown SFU message type:', data.type)
     }
   }
 
@@ -1209,9 +1254,9 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       }
       updateOverallConnectionState()
 
-    // Note: SFU mode is now enabled immediately when joining a room
-    // This check is kept as a fallback in case SFU wasn't enabled during initialization
-    if (!sfuMode.value && participantCount.value >= 2) {
+    // Всегда включаем SFU, даже при одном участнике
+    // Ранее мы включали SFU только при 2+ участниках
+    if (!sfuMode.value) {
         // Try to get current room info and pass it to switchToSFUMode
         const { useRoomsStore } = await import('./rooms')
         const roomsStore = useRoomsStore()
@@ -1278,7 +1323,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
           console.warn('No room ID available for SFU switch')
         }
         
-      // Only switch to SFU if not already in SFU mode and not already switching
+      // Переключаемся в SFU, если ещё не в SFU и не идет переключение
       if (!sfuMode.value && !isSwitchingToSFU.value && roomInfoForSFU && roomInfoForSFU.sfu_enabled && roomInfoForSFU.sfu_ws_url) {
         await switchToSFUMode(roomInfoForSFU)
       } else if (sfuMode.value) {
@@ -1322,10 +1367,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
     globalStore.addNotification(`${data.participant_name || 'Someone'} left the call`, 'info', 3000)
 
-    // Check if we should switch back from SFU mode
-    if (participantCount.value <= 2 && sfuMode.value) {
-      switchToP2PMode()
-    }
+    // Не переключаемся обратно в P2P при малом числе участников — всегда остаёмся в SFU
+    // if (participantCount.value <= 2 && sfuMode.value) { switchToP2PMode() }
   }
 
   /**
@@ -1498,7 +1541,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       qualityMonitor.stopAllMonitoring()
       
       // Stop all connection monitors from webrtcRetryService
-      connectionMonitors.value.forEach((monitorId) => {
+      connectionMonitors.value.forEach(() => {
         // Monitor ID is a string, we need to stop the monitoring
         // The actual cleanup is done by webrtcRetryService when peer connection closes
       })
@@ -1692,6 +1735,8 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
     // Actions
     initializeLocalMedia,
+    // Expose base peer connection creator for tests/components
+    createPeerConnection,
     createPeerConnectionForParticipant,
     connectWebSocket,
     createOfferForParticipant,

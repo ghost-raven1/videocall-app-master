@@ -1,6 +1,6 @@
 <template>
   <div
-    class="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-900 dark:to-gray-800 p-4"
+    class="min-h-screen warp-page flex items-center justify-center p-4"
   >
     <div class="card w-full max-w-md p-8 animate-fade-in">
       <div class="text-center mb-8">
@@ -16,15 +16,15 @@
             ></path>
           </svg>
         </div>
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-2">Админ-панель</h1>
-        <p class="text-gray-600 dark:text-gray-300">Введите учетные данные для входа</p>
+        <h1 class="text-2xl font-semibold text-warp-text mb-2">Админ-панель</h1>
+        <p class="text-warp-muted">Введите учетные данные для входа</p>
       </div>
 
       <form @submit.prevent="handleLogin" class="space-y-6">
         <div>
           <label
             for="email"
-            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            class="block text-sm font-medium text-warp-muted mb-2"
           >
             Email
           </label>
@@ -42,7 +42,7 @@
         <div>
           <label
             for="password"
-            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            class="block text-sm font-medium text-warp-muted mb-2"
           >
             Пароль
           </label>
@@ -77,7 +77,7 @@
       </form>
 
       <div class="mt-6 text-center">
-        <p class="text-xs text-gray-500 dark:text-gray-400">
+        <p class="text-xs text-warp-muted">
           Панель администратора видеозвонков
         </p>
       </div>
@@ -104,31 +104,34 @@ const handleLogin = async () => {
   try {
     isLoading.value = true
     errorMessage.value = ''
-    
-    // Проверка учетных данных администратора
-    if (email.value === 'admin@example.com' && password.value === 'password123') {
-      // Имитация успешного входа
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      // Установка данных пользователя
-      globalStore.user = {
-        id: 1,
-        email: email.value,
-        role: 'admin',
-        is_staff: true
-      }
-      
-      // Сохранение в localStorage для сохранения сессии
-      localStorage.setItem('admin_authenticated', 'true')
-      
-      // Перенаправление на панель администратора
-      router.push('/admin/dashboard')
-    } else {
-      errorMessage.value = 'Неверный email или пароль'
+
+    const { apiService } = await import('@/services/api')
+
+    const response = await apiService.adminLogin({
+      email: email.value.trim(),
+      password: password.value,
+    })
+
+    const user = response.data && response.data.user
+    if (!user) {
+      throw new Error('Некорректный ответ сервера')
     }
+
+    // Сохраняем пользователя в глобальном сторе
+    globalStore.user = user
+    if (typeof globalStore.setAuthenticated === 'function') {
+      globalStore.setAuthenticated(true, user)
+    }
+
+    // Маркер для роутера, что админ авторизован
+    localStorage.setItem('admin_authenticated', 'true')
+
+    // Перенаправление в админку
+    router.push('/admin')
   } catch (error) {
-    console.error('Login failed:', error)
-    errorMessage.value = 'Ошибка входа. Попробуйте позже.'
+    console.error('Admin login failed:', error)
+    const apiError = (error && error.response && error.response.data && error.response.data.error) || error.message || 'Ошибка входа. Попробуйте позже.'
+    errorMessage.value = apiError
   } finally {
     isLoading.value = false
   }
@@ -137,15 +140,15 @@ const handleLogin = async () => {
 
 <style scoped>
 .input-field {
-  @apply w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white;
+  @apply w-full px-3 py-2 bg-warp-surfaceAlt border border-warp-border rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-warp-accent focus:border-warp-accent text-warp-text;
 }
 
 .btn-primary {
-  @apply px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors;
+  @apply px-4 py-2 bg-warp-accent2 text-white rounded-md hover:bg-emerald-500 focus:outline-none focus:ring-2 focus:ring-warp-accent focus:ring-offset-2 transition-colors;
 }
 
 .card {
-  @apply bg-white dark:bg-gray-800 rounded-lg shadow-xl;
+  @apply bg-warp-surface rounded-lg shadow-warp-md border border-warp-border/60;
 }
 
 @keyframes fade-in {

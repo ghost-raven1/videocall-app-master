@@ -1,26 +1,26 @@
 <!-- src/components/VideoCallHeader.vue - Header component extracted from VideoCall.vue -->
 <template>
   <header
-    class="bg-gray-900 text-white p-4 flex items-center justify-between z-10 safe-area-inset"
+    class="bg-warp-surface/95 backdrop-blur-md text-warp-text px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between z-10 safe-area-inset border-b border-warp-border/80 shadow-warp-md"
   >
-    <div class="flex items-center space-x-4">
-      <h1 class="text-lg font-medium">Room {{ roomCode }}</h1>
-      <div class="flex items-center space-x-2 text-sm text-gray-300">
+    <div class="flex items-center space-x-3 sm:space-x-4 min-w-0">
+      <h1 class="font-medium text-base sm:text-lg truncate max-w-[8rem] sm:max-w-none">Room {{ roomCode }}</h1>
+      <div class="flex items-center space-x-1.5 sm:space-x-2 text-xs sm:text-sm text-warp-muted">
         <div :class="['w-2 h-2 rounded-full animate-pulse', connectionStatusColor]"></div>
         <span>{{ connectionStatusText }}</span>
       </div>
     </div>
 
-    <div class="flex items-center space-x-4">
+    <div class="flex items-center space-x-2 sm:space-x-4">
       <!-- Call duration -->
-      <div v-if="callDuration > 0" class="text-sm text-gray-300 font-mono">
+      <div v-if="callDuration > 0" class="text-sm text-warp-muted font-mono">
         {{ formattedDuration }}
       </div>
 
       <!-- Participants count (clickable to show participants list) -->
       <button
         @click="$emit('show-participants')"
-        class="flex items-center space-x-1 text-sm text-gray-300 hover:text-white transition-colors cursor-pointer"
+        class="flex items-center space-x-1 text-sm text-warp-muted hover:text-warp-text transition-colors cursor-pointer"
         :title="`${participantCount} participant${participantCount !== 1 ? 's' : ''}`"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -37,13 +37,16 @@
       <!-- Chat button -->
       <button
         @click="$emit('toggle-chat')"
-        class="p-2 hover:bg-gray-800 rounded-full transition-colors relative"
+        class="p-2 hover:bg-warp-surfaceAlt rounded-full transition-colors relative"
         title="Toggle chat"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
         </svg>
-        <span v-if="unreadMessages > 0" class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+        <span
+          v-if="unreadMessages > 0"
+          class="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center shadow-lg chat-badge-animate"
+        >
           {{ unreadMessages > 9 ? '9+' : unreadMessages }}
         </span>
       </button>
@@ -53,7 +56,7 @@
         @click="$emit('toggle-screen-share')"
         :class="[
           'p-2 rounded-full transition-colors',
-          isScreenSharing ? 'bg-green-600 hover:bg-green-700' : 'hover:bg-gray-800'
+          isScreenSharing ? 'bg-warp-accent2 hover:bg-emerald-500' : 'hover:bg-warp-surfaceAlt'
         ]"
         :title="isScreenSharing ? 'Stop sharing' : 'Share screen'"
       >
@@ -68,7 +71,7 @@
       <!-- Menu button -->
       <button
         @click="$emit('toggle-menu')"
-        class="p-2 hover:bg-gray-800 rounded-full transition-colors relative"
+        class="p-2 hover:bg-warp-surfaceAlt rounded-full transition-colors relative"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -83,11 +86,11 @@
         <div
           v-if="showMenu"
           v-click-outside="$emit('close-menu')"
-          class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 py-2 z-50"
+          class="absolute right-0 mt-2 w-48 bg-warp-surfaceAlt rounded-lg shadow-xl border border-warp-border py-2 z-50"
         >
           <button
             @click="$emit('share-room')"
-            class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+            class="w-full text-left px-4 py-2 text-sm text-warp-text hover:bg-warp-surface flex items-center space-x-2"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -101,7 +104,7 @@
           </button>
           <button
             @click="$emit('toggle-recording')"
-            class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+            class="w-full text-left px-4 py-2 text-sm text-warp-text hover:bg-warp-surface flex items-center space-x-2"
           >
             <svg class="w-4 h-4" :style="isRecording ? 'color: red;' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -115,7 +118,7 @@
           </button>
           <button
             @click="$emit('toggle-stats')"
-            class="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center space-x-2"
+            class="w-full text-left px-4 py-2 text-sm text-warp-text hover:bg-warp-surface flex items-center space-x-2"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -127,10 +130,10 @@
             </svg>
             <span>Connection stats</span>
           </button>
-          <div class="border-t border-gray-200 dark:border-gray-600 my-2"></div>
+          <div class="border-t border-warp-border my-2"></div>
           <button
             @click="$emit('end-call')"
-            class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center space-x-2"
+            class="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 flex items-center space-x-2"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -209,4 +212,52 @@ const formattedDuration = computed(() => {
   return utils.formatDuration(props.callDuration)
 })
 </script>
+
+<style scoped>
+/* Chat badge animations */
+@keyframes chat-badge-pulse {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+    box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.7);
+  }
+  50% {
+    transform: translate3d(0, -1px, 0) scale(1.08);
+    box-shadow: 0 0 12px 2px rgba(248, 113, 113, 0.9);
+  }
+}
+
+.chat-badge-animate {
+  animation: chat-badge-pulse 1.4s ease-in-out infinite;
+}
+
+/* Subtle hover/press feedback for header buttons */
+button {
+  transition: transform 0.15s ease-out, box-shadow 0.15s ease-out, background-color 0.15s ease-out;
+}
+
+button:hover {
+  transform: translate3d(0, -1px, 0) scale(1.02);
+}
+
+button:active {
+  transform: translate3d(0, 0, 0) scale(0.97);
+}
+
+/* Connection dot breathing animation */
+@keyframes connection-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.0);
+  }
+  50% {
+    box-shadow: 0 0 10px 2px rgba(52, 211, 153, 0.7);
+  }
+}
+
+/* Apply only when status is "connected" (bg-green-400 from parent prop) */
+.bg-green-400 {
+  animation: connection-breathe 1.6s ease-in-out infinite;
+}
+</style>
 

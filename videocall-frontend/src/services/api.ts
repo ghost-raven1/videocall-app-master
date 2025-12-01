@@ -214,7 +214,7 @@ export const apiService = {
 
   // Authentication endpoints using JWT with httpOnly cookies
   /**
-   * Вход по email и паролю
+   * Вход по email и паролю (общий вход для приложения)
    */
   async login(credentials: Credentials | string) {
     try {
@@ -259,6 +259,30 @@ export const apiService = {
       return response
     } catch (error) {
       console.error('Login error:', error)
+      throw error
+    }
+  },
+
+  /**
+   * Админ-вход (только для админ-панели)
+   * Требует, чтобы пользователь имел роль admin или moderator.
+   */
+  async adminLogin(credentials: Credentials) {
+    try {
+      if (!credentials.email || !credentials.password) {
+        throw new Error('Email and password are required')
+      }
+
+      const response = await apiClient.post('/auth/jwt/login/', credentials, {
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+      })
+
+      return response
+    } catch (error) {
+      console.error('Admin login error:', error)
       throw error
     }
   },

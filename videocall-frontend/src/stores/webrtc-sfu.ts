@@ -1,5 +1,5 @@
 // src/stores/webrtc-sfu.ts - SFU mode logic extracted from webrtc.ts
-import { ref, Ref } from 'vue'
+import { Ref } from 'vue'
 import { useGlobalStore } from './global'
 
 /**
@@ -28,6 +28,28 @@ export class SFUConnectionManager {
   private globalStore: ReturnType<typeof useGlobalStore>
   private rtcConfiguration: RTCConfiguration
   private updateConnectionState?: () => void
+  private iceCandidateQueue: RTCIceCandidate[] = []
+  private iceCandidateBatchTimer: ReturnType<typeof setTimeout> | null = null
+  private readonly ICE_CANDIDATE_BATCH_DELAY = 50 // ms - batch ICE candidates every 50ms
+  private readonly MAX_ICE_CANDIDATES_PER_BATCH = 10
+  private readonly MAX_MESSAGE_SIZE = 120000 // 120KB - less aggressive limit to avoid unnecessary SDP/ICE truncation
+  private bandwidthMonitor: ReturnType<typeof setInterval> | null = null
+  private lastBandwidthCheck: number = 0
+  private currentBandwidth: number = 0
+  // Диагностика ICE/SDP/Answer для локализации зависаний "connecting"
+  private diagnostics: {
+    totalIceCandidatesSent: number
+    batchesSent: number
+    lastBatchSizeBytes: number
+    lastOfferSizeBytes: number
+    lastAnswerReceivedAt: number | null
+  } = {
+    totalIceCandidatesSent: 0,
+    batchesSent: 0,
+    lastBatchSizeBytes: 0,
+    lastOfferSizeBytes: 0,
+    lastAnswerReceivedAt: null,
+  }
 
   constructor(
     sfuWebSocket: Ref<WebSocket | null>,
@@ -144,9 +166,14 @@ export class SFUConnectionManager {
           }
           // Also try nginx proxy path if using default setup
           if (browserWsUrl.includes('localhost:8080/ws')) {
-            // Try using nginx proxy: ws://localhost/sfu/ws/
+            // Try using nginx proxy. In dev, front-end may run on :3001 while nginx on :3000.
             const currentProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-            browserWsUrl = `${currentProtocol}//${window.location.host}/sfu/ws/`
+            const host = window.location.hostname
+            const port = window.location.port
+            const proxyPort = port === '3001' ? '3000' : port || (currentProtocol === 'wss:' ? '443' : '80')
+            const proxyHost = `${host}:${proxyPort}`
+            browserWsUrl = `${currentProtocol}//${proxyHost}/sfu/ws/`
+            console.log(`Using SFU proxy via nginx at ${browserWsUrl} (front-end port: ${port})`)
           }
         }
         
@@ -221,23 +248,161 @@ export class SFUConnectionManager {
     // Note: Screen share tracks should be added when screen sharing starts
     // This is handled separately in handleToggleScreenShare
 
-    // Handle remote tracks from SFU
+    // Handle remote tracks from SFU with optimized processing for large data streams
     sfuPC.ontrack = (event) => {
-      console.log('Received track from SFU:', event)
+      console.log('🎥 Received track from SFU:', {
+        trackId: event.track.id,
+        trackKind: event.track.kind,
+        trackLabel: event.track.label,
+        trackEnabled: event.track.enabled,
+        trackReadyState: event.track.readyState,
+        streamId: event.streams[0]?.id,
+        streamsCount: event.streams.length,
+        transceiver: event.transceiver,
+        receiver: event.receiver,
+        connectionState: sfuPC.connectionState,
+        iceConnectionState: sfuPC.iceConnectionState,
+        signalingState: sfuPC.signalingState
+      })
+      
       const stream = event.streams[0]
       const track = event.track
       
       if (stream && track) {
+        console.log('✅ Processing SFU track:', {
+          streamId: stream.id,
+          trackId: track.id,
+          trackKind: track.kind,
+          streamActive: stream.active,
+          trackActive: track.readyState === 'live',
+          currentParticipants: this.remoteParticipants.value.length
+        })
+        
+        // Optimize track processing for large data streams
+        // Use requestAnimationFrame to batch track processing and avoid blocking
+        requestAnimationFrame(() => {
+          this.processSFUTrack(stream, track)
+        })
+      } else {
+        console.warn('⚠️ Received track from SFU but stream or track is missing:', {
+          hasStream: !!stream,
+          hasTrack: !!track,
+          streamsLength: event.streams.length
+        })
+      }
+    }
+
+    // Handle ICE candidates with batching for large data streams
+    sfuPC.onicecandidate = (event) => {
+      if (event.candidate) {
+        // Queue candidate for batching
+        this.iceCandidateQueue.push(event.candidate)
+        
+        // If queue is full, send immediately
+        if (this.iceCandidateQueue.length >= this.MAX_ICE_CANDIDATES_PER_BATCH) {
+          this.flushIceCandidates()
+        } else {
+          // Schedule batch send if not already scheduled
+          if (!this.iceCandidateBatchTimer) {
+            this.iceCandidateBatchTimer = setTimeout(() => {
+              this.flushIceCandidates()
+            }, this.ICE_CANDIDATE_BATCH_DELAY)
+          }
+        }
+      } else {
+        // null candidate means end of candidates - flush queue immediately
+        if (this.iceCandidateQueue.length > 0) {
+          this.flushIceCandidates()
+        }
+        // Логируем итоговое количество отправленных ICE-кандидатов на этот оффер
+        console.log('🧊 ICE gathering complete for SFU offer:', {
+          totalIceCandidatesSent: this.diagnostics.totalIceCandidatesSent,
+          batchesSent: this.diagnostics.batchesSent,
+          lastBatchSizeBytes: this.diagnostics.lastBatchSizeBytes,
+        })
+      }
+    }
+
+    // Handle connection state
+    sfuPC.onconnectionstatechange = () => {
+      const state = sfuPC.connectionState
+      console.log('SFU connection state changed:', state, {
+        iceConnectionState: sfuPC.iceConnectionState,
+        signalingState: sfuPC.signalingState
+      })
+      
+      // Update connection state callback if provided
+      if (this.updateConnectionState) {
+        this.updateConnectionState()
+      }
+      
+      if (state === 'connected') {
+        console.log('✅ SFU peer connection connected!')
+        this.globalStore.addNotification('Connected to SFU server', 'success', 3000)
+        // Start bandwidth monitoring for large data streams
+        this.startBandwidthMonitoring(sfuPC)
+      } else if (state === 'failed') {
+        console.error('❌ SFU peer connection failed')
+        this.globalStore.addNotification('SFU connection failed, falling back to P2P', 'error', 5000)
+        // Stop bandwidth monitoring
+        this.stopBandwidthMonitoring()
+        // Trigger fallback to P2P (will be handled by parent store)
+      } else if (state === 'disconnected' || state === 'closed') {
+        console.warn('⚠️ SFU peer connection disconnected/closed')
+        // Stop bandwidth monitoring
+        this.stopBandwidthMonitoring()
+      } else if (state === 'connecting') {
+        console.log('🔄 SFU peer connection connecting...')
+      }
+    }
+    
+    // Also monitor ICE connection state for more detailed info
+    sfuPC.oniceconnectionstatechange = () => {
+      console.log('SFU ICE connection state:', sfuPC.iceConnectionState, {
+        connectionState: sfuPC.connectionState,
+        signalingState: sfuPC.signalingState
+      })
+    }
+
+    return sfuPC
+  }
+
+  /**
+   * Process SFU track with optimizations for large data streams and multiple participants
+   */
+  private processSFUTrack(stream: MediaStream, track: MediaStreamTrack): void {
         // Try to get participant ID from stream ID or track label
-        // SFU typically sends participant ID in stream ID or track label
+        // SFU creates tracks with stream ID format: originalStreamID_peerID
+        // So we need to extract peerID from the stream ID
         let participantId: string | null = null
         
         // Try to extract participant ID from stream ID
+        // Stream ID format from SFU: originalStreamID_peerID
         if (stream.id) {
-          // Stream ID might contain participant ID
-          const streamIdMatch = stream.id.match(/participant[_-]?([a-f0-9-]+)/i)
-          if (streamIdMatch) {
-            participantId = streamIdMatch[1]
+          // Check if stream ID contains peer ID (format: originalStreamID_peerID)
+          // SFU creates tracks with format: originalStreamID_peerID
+          const parts = stream.id.split('_')
+          if (parts.length >= 2) {
+            // Last part should be peer ID
+            const potentialPeerID = parts[parts.length - 1]
+            // Check if it looks like a peer ID:
+            // - Starts with "peer_" (e.g., "peer_1234567890")
+            // - Or is a UUID (e.g., "12345678-1234-1234-1234-123456789012")
+            // - Or matches peer ID pattern (e.g., "peer1234567890")
+            if (potentialPeerID.startsWith('peer_') || 
+                /^[a-f0-9-]{36}$/i.test(potentialPeerID) ||
+                /^peer\d+$/i.test(potentialPeerID)) {
+              participantId = potentialPeerID
+              console.log(`Extracted participant ID from stream ID: ${participantId} (from ${stream.id})`)
+            }
+          }
+          
+          // Also try regex match for participant ID patterns
+          if (!participantId) {
+            const streamIdMatch = stream.id.match(/participant[_-]?([a-f0-9-]+)/i)
+            if (streamIdMatch) {
+              participantId = streamIdMatch[1]
+            }
           }
         }
         
@@ -256,19 +421,67 @@ export class SFUConnectionManager {
           console.warn('Could not extract participant ID from SFU track, using stream ID as fallback:', participantId)
         }
         
-        // Check if we already have this stream to avoid duplicates
+    // Check if we already have this stream to avoid duplicates (optimized for large participant lists)
         const existingStream = this.remoteStreams.value.get(participantId)
         if (existingStream && existingStream.id === stream.id) {
           console.log(`Stream ${stream.id} already exists for participant ${participantId}, skipping duplicate`)
           return
         }
-        
-        this.remoteStreams.value.set(participantId, stream)
+    
+    // For large data streams, optimize track constraints based on participant count
+    const participantCount = this.remoteParticipants.value.length
+    if (participantCount > 5 && track.kind === 'video') {
+      // For many participants, reduce video quality to save bandwidth
+      const settings = track.getSettings()
+      if (settings.width && settings.width > 640) {
+        // Apply constraints to reduce bandwidth for large streams
+        track.applyConstraints({
+          width: { ideal: 640, max: 1280 },
+          height: { ideal: 360, max: 720 },
+          frameRate: { ideal: 15, max: 30 }
+        }).catch(error => {
+          console.warn(`Failed to apply constraints for participant ${participantId}:`, error)
+        })
+      }
+    }
 
-        // Update or add participant - check by ID first to avoid duplicates
-        const existingParticipant = this.remoteParticipants.value.find(p => p.id === participantId)
-        if (existingParticipant) {
+    // Update or add participant - optimized lookup for large participant lists
+    // First, try to find by exact ID
+    let existingParticipantIndex = this.remoteParticipants.value.findIndex(p => p.id === participantId)
+    let tempParticipantId: string | null = null
+    
+    // If not found, try to find by temporary ID (starts with "temp_")
+    // This happens when participant joins before receiving tracks
+    if (existingParticipantIndex < 0) {
+      // Look for participants with temporary IDs that don't have a stream yet
+      // We'll update the first temporary participant without a stream
+      existingParticipantIndex = this.remoteParticipants.value.findIndex(p => 
+        p.id.startsWith('temp_') && !p.stream
+      )
+      
+      if (existingParticipantIndex >= 0) {
+        // Update temporary participant with real ID and stream
+        const tempParticipant = this.remoteParticipants.value[existingParticipantIndex]
+        tempParticipantId = tempParticipant.id
+        console.log(`🔄 Updating temporary participant ${tempParticipant.id} with real ID ${participantId} and stream`)
+        tempParticipant.id = participantId
+        tempParticipant.name = `Participant ${participantId.slice(-4)}`
+        
+        // Remove old stream entry if exists for temporary ID
+        if (this.remoteStreams.value.has(tempParticipantId)) {
+          this.remoteStreams.value.delete(tempParticipantId)
+        }
+      } else {
+        console.log(`ℹ️ No temporary participant found for ${participantId}, will add as new participant`)
+      }
+    }
+    
+    // Set stream for participant (after updating ID if needed)
+    this.remoteStreams.value.set(participantId, stream)
+    
+    if (existingParticipantIndex >= 0) {
           // Update existing participant's stream
+      const existingParticipant = this.remoteParticipants.value[existingParticipantIndex]
           existingParticipant.stream = stream
           // Merge tracks from same stream
           if (track.kind === 'video') {
@@ -281,11 +494,12 @@ export class SFUConnectionManager {
             }
           }
           existingParticipant.connectionState = 'connected'
-          console.log(`Updated stream for existing participant ${participantId}`, {
+          console.log(`✅ Updated stream for existing participant ${participantId}`, {
             hasVideo: track.kind === 'video',
             hasAudio: track.kind === 'audio',
             enabled: track.enabled,
-            muted: track.muted
+            muted: track.muted,
+            streamId: stream.id
           })
         } else {
           // Add new participant
@@ -297,10 +511,11 @@ export class SFUConnectionManager {
             isAudioEnabled: track.kind === 'audio' ? track.enabled : false,
             connectionState: 'connected',
           })
-          console.log(`Added new participant ${participantId} from SFU track`, {
+          console.log(`➕ Added new participant ${participantId} from SFU track`, {
             kind: track.kind,
             enabled: track.enabled,
-            muted: track.muted
+            muted: track.muted,
+            streamId: stream.id
           })
         }
         
@@ -370,46 +585,9 @@ export class SFUConnectionManager {
               }
             } else if (track.kind === 'audio') {
               participant.isAudioEnabled = false
-            }
-          }
         }
       }
     }
-
-    // Handle ICE candidates
-    sfuPC.onicecandidate = (event) => {
-      if (event.candidate) {
-        // Only send if WebSocket is connected and ready
-        if (this.sfuWebSocket.value && this.sfuWebSocket.value.readyState === WebSocket.OPEN) {
-          this.sendSFUWebSocketMessage({
-            type: 'ice-candidate',
-            room_id: this.sfuRoomId.value || '',
-            peer_id: this.localParticipantId.value || '',
-            data: {
-              candidate: event.candidate.candidate,
-              sdpMLineIndex: event.candidate.sdpMLineIndex,
-              sdpMid: event.candidate.sdpMid,
-            },
-          })
-        } else {
-          // Queue candidate for later if WebSocket is not ready yet
-          console.debug('ICE candidate generated but WebSocket not ready, will be sent when connected')
-        }
-      }
-    }
-
-    // Handle connection state
-    sfuPC.onconnectionstatechange = () => {
-      console.log('SFU connection state:', sfuPC.connectionState)
-      if (sfuPC.connectionState === 'connected') {
-        this.globalStore.addNotification('Connected to SFU server', 'success', 3000)
-      } else if (sfuPC.connectionState === 'failed') {
-        this.globalStore.addNotification('SFU connection failed, falling back to P2P', 'error', 5000)
-        // Trigger fallback to P2P (will be handled by parent store)
-      }
-    }
-
-    return sfuPC
   }
 
   /**
@@ -506,6 +684,8 @@ export class SFUConnectionManager {
       peer_id: this.localParticipantId.value || '',
       data: { sdp: offer.sdp, type: offer.type }
     })]).size
+    // Диагностика размеров SDP/сообщения
+    this.diagnostics.lastOfferSizeBytes = messageSize
     
     console.log('SDP offer size check:', {
       sdpSize: sdpSize,
@@ -513,20 +693,55 @@ export class SFUConnectionManager {
       sdpLines: offer.sdp.split('\n').length
     })
     
-    // Check if message is too large (limit is usually 64KB, but we'll be conservative)
-    if (messageSize > 60000) { // 60KB limit to be safe
+    // Check if message is too large (use MAX_MESSAGE_SIZE for consistency)
+    if (messageSize > this.MAX_MESSAGE_SIZE) {
       console.warn('SDP offer message is too large, attempting to reduce size:', messageSize, 'bytes')
-      // Try to reduce SDP size by removing unnecessary candidates (keep only host candidates)
+      
+      // Try multiple reduction strategies for large data streams
       const lines = offer.sdp.split('\n')
-      const reducedLines = lines.filter(line => {
-        // Keep all non-candidate lines
+      let reducedLines = lines
+      
+      // Strategy 1: Remove non-host candidates (keep only host candidates)
+      reducedLines = reducedLines.filter(line => {
         if (!line.startsWith('a=candidate:')) return true
-        // For candidates, keep only host candidates (typ host)
         return line.includes('typ host')
       })
+      
+      // Strategy 2: If still too large, keep only first 20 candidates per media line
+      let messageSizeAfterReduction = new Blob([JSON.stringify({
+        type: 'offer',
+        room_id: this.sfuRoomId.value || '',
+        peer_id: this.localParticipantId.value || '',
+        data: { sdp: reducedLines.join('\n'), type: offer.type }
+      })]).size
+      
+      if (messageSizeAfterReduction > this.MAX_MESSAGE_SIZE) {
+        console.warn('SDP still too large after removing non-host candidates, limiting candidates per media line')
+        const mediaLineIndices: number[] = []
+        reducedLines.forEach((line, index) => {
+          if (line.startsWith('m=')) {
+            mediaLineIndices.push(index)
+          }
+        })
+        
+        // Keep only first 20 candidates per media line
+        let candidateCount = 0
+        reducedLines = reducedLines.filter((line) => {
+          if (line.startsWith('m=')) {
+            candidateCount = 0
+            return true
+          }
+          if (line.startsWith('a=candidate:')) {
+            candidateCount++
+            return candidateCount <= 20
+          }
+          return true
+        })
+      }
+      
       offer.sdp = reducedLines.join('\n')
       
-      const newMessageSize = new Blob([JSON.stringify({
+      const finalMessageSize = new Blob([JSON.stringify({
         type: 'offer',
         room_id: this.sfuRoomId.value || '',
         peer_id: this.localParticipantId.value || '',
@@ -535,37 +750,221 @@ export class SFUConnectionManager {
       
       console.log('Reduced SDP offer size:', {
         originalSize: messageSize,
-        newSize: newMessageSize,
-        reduction: ((messageSize - newMessageSize) / messageSize * 100).toFixed(1) + '%'
+        finalSize: finalMessageSize,
+        reduction: ((messageSize - finalMessageSize) / messageSize * 100).toFixed(1) + '%',
+        originalLines: lines.length,
+        reducedLines: reducedLines.length
       })
       
       // If still too large, throw error to fallback to P2P
-      if (newMessageSize > 60000) {
-        throw new Error(`SDP offer too large even after reduction: ${newMessageSize} bytes. Falling back to P2P mode.`)
+      if (finalMessageSize > this.MAX_MESSAGE_SIZE) {
+        throw new Error(`SDP offer too large even after reduction: ${finalMessageSize} bytes (limit: ${this.MAX_MESSAGE_SIZE}). Falling back to P2P mode.`)
       }
     }
     
     // Send offer to SFU via WebSocket
-    this.sendSFUWebSocketMessage({
-      type: 'offer',
-      room_id: this.sfuRoomId.value || '',
-      peer_id: this.localParticipantId.value || '',
-      data: {
-        sdp: offer.sdp,
-        type: offer.type,
-      },
-    })
+    try {
+      const peerId = this.localParticipantId.value
+      if (!peerId) {
+        console.error('❌ Cannot send offer: localParticipantId is not set')
+        throw new Error('localParticipantId is required to send offer')
+      }
+      
+      const offerMessage = {
+        type: 'offer',
+        room_id: this.sfuRoomId.value || '',
+        peer_id: peerId,
+        data: {
+          sdp: offer.sdp,
+          type: offer.type,
+        },
+      }
+      console.log('📤 Sending offer to SFU:', {
+        type: offerMessage.type,
+        room_id: offerMessage.room_id,
+        peer_id: offerMessage.peer_id,
+        sdpLength: offerMessage.data.sdp.length
+      })
+      // Логируем реальный размер JSON-посылки c оффером
+      const offerMessageSize = new Blob([JSON.stringify(offerMessage)]).size
+      this.diagnostics.lastOfferSizeBytes = offerMessageSize
+      console.log('📏 SFU offer message size:', {
+        bytes: offerMessageSize,
+        limit: this.MAX_MESSAGE_SIZE
+      })
+      this.sendSFUWebSocketMessage(offerMessage)
+      console.log('✅ Offer sent to SFU successfully')
+    } catch (error) {
+      console.error('❌ Failed to send SFU offer:', error)
+      // Re-throw to trigger fallback to P2P
+      throw error
+    }
   }
 
   /**
-   * Send message to SFU WebSocket
+   * Flush queued ICE candidates as a batch
+   */
+  private flushIceCandidates(): void {
+    if (this.iceCandidateBatchTimer) {
+      clearTimeout(this.iceCandidateBatchTimer)
+      this.iceCandidateBatchTimer = null
+    }
+
+    if (this.iceCandidateQueue.length === 0) {
+      return
+    }
+
+    // Only send if WebSocket is connected and ready
+    if (!this.sfuWebSocket.value || this.sfuWebSocket.value.readyState !== WebSocket.OPEN) {
+      console.debug('SFU WebSocket not ready, queuing ICE candidates for later')
+      // Re-schedule flush when WebSocket is ready
+      if (!this.iceCandidateBatchTimer) {
+        this.iceCandidateBatchTimer = setTimeout(() => {
+          this.flushIceCandidates()
+        }, 100)
+      }
+      return
+    }
+
+    // Send candidates as batch, but check size first
+    let candidates = this.iceCandidateQueue.splice(0, this.MAX_ICE_CANDIDATES_PER_BATCH)
+    
+    // Check message size and reduce batch if needed
+    let batchMessage = {
+      type: 'ice-candidates-batch',
+      room_id: this.sfuRoomId.value || '',
+      peer_id: this.localParticipantId.value || '',
+      data: {
+        candidates: candidates.map(c => ({
+          candidate: c.candidate,
+          sdpMLineIndex: c.sdpMLineIndex,
+          sdpMid: c.sdpMid,
+        })),
+      },
+    }
+    
+    let messageSize = new Blob([JSON.stringify(batchMessage)]).size
+    
+    // If batch is too large, reduce it
+    while (messageSize > this.MAX_MESSAGE_SIZE && candidates.length > 1) {
+      // Put last candidate back in queue
+      const lastCandidate = candidates.pop()
+      if (lastCandidate) {
+        this.iceCandidateQueue.unshift(lastCandidate)
+      }
+      
+      // Recalculate message size
+      batchMessage = {
+        type: 'ice-candidates-batch',
+        room_id: this.sfuRoomId.value || '',
+        peer_id: this.localParticipantId.value || '',
+        data: {
+          candidates: candidates.map(c => ({
+            candidate: c.candidate,
+            sdpMLineIndex: c.sdpMLineIndex,
+            sdpMid: c.sdpMid,
+          })),
+        },
+      }
+      messageSize = new Blob([JSON.stringify(batchMessage)]).size
+      
+      console.log(`Reducing ICE candidate batch size: ${candidates.length} candidates, ${messageSize} bytes`)
+    }
+    
+    // For large batches, send as array
+    try {
+      if (candidates.length > 1) {
+        console.log(`Sending ICE candidate batch: ${candidates.length} candidates, ${messageSize} bytes`)
+        this.diagnostics.totalIceCandidatesSent += candidates.length
+        this.diagnostics.batchesSent += 1
+        this.diagnostics.lastBatchSizeBytes = messageSize
+        this.sendSFUWebSocketMessage(batchMessage)
+      } else if (candidates.length === 1) {
+        // Single candidate - send as before for compatibility
+        const singleMessage = {
+          type: 'ice-candidate',
+          room_id: this.sfuRoomId.value || '',
+          peer_id: this.localParticipantId.value || '',
+          data: {
+            candidate: candidates[0].candidate,
+            sdpMLineIndex: candidates[0].sdpMLineIndex,
+            sdpMid: candidates[0].sdpMid,
+          },
+        }
+        const singleSize = new Blob([JSON.stringify(singleMessage)]).size
+        this.diagnostics.totalIceCandidatesSent += 1
+        this.diagnostics.batchesSent += 1
+        this.diagnostics.lastBatchSizeBytes = singleSize
+        this.sendSFUWebSocketMessage(singleMessage)
+      }
+    } catch (error) {
+      console.error('Failed to send ICE candidates:', error)
+      // Put candidates back in queue to retry later
+      this.iceCandidateQueue.unshift(...candidates)
+      // Don't throw - just log and retry later
+    }
+
+    // If more candidates in queue, schedule next flush
+    if (this.iceCandidateQueue.length > 0) {
+      this.iceCandidateBatchTimer = setTimeout(() => {
+        this.flushIceCandidates()
+      }, this.ICE_CANDIDATE_BATCH_DELAY)
+    }
+  }
+
+  /**
+   * Send message to SFU WebSocket with size checking for large data streams
    */
   sendSFUWebSocketMessage(message: SFUWebSocketMessage): void {
     if (this.sfuWebSocket.value && this.sfuWebSocket.value.readyState === WebSocket.OPEN) {
       try {
-        this.sfuWebSocket.value.send(JSON.stringify(message))
+        const messageStr = JSON.stringify(message)
+        const messageSize = new Blob([messageStr]).size
+        
+        // Check message size (WebSocket limit is usually 64KB, but be conservative)
+        if (messageSize > this.MAX_MESSAGE_SIZE) {
+          console.error('SFU WebSocket message too large, cannot send:', {
+            type: message.type,
+            size: messageSize,
+            limit: this.MAX_MESSAGE_SIZE,
+            message: messageStr.substring(0, 200) + '...'
+          })
+          
+          // Don't send if message is too large - it will cause 1009 error
+          if (message.type === 'offer' && message.data?.sdp) {
+            // SDP offer should have been reduced already
+            throw new Error(`SDP offer too large (${messageSize} bytes) even after reduction. Cannot send.`)
+          }
+          
+          // For other large messages, throw error to prevent 1009
+          throw new Error(`Message too large (${messageSize} bytes) for WebSocket. Type: ${message.type}`)
+        }
+        
+        // Log large messages for debugging
+        if (messageSize > 30000) {
+          console.warn('Large SFU WebSocket message:', {
+            type: message.type,
+            size: messageSize,
+            percentage: ((messageSize / this.MAX_MESSAGE_SIZE) * 100).toFixed(1) + '%'
+          })
+        }
+        
+        console.log('📡 Sending WebSocket message to SFU:', {
+          type: message.type,
+          size: messageSize,
+          readyState: this.sfuWebSocket.value.readyState
+        })
+        this.sfuWebSocket.value.send(messageStr)
+        console.log('✅ WebSocket message sent to SFU')
       } catch (error) {
         console.error('Failed to send SFU WebSocket message:', error, message)
+        // If error is due to message size, handle it gracefully
+        if (error instanceof Error && (error.message.includes('size') || error.message.includes('too large'))) {
+          console.error('Message too large for WebSocket, preventing 1009 error')
+          // Don't try to send - this will prevent 1009 error
+          // The error will be handled by the caller
+          throw error
+        }
       }
     } else {
       const state = this.sfuWebSocket.value?.readyState
@@ -582,22 +981,79 @@ export class SFUConnectionManager {
    * Handle incoming SFU WebSocket message
    */
   async handleSFUWebSocketMessage(data: SFUWebSocketMessage): Promise<void> {
-    console.log('Received SFU WebSocket message:', data.type)
+    console.log('📨 Received SFU WebSocket message:', data.type, data)
 
     switch (data.type) {
-      case 'answer':
+      case 'offer':
+        // Handle renegotiation offer from SFU (when new tracks are added)
+        console.log('🔄 Received renegotiation offer from SFU:', {
+          hasPeerConnection: !!this.sfuPeerConnection.value,
+          hasData: !!data.data,
+          sdpLength: data.data?.sdp?.length || 0
+        })
         if (this.sfuPeerConnection.value && data.data) {
+          try {
+            // Set remote description from offer
+            await this.sfuPeerConnection.value.setRemoteDescription(
+              new RTCSessionDescription({
+                type: 'offer',
+                sdp: data.data.sdp,
+              })
+            )
+            console.log('✅ Set remote description from SFU renegotiation offer')
+            
+            // Create answer
+            const answer = await this.sfuPeerConnection.value.createAnswer()
+            await this.sfuPeerConnection.value.setLocalDescription(answer)
+            console.log('✅ Created answer for SFU renegotiation')
+            
+            // Send answer back to SFU
+            this.sendSFUWebSocketMessage({
+              type: 'answer',
+              room_id: data.room_id || '',
+              peer_id: data.peer_id || '',
+              data: {
+                sdp: answer.sdp,
+                type: answer.type,
+              },
+            })
+            console.log('✅ Sent answer for SFU renegotiation')
+          } catch (error) {
+            console.error('❌ Failed to handle SFU renegotiation offer:', error)
+          }
+        } else {
+          console.warn('⚠️ Cannot handle renegotiation offer: missing peer connection or data')
+        }
+        break
+
+      case 'answer':
+        console.log('✅ Received answer from SFU:', {
+          hasPeerConnection: !!this.sfuPeerConnection.value,
+          hasData: !!data.data,
+          sdpLength: data.data?.sdp?.length || 0
+        })
+        // Фиксируем момент получения answer от SFU
+        this.diagnostics.lastAnswerReceivedAt = Date.now()
+        if (this.sfuPeerConnection.value && data.data) {
+          try {
           await this.sfuPeerConnection.value.setRemoteDescription(
             new RTCSessionDescription({
               type: 'answer',
               sdp: data.data.sdp,
             })
           )
+            console.log('✅ Set remote description from SFU answer successfully')
+          } catch (error) {
+            console.error('❌ Failed to set remote description from SFU answer:', error)
+          }
+        } else {
+          console.warn('⚠️ Cannot set remote description: missing peer connection or data')
         }
         break
 
       case 'ice-candidate':
         if (this.sfuPeerConnection.value && data.data) {
+          try {
           await this.sfuPeerConnection.value.addIceCandidate(
             new RTCIceCandidate({
               candidate: data.data.candidate,
@@ -605,11 +1061,42 @@ export class SFUConnectionManager {
               sdpMid: data.data.sdpMid,
             })
           )
+          } catch (error) {
+            console.error('Failed to add ICE candidate:', error)
+          }
+        }
+        break
+
+      case 'ice-candidates-batch':
+        // Handle batched ICE candidates for large data streams
+        if (this.sfuPeerConnection.value && data.data?.candidates) {
+          const candidates = data.data.candidates
+          console.log(`Processing batch of ${candidates.length} ICE candidates`)
+          
+          // Add candidates in parallel for better performance
+          const addPromises = candidates.map(async (candidateData: any) => {
+            try {
+              await this.sfuPeerConnection.value!.addIceCandidate(
+                new RTCIceCandidate({
+                  candidate: candidateData.candidate,
+                  sdpMLineIndex: candidateData.sdpMLineIndex,
+                  sdpMid: candidateData.sdpMid,
+                })
+              )
+            } catch (error) {
+              console.error('Failed to add batched ICE candidate:', error)
+            }
+          })
+          
+          await Promise.allSettled(addPromises)
         }
         break
 
       case 'peer-joined':
-        console.log('Peer joined SFU room:', data.peer_id)
+        console.log('👤 Peer joined SFU room:', data.peer_id, {
+          currentParticipants: this.remoteParticipants.value.length,
+          remoteStreams: this.remoteStreams.value.size
+        })
         
         // Update participant ID if we have a temporary participant from ontrack
         // Look for participants without proper ID or with temporary SFU ID
@@ -620,7 +1107,7 @@ export class SFUConnectionManager {
             const existingParticipant = this.remoteParticipants.value.find(p => p.id === data.peer_id)
             if (existingParticipant) {
               existingParticipant.connectionState = 'connected'
-              console.log(`Updated participant ${data.peer_id} on peer-joined`)
+              console.log(`✅ Updated participant ${data.peer_id} on peer-joined (has stream)`)
             }
           } else {
             // Add participant if not exists (stream will come via ontrack)
@@ -634,7 +1121,10 @@ export class SFUConnectionManager {
                 isAudioEnabled: false,
                 connectionState: 'connecting',
               })
-              console.log(`Added participant ${data.peer_id} on peer-joined (waiting for stream)`)
+              console.log(`➕ Added participant ${data.peer_id} on peer-joined (waiting for stream)`)
+            } else {
+              console.log(`ℹ️ Participant ${data.peer_id} already exists, updating connection state`)
+              existingParticipant.connectionState = 'connecting'
             }
           }
         }
@@ -668,6 +1158,16 @@ export class SFUConnectionManager {
    * Close SFU connections
    */
   closeSFUConnections(): void {
+    // Stop bandwidth monitoring
+    this.stopBandwidthMonitoring()
+    
+    // Flush any remaining ICE candidates
+    if (this.iceCandidateBatchTimer) {
+      clearTimeout(this.iceCandidateBatchTimer)
+      this.iceCandidateBatchTimer = null
+    }
+    this.iceCandidateQueue = []
+    
     // Close SFU WebSocket
     if (this.sfuWebSocket.value) {
       this.sfuWebSocket.value.close(1000, 'Switching to P2P mode')
@@ -701,5 +1201,75 @@ export class SFUConnectionManager {
       p => !p.id.startsWith('sfu_')
     )
   }
-}
 
+  /**
+   * Start bandwidth monitoring for large data streams
+   */
+  private startBandwidthMonitoring(peerConnection: RTCPeerConnection): void {
+    this.stopBandwidthMonitoring() // Stop any existing monitoring
+    
+    this.lastBandwidthCheck = Date.now()
+    this.currentBandwidth = 0
+    
+    // Monitor bandwidth every 2 seconds
+    this.bandwidthMonitor = setInterval(async () => {
+      try {
+        const stats = await peerConnection.getStats()
+        let totalBytesReceived = 0
+        let totalBytesSent = 0
+        
+        stats.forEach((report) => {
+          if (report.type === 'inbound-rtp' || report.type === 'media-source') {
+            totalBytesReceived += (report as any).bytesReceived || 0
+          }
+          if (report.type === 'outbound-rtp') {
+            totalBytesSent += (report as any).bytesSent || 0
+          }
+        })
+        
+        const now = Date.now()
+        const timeDelta = (now - this.lastBandwidthCheck) / 1000 // seconds
+        
+        if (timeDelta > 0) {
+          const receivedBandwidth = (totalBytesReceived * 8) / timeDelta / 1000 // kbps
+          const sentBandwidth = (totalBytesSent * 8) / timeDelta / 1000 // kbps
+          
+          this.currentBandwidth = Math.max(receivedBandwidth, sentBandwidth)
+          
+          // Log bandwidth for large streams (> 1 Mbps)
+          if (this.currentBandwidth > 1000) {
+            console.log(`SFU bandwidth: ${this.currentBandwidth.toFixed(2)} kbps (${(this.currentBandwidth / 1000).toFixed(2)} Mbps)`)
+          }
+          
+          // Warn if bandwidth is very high (> 5 Mbps) - might indicate issues
+          if (this.currentBandwidth > 5000) {
+            console.warn(`High SFU bandwidth detected: ${(this.currentBandwidth / 1000).toFixed(2)} Mbps`)
+          }
+        }
+        
+        this.lastBandwidthCheck = now
+      } catch (error) {
+        console.error('Failed to get bandwidth stats:', error)
+      }
+    }, 2000) // Check every 2 seconds
+  }
+
+  /**
+   * Stop bandwidth monitoring
+   */
+  private stopBandwidthMonitoring(): void {
+    if (this.bandwidthMonitor) {
+      clearInterval(this.bandwidthMonitor)
+      this.bandwidthMonitor = null
+    }
+    this.currentBandwidth = 0
+    this.lastBandwidthCheck = 0
+  }
+
+  /**
+   * Get current bandwidth usage
+   */
+  getCurrentBandwidth(): number {
+    return this.currentBandwidth
+  }
+}

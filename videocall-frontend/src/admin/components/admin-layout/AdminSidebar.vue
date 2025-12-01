@@ -2,14 +2,14 @@
 <template>
   <aside
     :class="[
-      'admin-sidebar fixed lg:static inset-y-0 left-0 z-40 w-64 bg-white dark:bg-gray-800 shadow-lg transform transition-transform duration-300 ease-in-out',
+'admin-sidebar fixed lg:static inset-y-0 left-0 z-40 w-64 bg-warp-surface shadow-warp-md transform transition-transform duration-300 ease-in-out border-r border-warp-border',
       isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
       !isOpen ? 'lg:w-0 lg:shadow-none' : ''
     ]"
   >
     <div class="flex flex-col h-full">
       <!-- Logo/Brand -->
-      <div class="flex items-center justify-center h-16 px-4 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
+      <div class="flex items-center justify-center h-16 px-4 bg-warp-surfaceAlt border-b border-warp-border">
         <div class="flex items-center space-x-2">
           <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
             <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -17,7 +17,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
             </svg>
           </div>
-          <h1 class="text-lg font-bold text-gray-900 dark:text-white">{{ $t('admin.common.adminPanel') }}</h1>
+          <h1 class="text-lg font-bold text-warp-text">{{ $t('admin.common.adminPanel') }}</h1>
         </div>
       </div>
 
@@ -30,14 +30,14 @@
           :class="[
             'nav-item flex items-center px-4 py-3 text-sm font-medium rounded-lg cursor-pointer transition-colors duration-200',
             isActiveRoute(item.name)
-              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
-              : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+              ? 'bg-warp-accent2/10 text-warp-accent2'
+              : 'text-warp-muted hover:bg-warp-surfaceAlt'
           ]"
         >
           <component
             :is="item.icon"
             class="w-5 h-5 mr-3"
-            :class="isActiveRoute(item.name) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400'"
+:class="isActiveRoute(item.name) ? 'text-warp-accent2' : 'text-warp-muted'"
           />
           {{ item.title }}
           <span v-if="item.badge" class="ml-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full">
@@ -47,14 +47,14 @@
       </nav>
 
       <!-- User info / Logout -->
-      <div class="p-4 border-t border-gray-200 dark:border-gray-700">
-        <div class="flex items-center px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+      <div class="p-4 border-t border-warp-border">
+        <div class="flex items-center px-4 py-3 text-sm text-warp-muted">
           <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center mr-3">
-            <span class="text-white font-medium text-xs">A</span>
+            <span class="text-white font-medium text-xs">{{ userInitial }}</span>
           </div>
           <div class="flex-1">
             <p class="font-medium">{{ $t('admin.common.administrator') }}</p>
-            <p class="text-xs opacity-75">admin@example.com</p>
+            <p class="text-xs opacity-75">{{ userEmail || '—' }}</p>
           </div>
         </div>
       </div>
@@ -70,6 +70,22 @@ import {
   ChartBarIcon,
   CogIcon,
 } from '@heroicons/vue/24/outline'
+import { computed } from 'vue'
+import { useGlobalStore } from '@/stores/global'
+
+const globalStore = useGlobalStore()
+const userEmail = computed(() => {
+  const user = globalStore.user
+  return user?.email || ''
+})
+const userInitial = computed(() => {
+  const user = globalStore.user
+  const email = user?.email
+  if (email && email.length > 0) {
+    return email.charAt(0).toUpperCase()
+  }
+  return 'A'
+})
 
 // Props
 const props = defineProps({

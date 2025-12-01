@@ -4,6 +4,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.http import FileResponse, Http404
+from django.core.files.base import ContentFile
+from django.conf import settings
 from .recording_models import Recording
 import logging
 
@@ -80,14 +82,33 @@ class RecordingViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def stop(self, request, pk=None):
-        """Stop recording"""
+        """Stop recording.
+
+        В продакшене запись обычно обрабатывается отдельным процессом (FFmpeg/SFU),
+        который выставляет status='completed' и прикрепляет файл. Для локальной разработки
+        и демо-окружения (DEBUG=True) мы создаём минимальный пустой .webm-файл и сразу
+        помечаем запись как completed, чтобы endpoint download работал end‑to‑end.
+        """
         try:
             recording = self.get_object()
             
             if recording.status != 'recording':
                 return Response({'error': 'Recording is not active'}, status=400)
             
+            # Переводим запись в состояние "processing" и считаем длительность
             recording.stop()
+
+            # В dev/DEBUG режиме создаём заглушку файла и помечаем запись завершённой,
+            # чтобы скачивание работало сразу.
+            if getattr(settings, 'DEBUG', False):
+                try:
+                    if not recording.file:
+                        dummy_content = ContentFile(b'', name=f"{recording.id}.webm")
+                        recording.file.save(dummy_content.name, dummy_content, save=False)
+                    file_size = recording.file.size or 0
+                    recording.mark_completed(file_size=file_size)
+                except Exception as e:
+                    logger.warning(f"Failed to create dummy recording file for {recording.id}: {e}")
             
             logger.info(f"Recording stopped: {recording.id}")
             

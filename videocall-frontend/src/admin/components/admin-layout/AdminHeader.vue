@@ -1,13 +1,13 @@
 // src/admin/components/admin-layout/AdminHeader.vue - Admin header component
 <template>
-  <header class="admin-header bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+  <header class="admin-header bg-warp-surface text-warp-text shadow-warp-sm border-b border-warp-border">
     <div class="admin-container flex items-center justify-between h-16 px-6">
       <!-- Left side - Mobile menu button and title -->
       <div class="flex items-center space-x-4">
         <!-- Mobile menu button -->
         <button
           @click="$emit('toggle-sidebar')"
-          class="lg:hidden p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="lg:hidden p-2 rounded-md text-warp-muted hover:text-warp-text hover:bg-warp-surface focus:outline-none focus:ring-2 focus:ring-warp-accent"
         >
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path v-if="!sidebarOpen" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
@@ -16,12 +16,12 @@
         </button>
 
         <!-- Page title -->
-        <h1 class="text-xl font-semibold text-gray-900 dark:text-white lg:block hidden">
+        <h1 class="text-xl font-semibold text-warp-text lg:block hidden">
           {{ title }}
         </h1>
 
         <!-- Mobile title -->
-        <h1 class="text-lg font-semibold text-gray-900 dark:text-white lg:hidden">
+        <h1 class="text-lg font-semibold text-warp-text lg:hidden">
           {{ $t('admin.common.adminPanel') }}
         </h1>
       </div>
@@ -29,7 +29,7 @@
       <!-- Right side - Actions and user menu -->
       <div class="flex items-center space-x-4">
         <!-- Search button -->
-        <button class="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors">
+        <button class="p-2 text-warp-muted hover:text-warp-text hover:bg-warp-surface rounded-md transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
           </svg>
@@ -39,7 +39,7 @@
         <LanguageSwitcher />
 
         <!-- Notifications -->
-        <button class="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700 rounded-md transition-colors">
+        <button class="relative p-2 text-warp-muted hover:text-warp-text hover:bg-warp-surface rounded-md transition-colors">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5v-5zM15 17H9a6 6 0 01-6-6V7a6 6 0 016-6h6a6 6 0 016 6v4a6 6 0 01-6 6z"></path>
           </svg>
@@ -53,12 +53,12 @@
         <div class="relative">
           <button
             @click="showUserMenu = !showUserMenu"
-            class="flex items-center space-x-2 p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="flex items-center space-x-2 p-2 rounded-md text-warp-muted hover:text-warp-text hover:bg-warp-surface transition-colors focus:outline-none focus:ring-2 focus:ring-warp-accent"
           >
-            <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
-              <span class="text-white font-medium text-sm">A</span>
+            <div class="w-8 h-8 bg-warp-accent rounded-full flex items-center justify-center">
+              <span class="text-white font-medium text-sm">{{ userInitial }}</span>
             </div>
-            <span class="hidden md:block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <span class="hidden md:block text-sm font-medium text-warp-text">
               {{ $t('admin.common.administrator') }}
             </span>
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -69,24 +69,24 @@
           <!-- User dropdown menu -->
           <div
             v-if="showUserMenu"
-            class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50 border border-gray-200 dark:border-gray-700"
+            class="absolute right-0 mt-2 w-48 bg-warp-surfaceAlt rounded-md shadow-lg py-1 z-50 border border-warp-border"
           >
-            <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-              <p class="text-sm font-medium text-gray-900 dark:text-white">{{ $t('admin.common.administrator') }}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">admin@example.com</p>
+            <div class="px-4 py-2 border-b border-warp-border">
+              <p class="text-sm font-medium text-warp-text">{{ $t('admin.common.administrator') }}</p>
+              <p class="text-xs text-warp-muted">{{ userEmail || '—' }}</p>
             </div>
 
-            <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">
+            <button class="block w-full text-left px-4 py-2 text-sm text-warp-text hover:bg-warp-surface">
               {{ $t('admin.common.profile') }}
             </button>
 
-            <button class="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700">
+            <button class="block w-full text-left px-4 py-2 text-sm text-warp-text hover:bg-warp-surface">
               {{ $t('admin.common.settings') }}
             </button>
 
             <button
               @click="handleLogout"
-              class="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:text-red-400 dark:hover:bg-gray-700"
+              class="block w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10"
             >
               {{ $t('admin.common.logout') }}
             </button>
@@ -105,8 +105,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import LanguageSwitcher from './LanguageSwitcher.vue'
+import { useGlobalStore } from '@/stores/global'
+
+const globalStore = useGlobalStore()
+const userEmail = computed(() => {
+  const user = globalStore.user
+  return user?.email || ''
+})
+const userInitial = computed(() => {
+  const user = globalStore.user
+  const email = user?.email
+  if (email && email.length > 0) {
+    return email.charAt(0).toUpperCase()
+  }
+  return 'A'
+})
 
 // Props
 defineProps({
@@ -168,10 +183,8 @@ onUnmounted(() => {
   outline: none;
 }
 
-/* Dark mode specific styles */
+/* Dark mode handled via Warp theme background; keep for potential tweaks */
 .dark .admin-header {
-  background-color: rgb(31 41 55);
-  border-color: rgb(55 65 81);
 }
 
 /* User menu animation */

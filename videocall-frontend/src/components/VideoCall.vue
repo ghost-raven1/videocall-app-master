@@ -1,6 +1,6 @@
 <!-- src/components/VideoCall.vue - Complete main video call component -->
 <template>
-  <div class="min-h-screen bg-black flex flex-col main-container">
+  <div class="min-h-screen bg-warp-bg text-warp-text flex flex-col main-container">
     <!-- Header -->
     <VideoCallHeader
       :room-code="roomInfo?.short_code || ''"
@@ -38,7 +38,7 @@
       <!-- Screen Share Display (overlay) - show all active screen shares -->
       <div
         v-if="allActiveScreenShares.length > 0"
-        class="absolute inset-0 z-30 bg-black"
+        class="absolute inset-0 z-30 bg-black/90 backdrop-blur-xl"
       >
         <!-- Main screen share (first one) -->
         <div
@@ -46,13 +46,13 @@
           class="absolute inset-0"
         >
           <video
-            :ref="el => setScreenShareVideoRef(el, allActiveScreenShares[0].participantId)"
+            :ref="(el) => setScreenShareVideoRef(el, allActiveScreenShares[0]?.participantId)"
             autoplay
             playsinline
             muted
             class="w-full h-full object-contain"
           ></video>
-          <div class="absolute top-4 left-4 px-4 py-2 bg-gray-900 bg-opacity-75 text-white rounded-lg z-10">
+          <div class="absolute top-4 left-4 px-4 py-2 bg-warp-surfaceAlt/90 text-warp-text rounded-lg z-10 border border-warp-border">
             <p class="text-sm font-medium">
               {{ allActiveScreenShares[0].participantId === currentParticipantId ? 'Your Screen' : (allActiveScreenShares[0].participantName || 'Someone') + "'s Screen" }}
             </p>
@@ -60,24 +60,24 @@
         </div>
         
         <!-- Other screen shares as thumbnails (if multiple) -->
-        <div
-          v-if="allActiveScreenShares.length > 1"
-          class="absolute bottom-4 right-4 flex gap-2 z-20"
-        >
+          <div
+            v-if="allActiveScreenShares.length > 1"
+            class="absolute bottom-4 right-4 flex gap-2 z-20"
+          >
           <div
             v-for="(screenShare, index) in allActiveScreenShares.slice(1)"
             :key="screenShare.participantId"
-            class="w-48 h-32 bg-gray-800 rounded-lg overflow-hidden border-2 border-gray-600 cursor-pointer hover:border-green-500 transition-colors"
+            class="w-48 h-32 bg-warp-surfaceAlt/90 backdrop-blur-md rounded-xl overflow-hidden border border-warp-border/80 cursor-pointer hover:border-warp-accent hover:shadow-warp-md transition-all duration-200"
             @click="switchToScreenShare(index + 1)"
           >
             <video
-              :ref="el => setScreenShareThumbnailRef(el, screenShare.participantId)"
+              :ref="(el) => setScreenShareThumbnailRef(el, screenShare.participantId)"
               autoplay
               playsinline
               muted
-              class="w-full h-full object-contain"
+              class="w-full h-full object-cover"
             ></video>
-            <div class="absolute bottom-0 left-0 right-0 px-2 py-1 bg-gray-900 bg-opacity-75 text-white text-xs">
+            <div class="absolute bottom-0 left-0 right-0 px-2 py-1 bg-warp-surfaceAlt/95 text-warp-text text-xs border-t border-warp-border/60">
               {{ screenShare.participantName || 'Screen' }}
             </div>
           </div>
@@ -86,7 +86,7 @@
         <button
           v-if="screenShare.isScreenSharing.value"
           @click="handleToggleScreenShare"
-          class="absolute top-4 right-4 z-10 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-2"
+          class="absolute top-4 right-4 z-10 btn-primary bg-red-600 hover:bg-red-700 flex items-center gap-2"
         >
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -95,19 +95,23 @@
         </button>
       </div>
 
-      <!-- Multi-user call (3+ participants) -->
-      <ParticipantGrid
-        v-if="webrtcStore?.isMultiUserCall"
-        :room-code="roomInfo?.short_code"
-        :waiting-message="waitingMessage"
-        :show-participants-count="true"
-        :layout="currentLayout"
-        @participant-count-changed="onParticipantCountChanged"
-      />
+      <div class="relative w-full h-full px-2 sm:px-4 pb-2">
+        <!-- Multi-user call (3+ participants) -->
+        <ParticipantGrid
+          v-if="webrtcStore?.isMultiUserCall"
+          :room-code="roomInfo?.short_code"
+          :waiting-message="waitingMessage"
+          :show-participants-count="true"
+          :layout="currentLayout"
+          :pinned-participant-id="pinnedParticipantId || ''"
+          :max-participants-per-page="maxParticipantsPerPage"
+          @participant-count-changed="onParticipantCountChanged"
+        />
 
-      <!-- Two-user call (existing layout for backward compatibility) -->
-      <template v-else-if="webrtcStore.participantCount === 2">
-      <div class="two-user-layout relative w-full h-full">
+        <!-- Two-user call (existing layout for backward compatibility) -->
+        <template v-else-if="webrtcStore.participantCount === 2">
+        <div
+          class="two-user-layout relative w-full h-full">
         <!-- Remote Video (main) -->
         <div v-if="webrtcStore.hasRemoteVideo" class="absolute inset-0 bg-black">
           <video
@@ -130,14 +134,14 @@
         <!-- No remote video placeholder -->
         <div
           v-else
-          class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-gray-800 via-gray-900 to-black"
+          class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-warp-surface via-warp-bg to-black"
         >
-          <div class="text-center text-white max-w-md mx-auto p-8">
+          <div class="text-center text-warp-text max-w-md mx-auto p-8">
             <div
-              class="w-32 h-32 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce-gentle"
+              class="w-32 h-32 bg-warp-surfaceAlt rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce-gentle"
             >
               <svg
-                class="w-16 h-16 text-gray-500"
+                class="w-16 h-16 text-warp-muted"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -151,15 +155,15 @@
               </svg>
             </div>
             <h3 class="text-xl font-medium mb-2">{{ waitingMessage }}</h3>
-            <p class="text-gray-400 mb-4">Share the room code to invite someone:</p>
-            <div class="bg-gray-800 px-4 py-3 rounded-xl">
-              <p class="font-mono font-bold text-2xl tracking-wider text-green-400">
+            <p class="text-warp-muted mb-4">Share the room code to invite someone:</p>
+            <div class="bg-warp-surfaceAlt px-4 py-3 rounded-xl border border-warp-border">
+              <p class="font-mono font-bold text-2xl tracking-wider text-warp-accent2">
                 {{ roomInfo?.short_code }}
               </p>
             </div>
             <button
               @click="copyRoomCode"
-              class="mt-4 bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg transition-colors inline-flex items-center space-x-2"
+              class="mt-4 btn-primary inline-flex items-center space-x-2"
             >
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -178,18 +182,18 @@
         <div
           v-if="webrtcStore.localStream && webrtcStore.hasLocalVideo"
           :class="[
-            'absolute z-20 rounded-xl overflow-hidden shadow-2xl transition-all duration-300 cursor-pointer border-2 bg-black',
+            'absolute z-20 rounded-2xl overflow-hidden shadow-warp-md transition-all duration-300 cursor-pointer border bg-black/80 backdrop-blur-md',
             localVideoSize === 'small'
               ? 'w-40 h-30 bottom-4 right-4'
               : localVideoSize === 'large'
                 ? 'w-80 h-60 bottom-4 right-4'
                 : 'w-60 h-45 bottom-4 right-4',
-            webrtcStore.isVideoEnabled ? 'border-green-400' : 'border-gray-600',
+            webrtcStore.isVideoEnabled ? 'border-green-400/90' : 'border-warp-border/80',
           ]"
           @click="toggleLocalVideoSize"
         >
           <video
-            ref="localVideoRef"
+            :ref="setLocalVideoRef"
             autoplay
             muted
             playsinline
@@ -229,9 +233,9 @@
           <!-- Camera off indicator -->
           <div
             v-if="!webrtcStore.isVideoEnabled"
-            class="absolute inset-0 bg-gray-800 flex items-center justify-center"
+            class="absolute inset-0 bg-warp-surfaceAlt/90 backdrop-blur-sm flex items-center justify-center"
           >
-            <svg class="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-8 h-8 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
@@ -245,7 +249,7 @@
         <!-- Connection quality indicator -->
         <div
           v-if="connectionStats && showConnectionQuality"
-          class="absolute top-4 right-4 bg-black bg-opacity-50 px-3 py-2 rounded-lg text-white text-sm z-10"
+          class="absolute top-4 right-4 bg-warp-surfaceAlt/90 px-3 py-2 rounded-lg text-warp-text text-sm z-10 border border-warp-border"
         >
           <div class="flex items-center space-x-2">
             <div
@@ -266,13 +270,28 @@
 
       <!-- Single participant waiting state -->
       <template v-else>
-      <div class="single-user-layout">
-        <div class="text-center text-white max-w-md mx-auto p-8">
+      <div class="single-user-layout flex items-center justify-center flex-col">
+        <!-- Local preview video so user sees themselves even when alone in the room -->
+        <div
+          v-if="webrtcStore.localStream && webrtcStore.hasLocalVideo"
+          class="max-w-2xl mx-auto mt-6 mb-4 rounded-xl overflow-hidden shadow-2xl border-2 border-warp-accent2 bg-black"
+        >
+          <video
+            :ref="setLocalVideoRef"
+            autoplay
+            muted
+            playsinline
+            class="w-full h-full object-cover"
+            :class="{ mirror: shouldMirrorLocal }"
+          ></video>
+        </div>
+
+        <div class="text-center text-warp-text max-w-md mx-auto p-8">
           <div
-            class="w-32 h-32 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce-gentle"
+            class="w-32 h-32 bg-warp-surfaceAlt rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce-gentle shadow-warp-md"
           >
             <svg
-              class="w-16 h-16 text-gray-500"
+              class="w-16 h-16 text-warp-muted"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -286,15 +305,15 @@
             </svg>
           </div>
           <h3 class="text-xl font-medium mb-2">{{ waitingMessage }}</h3>
-          <p class="text-gray-400 mb-4">Share the room code to invite someone:</p>
-          <div class="bg-gray-800 px-4 py-3 rounded-xl">
-            <p class="font-mono font-bold text-2xl tracking-wider text-green-400">
+          <p class="text-warp-muted mb-4">Share the room code to invite someone:</p>
+          <div class="bg-warp-surfaceAlt px-4 py-3 rounded-xl border border-warp-border">
+            <p class="font-mono font-bold text-2xl tracking-wider text-warp-accent2">
               {{ roomInfo?.short_code }}
             </p>
           </div>
           <button
             @click="copyRoomCode"
-            class="mt-4 bg-green-500 hover:bg-green-600 text-white px-6 py-2 rounded-lg transition-colors inline-flex items-center space-x-2"
+            class="mt-4 btn-primary inline-flex items-center space-x-2"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -309,6 +328,80 @@
         </div>
       </div>
       </template>
+</div>
+
+    <!-- Media access error banner -->
+    <div
+      v-if="mediaError"
+      data-test="media-error-banner"
+      class="mx-4 mt-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 animate-fade-in"
+    >
+      <div class="flex">
+        <svg
+          class="w-5 h-5 text-yellow-400 mt-0.5 mr-3 flex-shrink-0"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+          ></path>
+        </svg>
+        <div class="flex-1">
+          <p class="text-sm text-yellow-800 dark:text-yellow-300 font-medium">
+            Camera access needed
+          </p>
+          <p class="text-sm text-yellow-700 dark:text-yellow-400 mt-1">{{ mediaError }}</p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button
+              @click="initializeCall"
+              class="text-sm bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-800 dark:hover:bg-yellow-700 text-yellow-800 dark:text-yellow-200 px-3 py-1 rounded-md font-medium transition-colors"
+            >
+              Try again
+            </button>
+            <button
+              @click="showPermissionHelp = !showPermissionHelp"
+              class="text-sm text-yellow-600 dark:text-yellow-400 underline hover:no-underline"
+            >
+              Need help?
+            </button>
+            <template v-if="isDeviceBusyError">
+              <button
+                @click="joinWithAudioOnly"
+                class="text-sm bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-800 dark:hover:bg-yellow-700 text-yellow-800 dark:text-yellow-200 px-3 py-1 rounded-md font-medium transition-colors"
+              >
+                Join with audio only
+              </button>
+              <button
+                @click="joinWithVideoOnly"
+                class="text-sm bg-yellow-100 hover:bg-yellow-200 dark:bg-yellow-800 dark:hover:bg-yellow-700 text-yellow-800 dark:text-yellow-200 px-3 py-1 rounded-md font-medium transition-colors"
+              >
+                Join with camera only
+              </button>
+            </template>
+          </div>
+
+          <!-- Permission help -->
+          <div
+            v-if="showPermissionHelp"
+            class="mt-3 p-3 bg-yellow-100 dark:bg-yellow-800/30 rounded-md"
+          >
+            <p class="text-sm text-yellow-700 dark:text-yellow-300 font-medium mb-2">
+              To enable camera access:
+            </p>
+            <ul class="text-xs text-yellow-600 dark:text-yellow-400 space-y-1">
+              <li>• Click the camera icon in your browser's address bar</li>
+              <li>• Select "Allow" when prompted for camera permission</li>
+              <li>• Refresh the page if needed</li>
+              <li>• Make sure no other app is using your camera or microphone</li>
+              <li v-if="isDeviceBusyError">• Close apps that use camera/microphone (Zoom, Meet, etc.)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Controls -->
@@ -319,39 +412,36 @@
       :participant-count="webrtcStore.participantCount"
       :is-audio-enabled="webrtcStore.isAudioEnabled"
       :is-video-enabled="webrtcStore.isVideoEnabled"
+      :is-screen-sharing="isScreenSharing"
+      :is-recording="isRecording"
+      :adaptive-level="adaptiveVideoLevel"
       @recording-started="onRecordingStarted"
       @recording-stopped="onRecordingStopped"
       @layout-changed="onLayoutChanged"
       @screen-share-toggled="onScreenShareToggled"
       @recording-toggled="onRecordingToggled"
       @participant-pinned="onParticipantPinned"
+      @quality-settings-changed="onQualitySettingsChanged"
       @toggle-audio="handleToggleAudio"
       @toggle-video="handleToggleVideo"
       @share-room="shareRoom"
       @end-call="handleEndCall"
     />
 
-    <!-- Screen Share Controls -->
-    <div v-if="roomInfo" class="bg-gray-900 px-4 pb-4">
-      <ScreenShareControls
-        v-if="currentParticipantId"
-        :room-code="roomInfo.short_code"
-        :participant-id="String(currentParticipantId || '')"
-        :peer-connection="peerConnection"
-        @screen-share-started="onScreenShareStarted"
-        @screen-share-stopped="onScreenShareStopped"
-      />
-    </div>
-
       <!-- Connection status message -->
-      <div v-if="connectionMessage" class="mt-4 text-center text-sm text-gray-400">
-        {{ connectionMessage }}
-      </div>
+      <transition name="fade">
+        <div
+          v-if="connectionMessage"
+          class="mt-3 text-center text-xs sm:text-sm text-warp-muted px-3 py-1 inline-flex items-center justify-center rounded-full bg-warp-surfaceAlt/80 border border-warp-border/60 mx-auto"
+        >
+          {{ connectionMessage }}
+        </div>
+      </transition>
 
       <!-- Fallback mode message -->
       <div v-if="fallbackModeMessage" class="mt-4 text-center">
-        <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3 text-sm">
-          <div class="flex items-center justify-center space-x-2 text-yellow-800 dark:text-yellow-200">
+        <div class="bg-yellow-500/10 border border-yellow-400/60 rounded-lg p-3 text-sm">
+          <div class="flex items-center justify-center space-x-2 text-yellow-200">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
             </svg>
@@ -363,13 +453,13 @@
             <button
               v-if="canRestoreVideo"
               @click="restoreVideoFromAudioOnly"
-              class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded transition-colors"
+              class="text-xs btn-primary px-3 py-1"
             >
               Restore Video
             </button>
             <button
               @click="handleConnectionHelp"
-              class="text-xs bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded transition-colors"
+              class="text-xs btn-secondary px-3 py-1"
             >
               Get Help
             </button>
@@ -381,17 +471,17 @@
     <Teleport to="body">
       <div
         v-if="showShareModal"
-        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        class="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-md flex items-center justify-center z-50 p-4"
         @click="showShareModal = false"
       >
         <div class="card w-full max-w-md p-6 animate-slide-up" @click.stop>
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Share Room</h3>
+          <h3 class="text-lg font-semibold text-warp-text mb-4">Share Room</h3>
 
           <div class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-                >Room Code</label
-              >
+              <label class="block text-sm font-medium text-warp-muted mb-2">
+                Room Code
+              </label>
               <div class="flex items-center space-x-2">
                 <input
                   :value="roomInfo?.short_code"
@@ -405,9 +495,9 @@
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-                >Room Link</label
-              >
+              <label class="block text-sm font-medium text-warp-muted mb-2">
+                Room Link
+              </label>
               <div class="flex items-center space-x-2">
                 <input :value="roomLink" readonly class="input-field flex-1 text-sm" />
                 <button @click="copyRoomLink" class="btn-secondary px-4 py-3 min-w-[70px]">
@@ -418,9 +508,9 @@
 
             <!-- QR Code (if available) -->
             <div v-if="qrCodeUrl" class="text-center">
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
-                >QR Code</label
-              >
+              <label class="block text-sm font-medium text-warp-muted mb-2">
+                QR Code
+              </label>
               <div class="inline-block p-3 bg-white rounded-lg">
                 <img :src="qrCodeUrl" alt="Room QR Code" class="w-32 h-32" />
               </div>
@@ -438,33 +528,33 @@
     <Teleport to="body">
       <div
         v-if="showParticipantsList"
-        class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4"
+        class="fixed inset-0 bg-black bg-opacity-75 backdrop-blur-md flex items-center justify-center z-50 p-4"
         @click="showParticipantsList = false"
       >
         <div
-          class="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col animate-slide-up"
+          class="card max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col animate-slide-up"
           @click.stop
         >
-          <div class="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <h2 class="text-xl font-bold text-gray-900 dark:text-white">Participants ({{ participantCount }})</h2>
-            <button
+          <div class="p-6 border-b border-warp-border flex items-center justify-between">
+            <h2 class="text-xl font-bold text-warp-text">Participants ({{ participantCount }})</h2>
+              <button
               @click="showParticipantsList = false"
-              class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              class="p-2 hover:bg-warp-surfaceAlt rounded-lg transition-colors"
             >
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-          <div class="flex-1 overflow-y-auto p-6">
+            <div class="flex-1 overflow-y-auto p-6">
             <!-- Local participant -->
-            <div class="flex items-center space-x-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg mb-2">
-              <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-semibold">
+            <div class="flex items-center space-x-3 p-3 bg-warp-surfaceAlt/70 rounded-lg mb-2">
+              <div class="w-10 h-10 bg-warp-accent rounded-full flex items-center justify-center text-white font-semibold">
                 {{ currentParticipantName?.charAt(0)?.toUpperCase() || 'Y' }}
               </div>
               <div class="flex-1">
-                <p class="font-medium text-gray-900 dark:text-white">{{ currentParticipantName || 'You' }}</p>
-                <p class="text-sm text-gray-500 dark:text-gray-400">You</p>
+                <p class="font-medium text-warp-text">{{ currentParticipantName || 'You' }}</p>
+                <p class="text-sm text-warp-muted">You</p>
               </div>
               <div class="w-2 h-2 bg-green-500 rounded-full"></div>
             </div>
@@ -472,14 +562,14 @@
             <div
               v-for="participant in webrtcStore.remoteParticipants"
               :key="participant.id"
-              class="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg mb-2"
+              class="flex items-center space-x-3 p-3 bg-warp-surface/80 rounded-lg mb-2"
             >
-              <div class="w-10 h-10 bg-gray-500 rounded-full flex items-center justify-center text-white font-semibold">
+              <div class="w-10 h-10 bg-warp-surfaceAlt rounded-full flex items-center justify-center text-white font-semibold">
                 {{ participant.name?.charAt(0)?.toUpperCase() || 'U' }}
               </div>
               <div class="flex-1">
-                <p class="font-medium text-gray-900 dark:text-white">{{ participant.name || 'Unknown' }}</p>
-                <p class="text-sm text-gray-500 dark:text-gray-400">{{ participant.connectionState || 'connecting' }}</p>
+                <p class="font-medium text-warp-text">{{ participant.name || 'Unknown' }}</p>
+                <p class="text-sm text-warp-muted">{{ participant.connectionState || 'connecting' }}</p>
               </div>
               <div
                 :class="[
@@ -488,7 +578,7 @@
                 ]"
               ></div>
             </div>
-            <div v-if="webrtcStore.remoteParticipants.length === 0" class="text-center text-gray-500 dark:text-gray-400 py-8">
+            <div v-if="webrtcStore.remoteParticipants.length === 0" class="text-center text-warp-muted py-8">
               No other participants yet
             </div>
           </div>
@@ -500,18 +590,18 @@
     <Teleport to="body">
       <div
         v-if="showStats"
-        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        class="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-md flex items-center justify-center z-50 p-4"
         @click="showStats = false"
       >
         <div class="card w-full max-w-lg p-6 animate-slide-up max-h-96 overflow-y-auto" @click.stop>
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          <h3 class="text-lg font-semibold text-warp-text mb-4">
             Connection Statistics
           </h3>
 
           <div v-if="connectionStats" class="space-y-4 text-sm">
             <!-- Overall Quality -->
             <div
-              class="flex justify-between items-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+              class="flex justify-between items-center p-3 bg-warp-surfaceAlt/80 rounded-lg"
             >
               <span class="font-medium">Connection Quality</span>
               <div class="flex items-center space-x-2">
@@ -531,7 +621,7 @@
 
             <!-- Video Stats -->
             <div v-if="connectionStats.video">
-              <h4 class="font-medium text-gray-900 dark:text-white mb-2">Video</h4>
+              <h4 class="font-medium text-warp-text mb-2">Video</h4>
               <div class="space-y-2 pl-4">
                 <div class="flex justify-between">
                   <span>Resolution</span>
@@ -550,7 +640,7 @@
 
             <!-- Audio Stats -->
             <div v-if="connectionStats.audio">
-              <h4 class="font-medium text-gray-900 dark:text-white mb-2">Audio</h4>
+              <h4 class="font-medium text-warp-text mb-2">Audio</h4>
               <div class="space-y-2 pl-4">
                 <div class="flex justify-between">
                   <span>Bitrate</span>
@@ -561,7 +651,7 @@
 
             <!-- Connection Stats -->
             <div v-if="connectionStats.connection">
-              <h4 class="font-medium text-gray-900 dark:text-white mb-2">Connection</h4>
+              <h4 class="font-medium text-warp-text mb-2">Connection</h4>
               <div class="space-y-2 pl-4">
                 <div class="flex justify-between">
                   <span>Round Trip Time</span>
@@ -579,7 +669,7 @@
             </div>
           </div>
 
-          <div v-else class="text-center py-8 text-gray-500">
+          <div v-else class="text-center py-8 text-warp-muted">
             <p>No connection statistics available</p>
           </div>
 
@@ -598,12 +688,12 @@
         @click="showConnectionHelp = false"
       >
         <div class="card w-full max-w-md p-6 animate-slide-up" @click.stop>
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Connection Help</h3>
+          <h3 class="text-lg font-semibold text-warp-text mb-4">Connection Help</h3>
 
           <div class="space-y-4 text-sm">
-            <div class="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-              <h4 class="font-medium text-blue-900 dark:text-blue-100 mb-2">Common Solutions:</h4>
-              <ul class="space-y-1 text-blue-800 dark:text-blue-200">
+            <div class="p-3 bg-blue-500/10 rounded-lg">
+              <h4 class="font-medium text-warp-text mb-2">Common Solutions:</h4>
+              <ul class="space-y-1 text-warp-muted">
                 <li>• Check your internet connection</li>
                 <li>• Disable VPN if using one</li>
                 <li>• Close other applications using camera/microphone</li>
@@ -611,18 +701,18 @@
               </ul>
             </div>
 
-            <div class="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-              <h4 class="font-medium text-green-900 dark:text-green-100 mb-2">Still Having Issues?</h4>
-              <ul class="space-y-1 text-green-800 dark:text-green-200">
+            <div class="p-3 bg-green-500/10 rounded-lg">
+              <h4 class="font-medium text-warp-text mb-2">Still Having Issues?</h4>
+              <ul class="space-y-1 text-warp-muted">
                 <li>• Try using a different browser</li>
                 <li>• Check if your firewall is blocking the connection</li>
                 <li>• Ensure no browser extensions are interfering</li>
               </ul>
             </div>
 
-            <div class="p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-              <h4 class="font-medium text-yellow-900 dark:text-yellow-100 mb-2">Current Status:</h4>
-              <div class="text-yellow-800 dark:text-yellow-200">
+            <div class="p-3 bg-yellow-500/10 rounded-lg">
+              <h4 class="font-medium text-warp-text mb-2">Current Status:</h4>
+              <div class="text-warp-muted">
                 <p><strong>Mode:</strong> {{ currentFallbackMode || 'Normal' }}</p>
                 <p><strong>Quality:</strong> {{ connectionQualityText }}</p>
                 <p><strong>State:</strong> {{ webrtcStore.connectionState }}</p>
@@ -634,7 +724,7 @@
             <button @click="showConnectionHelp = false" class="btn-secondary px-4 py-2">
               Close
             </button>
-            <button @click="refreshConnection" class="btn-primary px-4 py-2 bg-red-500 hover:bg-red-600">
+            <button @click="refreshConnection" class="btn-primary px-4 py-2 bg-red-600 hover:bg-red-700">
               Refresh Page
             </button>
           </div>
@@ -649,51 +739,51 @@
     >
       <div class="text-center text-white">
         <div
-          class="animate-spin rounded-full h-16 w-16 border-b-2 border-green-500 mx-auto mb-4"
+          class="animate-spin rounded-full h-16 w-16 border-b-2 border-warp-accent mx-auto mb-4"
         ></div>
         <h3 class="text-xl font-medium mb-2">{{ connectingMessage }}</h3>
-        <p class="text-gray-300">{{ connectingSubMessage }}</p>
+        <p class="text-warp-muted">{{ connectingSubMessage }}</p>
       </div>
     </div>
   </div>
+</div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { useWebRTCStore } from '@/stores/webrtc'
 import { useRoomsStore } from '@/stores/rooms'
 import { useGlobalStore } from '@/stores/global'
 import ParticipantGrid from '@/components/ParticipantGrid.vue'
-import RoomChat from '@/components/RoomChat.vue'
-import AudioSettings from '@/components/AudioSettings.vue'
-import RecordingControls from '@/components/RecordingControls.vue'
-import ScreenShareControls from '@/components/ScreenShareControls.vue'
-import MultiUserControls from '@/components/MultiUserControls.vue'
 import VideoCallHeader from '@/components/VideoCallHeader.vue'
 import VideoCallControls from '@/components/VideoCallControls.vue'
 import VideoCallSidebar from '@/components/VideoCallSidebar.vue'
 import { useVideoCallController } from '@/controllers/video-call/useVideoCallController'
 import { useRoomChatController } from '@/controllers/room/useRoomChatController'
-import * as webrtcService from '@/services/webrtc'
+import { webrtcService } from '@/services/webrtc'
 import { utils } from '@/services/utils'
 
 const route = useRoute()
-const router = useRouter()
 const webrtcStore = useWebRTCStore()
 const roomsStore = useRoomsStore()
 const globalStore = useGlobalStore()
 
 // Initialize video call controller
-const videoCall = useVideoCallController(route.params.roomId)
-const { callState, media, screenShare, recording } = videoCall
+const videoCall = useVideoCallController(utils.normalizeRouteParam(route.params.roomId))
+const { callState, screenShare, recording } = videoCall
 
 // Template refs - use ref for template refs (not shallowRef)
-const localVideoRef = ref<HTMLVideoElement | null>(null)
-const remoteVideoRef = ref<HTMLVideoElement | null>(null)
+const localVideoRef = ref(null)
+const remoteVideoRef = ref(null)
 const screenShareVideoRefs = ref(new Map()) // Map<participantId, videoElement>
 const screenShareThumbnailRefs = ref(new Map()) // Map<participantId, videoElement>
 const currentScreenShareIndex = ref(0) // Index of currently displayed screen share
+
+// Ref callback functions for template (to avoid TypeScript syntax in template)
+const setLocalVideoRef = (el) => {
+  localVideoRef.value = el
+}
 
 // UI state (not business logic)
 const localVideoSize = ref('medium')
@@ -701,6 +791,9 @@ const showShareModal = ref(false)
 const showStats = ref(false)
 const showMenu = ref(false)
 const showParticipantsList = ref(false)
+// Media error banner state
+const mediaError = ref(null)
+const showPermissionHelp = ref(false)
 const roomCodeCopied = ref(false)
 const roomLinkCopied = ref(false)
 const shouldMirrorLocal = ref(true)
@@ -722,13 +815,42 @@ const showConnectionHelp = ref(false)
 const websocket = ref(null)
 const currentParticipantId = ref(null)
 // Get participant name from localStorage or use default
-const currentParticipantName = ref(typeof localStorage !== 'undefined' ? (localStorage.getItem('userName') || 'You') : 'You')
-const peerConnection = ref(null)
+const currentParticipantName = ref(
+  typeof localStorage !== 'undefined'
+    ? (localStorage.getItem('userName') || 'You')
+    : 'You',
+)
 
 // Chat controller - initialize after websocket and participant are available
 const chat = useRoomChatController()
 const showChat = computed(() => chat.isOpen.value)
 const unreadMessages = computed(() => chat.unreadCount.value)
+
+// Keep chat context in sync with current room and WebSocket
+watch(
+  () => roomsStore.currentRoom,
+  (newRoom) => {
+    if (newRoom && newRoom.participant_id) {
+      currentParticipantId.value = String(newRoom.participant_id)
+    }
+  },
+  { immediate: true },
+)
+
+watch(
+  () => webrtcStore.websocket,
+  (newWebsocket) => {
+    const ws = newWebsocket && typeof newWebsocket === 'object' && 'value' in newWebsocket
+      ? newWebsocket.value
+      : newWebsocket
+    if (ws && typeof ws === 'object' && 'readyState' in ws) {
+      websocket.value = ws
+    } else {
+      websocket.value = null
+    }
+  },
+  { immediate: true },
+)
 
 // Toggle handlers for VideoCallControls - defined early to ensure availability in template
 const handleToggleAudio = () => {
@@ -749,7 +871,7 @@ const callDuration = computed(() => callState.callDuration.value)
 const isConnecting = computed(() => callState.isConnecting.value)
 const connectingMessage = computed(() => callState.connectingMessage.value)
 const connectingSubMessage = computed(() => callState.connectingSubMessage.value)
-const connectionProgress = computed(() => callState.connectionProgress.value)
+// connectionProgress is managed inside the controller; no local binding needed
 
 const participantCount = computed(() => {
   // Use store's participantCount which handles SFU mode correctly
@@ -777,9 +899,14 @@ const waitingMessage = computed(() => {
 })
 
 const connectionMessage = computed(() => {
-  if (webrtcStore.connectionState === 'connecting') {
+  // While the call is in the "connecting" phase, show a single
+  // message based on callState rather than raw store state so
+  // it disappears once the overlay is gone.
+  if (isConnecting.value) {
     return 'Establishing secure connection...'
-  } else if (webrtcStore.connectionState === 'failed') {
+  }
+
+  if (webrtcStore.connectionState === 'failed') {
     return isInFallbackMode.value
       ? `Connection issues detected. Running in ${currentFallbackMode.value?.replace('_', '-')} mode.`
       : 'Connection failed. Please check your internet connection.'
@@ -850,36 +977,26 @@ const allActiveScreenShares = computed(() => {
   return activeShares
 })
 
-// Legacy computed for backward compatibility
-const activeScreenShareStream = computed(() => {
-  return allActiveScreenShares.value.length > 0 ? allActiveScreenShares.value[currentScreenShareIndex.value]?.stream : null
-})
-
-const activeScreenShareParticipant = computed(() => {
-  if (allActiveScreenShares.value.length > 0) {
-    const share = allActiveScreenShares.value[currentScreenShareIndex.value]
-    return {
-      id: share.participantId,
-      name: share.participantName
-    }
-  }
-  return null
-})
+// Legacy active screen share helpers removed (unused in template)
 
 // Helper function to set screen share video ref
+// @param el {HTMLVideoElement|null}
+// @param participantId {string|undefined}
 const setScreenShareVideoRef = (el, participantId) => {
-  if (el) {
+  if (el && participantId) {
     screenShareVideoRefs.value.set(participantId, el)
-  } else {
+  } else if (participantId) {
     screenShareVideoRefs.value.delete(participantId)
   }
 }
 
 // Helper function to set screen share thumbnail ref
+// @param el {HTMLVideoElement|null}
+// @param participantId {string|undefined}
 const setScreenShareThumbnailRef = (el, participantId) => {
-  if (el) {
+  if (el && participantId) {
     screenShareThumbnailRefs.value.set(participantId, el)
-  } else {
+  } else if (participantId) {
     screenShareThumbnailRefs.value.delete(participantId)
   }
 }
@@ -893,6 +1010,17 @@ const switchToScreenShare = (index) => {
 
 // Use recording state from controller
 const isRecording = computed(() => recording.isRecording.value)
+
+// ID of pinned participant (for focus layout / grid ordering)
+const pinnedParticipantId = ref(null)
+
+// Layout / quality controls from MultiUserControls
+const maxParticipantsPerPage = ref(9)
+const adaptiveQuality = ref(true)
+// Current video quality mode selected in MultiUserControls: 'auto' | 'low' | 'medium' | 'high'
+const currentVideoQuality = ref('auto')
+// Effective quality level used for adaptive constraints when in 'auto' mode
+const adaptiveVideoLevel = ref('high')
 
 const fallbackModeMessage = computed(() => {
   switch (currentFallbackMode.value) {
@@ -984,13 +1112,20 @@ const remoteVideoInfo = computed(() => {
 // Methods
 // Use controller's initializeCall method
 const initializeCall = async () => {
-  const roomId = route.params.roomId
+  const roomId = utils.normalizeRouteParam(route.params.roomId)
   const result = await videoCall.initializeCall(roomId)
   
   if (result.success) {
     // Start stats monitoring after successful initialization
     startStatsMonitoring()
     setupEnhancedMonitoring()
+    mediaError.value = null
+  } else {
+    // Surface media access errors to banner
+    const err = result.error || ''
+    if (/camera|microphone|Permission/i.test(err)) {
+      mediaError.value = err
+    }
   }
 }
 
@@ -1075,25 +1210,63 @@ const onLayoutChanged = (layout) => {
   })
 }
 
-const onScreenShareToggled = (isSharing) => {
-  console.log('Screen share toggled:', isSharing)
-  // Handle screen share toggle if needed
+const onScreenShareToggled = async () => {
+  await handleToggleScreenShare()
 }
 
-const onRecordingToggled = (isRecording) => {
-  console.log('Recording toggled:', isRecording)
-  // Handle recording toggle if needed
+// @param _nextIsRecording {boolean}
+const onRecordingToggled = async () => {
+  // Delegate to shared recording controller toggle to keep state consistent
+  await toggleRecording()
 }
 
+// @param participantId {string}
 const onParticipantPinned = (participantId) => {
-  console.log('Participant pinned:', participantId)
-  // Handle participant pinning if needed
+  // Toggle pin state
+  const nextPinned = pinnedParticipantId.value === participantId ? null : participantId
+  pinnedParticipantId.value = nextPinned
+
+  // Reflect pin state on participants so MultiUserControls can highlight
+  webrtcStore.remoteParticipants.forEach((p) => {
+    p.isPinned = nextPinned === p.id
+  })
+}
+
+/**
+ * @param {{ videoQuality: string; maxParticipantsPerPage: number; adaptiveQuality: boolean }} settings
+ */
+const onQualitySettingsChanged = (settings) => {
+  currentVideoQuality.value = settings.videoQuality || 'auto'
+
+  // Clamp max participants per page to sane bounds
+  const raw = Number(settings.maxParticipantsPerPage) || 9
+  maxParticipantsPerPage.value = Math.min(25, Math.max(4, raw))
+  adaptiveQuality.value = !!settings.adaptiveQuality
+
+  // When user switches away from auto, sync adaptive level once to their explicit choice
+  if (currentVideoQuality.value === 'low' || currentVideoQuality.value === 'medium' || currentVideoQuality.value === 'high') {
+    adaptiveVideoLevel.value = currentVideoQuality.value
+  }
+}
+
+// Select active peer connection (SFU preferred, else first P2P)
+const getActivePeerConnection = () => {
+  if (webrtcStore.sfuMode && webrtcStore.sfuPeerConnection) {
+    return webrtcStore.sfuPeerConnection
+  }
+  if (webrtcStore.peerConnections && webrtcStore.peerConnections.size > 0) {
+    for (const pc of webrtcStore.peerConnections.values()) {
+      if (pc) return pc
+    }
+  }
+  return null
 }
 
 const startStatsMonitoring = () => {
-  if (webrtcStore.peerConnection) {
+  const pc = getActivePeerConnection()
+  if (pc) {
     statsMonitor.value = webrtcService.createQualityMonitor(
-      webrtcStore.peerConnection,
+      pc,
       (quality, stats) => {
         connectionStats.value = stats
       },
@@ -1104,9 +1277,10 @@ const startStatsMonitoring = () => {
 
 const setupEnhancedMonitoring = () => {
   // Monitor connection quality and fallback scenarios
-  if (webrtcStore.peerConnection) {
+  const pc = getActivePeerConnection()
+  if (pc) {
     webrtcService.monitorConnectionState(
-      webrtcStore.peerConnection,
+      pc,
       'main_participant',
       (participantId, recoveryInfo) => handleConnectionRecovery(participantId, recoveryInfo),
       handleConnectionQualityChange
@@ -1132,19 +1306,79 @@ const handleConnectionRecovery = (participantId, recoveryInfo) => {
 const handleConnectionQualityChange = (quality, state) => {
   console.log('Connection quality changed:', quality, state)
 
+  // If adaptive quality is disabled, just track internally without user-facing warnings
+  if (!adaptiveQuality.value) {
+    if (quality.score >= 60) {
+      connectionQualityWarnings.value = []
+    }
+    return
+  }
+
+  // Auto-adapt video quality only when user selected "Auto" mode
+  if (currentVideoQuality.value === 'auto') {
+    // Simple state machine: high -> medium -> low when качество падает, и обратно при улучшении
+    if (quality.score < 30 && adaptiveVideoLevel.value !== 'low') {
+      applyAdaptiveVideoLevel('low')
+    } else if (quality.score < 55 && adaptiveVideoLevel.value === 'high') {
+      applyAdaptiveVideoLevel('medium')
+    } else if (quality.score > 80 && adaptiveVideoLevel.value !== 'high') {
+      applyAdaptiveVideoLevel('high')
+    }
+  }
+
   // Show warnings for poor quality
   if (quality.score < 40 && !connectionQualityWarnings.value.includes('poor_quality')) {
     connectionQualityWarnings.value.push('poor_quality')
     globalStore.addNotification(
       'Connection quality is poor. The system will attempt to optimize.',
       'warning',
-      5000
+      5000,
     )
   }
 
   // Clear warnings when quality improves
   if (quality.score >= 60) {
     connectionQualityWarnings.value = []
+  }
+}
+
+// Apply adaptive video constraints based on current SFU/P2P stream
+/**
+ * @param {'low'|'medium'|'high'} level
+ */
+const applyAdaptiveVideoLevel = async (level) => {
+  adaptiveVideoLevel.value = level
+
+  try {
+    const presets = {
+      low: { width: 640, height: 360, frameRate: 15 },
+      medium: { width: 1280, height: 720, frameRate: 25 },
+      high: { width: 1920, height: 1080, frameRate: 30 },
+    }
+    const preset = presets[level]
+
+    // Update store constraints for future getUserMedia
+    const mc = webrtcStore.mediaConstraints
+    if (mc && mc.video) {
+      mc.video.width = { ideal: preset.width, max: preset.width }
+      mc.video.height = { ideal: preset.height, max: preset.height }
+      mc.video.frameRate = { ideal: preset.frameRate, max: preset.frameRate }
+    }
+
+    // Apply to current local video track
+    const stream = webrtcStore.localStream
+    if (stream && stream.getVideoTracks && stream.getVideoTracks().length > 0) {
+      const track = stream.getVideoTracks()[0]
+      if (track && track.applyConstraints) {
+        await track.applyConstraints({
+          width: { ideal: preset.width, max: preset.width },
+          height: { ideal: preset.height, max: preset.height },
+          frameRate: { ideal: preset.frameRate, max: preset.frameRate },
+        })
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to apply adaptive video level', level, err)
   }
 }
 
@@ -1220,19 +1454,15 @@ const handleToggleScreenShare = async () => {
           console.log('Screen share track added to SFU peer connection (fallback)')
           
           // Create new offer to negotiate screen share
-          const offer = await sfuPc.createOffer()
-          await sfuPc.setLocalDescription(offer)
-          // Send offer via WebSocket
-          if (webrtcStore.sfuWebSocket && webrtcStore.sfuWebSocket.readyState === WebSocket.OPEN) {
-            webrtcStore.sfuWebSocket.send(JSON.stringify({
-              type: 'offer',
-              room_id: webrtcStore.sfuRoomId || '',
-              peer_id: webrtcStore.localParticipantId || '',
-              data: {
-                sdp: offer.sdp,
-                type: offer.type,
-              },
-            }))
+          // Create and send offer via SFU manager if available
+          if (webrtcStore.sfuManager && typeof webrtcStore.sfuManager.createAndSendOffer === 'function') {
+            await webrtcStore.sfuManager.createAndSendOffer().catch((error) => {
+              console.error('Failed to create/send SFU offer via manager:', error)
+            })
+          } else {
+            const offer = await sfuPc.createOffer()
+            await sfuPc.setLocalDescription(offer)
+            // Fallback: avoid direct WebSocket access if possible; rely on manager when available
           }
         }
       } else if (!webrtcStore.sfuMode && webrtcStore.peerConnections && webrtcStore.peerConnections.size > 0) {
@@ -1286,21 +1516,6 @@ const handleToggleScreenShare = async () => {
       }
     }
   }
-}
-
-const onScreenShareStarted = async ({ session, stream }) => {
-  console.log('Screen share started:', session)
-  // Controller already handles this, but we can add peer connection logic if needed
-  if (peerConnection.value && stream) {
-    stream.getTracks().forEach(track => {
-      peerConnection.value.addTrack(track, stream)
-    })
-  }
-}
-
-const onScreenShareStopped = async ({ session }) => {
-  console.log('Screen share stopped:', session)
-  // Controller already handles stopping
 }
 
 // Recording handlers - use controller
@@ -1364,6 +1579,17 @@ watch(showChat, (isVisible) => {
   }
 })
 
+// Unpin participant automatically if they leave the call
+watch(
+  () => webrtcStore.remoteParticipants,
+  (participants) => {
+    if (pinnedParticipantId.value && !participants.some((p) => p.id === pinnedParticipantId.value)) {
+      pinnedParticipantId.value = null
+    }
+  },
+  { deep: false },
+)
+
 // Watch for stream changes and video enabled state
 watch(
   () => [webrtcStore.localStream, webrtcStore.isVideoEnabled],
@@ -1390,9 +1616,20 @@ watch(
           })
           
           // Ensure video plays
-          localVideoRef.value.play().catch(err => {
-            console.warn('Failed to autoplay local video:', err)
-          })
+          if (!document.contains(localVideoRef.value)) {
+            return
+          }
+          const playPromise = localVideoRef.value.play()
+          if (playPromise !== undefined) {
+            playPromise.catch(err => {
+              const msg = String(err?.message || '')
+              // Ignore expected interruptions during layout/stream changes
+              if (/interrupted|removed from the document|autoplay/i.test(msg)) {
+                return
+              }
+              console.warn('Failed to autoplay local video:', err)
+            })
+          }
         } else {
           // Stream exists but video track is disabled or not live
           localVideoRef.value.srcObject = null
@@ -1506,20 +1743,7 @@ watch(
 // Update call duration
 // Duration tracking is now handled by callState controller
 
-// Click outside directive
-const vClickOutside = {
-  mounted(el, binding) {
-    el._clickOutside = (event) => {
-      if (!(el === event.target || el.contains(event.target))) {
-        binding.value()
-      }
-    }
-    document.addEventListener('click', el._clickOutside)
-  },
-  unmounted(el) {
-    document.removeEventListener('click', el._clickOutside)
-  },
-}
+// Click outside directive removed (unused)
 
 // Lifecycle
 // Update chat context when room info or websocket changes
@@ -1560,27 +1784,64 @@ onUnmounted(async () => {
   videoCall.reset()
   chat.reset()
 })
+
+// Busy device detection for error banner
+const isDeviceBusyError = computed((): boolean => {
+  const msg = mediaError.value || ''
+  return /already in use|NotReadableError/i.test(String(msg))
+})
+
+// Fallback handlers: audio-only or video-only initialization
+const joinWithAudioOnly = async (): Promise<void> => {
+  try {
+    // Отключаем видео, включаем аудио с безопасными дефолтами (через контроллер)
+    await videoCall.media.updateMediaConstraints({
+      video: false,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    })
+    mediaError.value = null
+  } catch (err) {
+    console.error('Failed to join with audio only:', err)
+    mediaError.value = err instanceof Error ? err.message : 'Failed to initialize audio only'
+  }
+}
+
+const joinWithVideoOnly = async (): Promise<void> => {
+  try {
+    // Отключаем аудио, включаем видео с безопасными дефолтами (через контроллер)
+    await videoCall.media.updateMediaConstraints({
+      video: {
+        width: { ideal: 1280, max: 1920 },
+        height: { ideal: 720, max: 1080 },
+        frameRate: { ideal: 30, max: 60 },
+      },
+      audio: false,
+    })
+    mediaError.value = null
+  } catch (err) {
+    console.error('Failed to join with video only:', err)
+    mediaError.value = err instanceof Error ? err.message : 'Failed to initialize video only'
+  }
+}
 </script>
 
 <style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease-out, transform 0.25s ease-out;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
 .mirror {
   transform: scaleX(-1);
-}
-
-.control-button {
-  @apply p-4 rounded-full shadow-lg transition-all duration-200 hover:scale-105 active:scale-95;
-}
-
-.control-button-active {
-  @apply bg-green-500 hover:bg-green-600 text-white;
-}
-
-.control-button-inactive {
-  @apply bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200;
-}
-
-.control-button-danger {
-  @apply bg-red-500 hover:bg-red-600 text-white;
 }
 
 /* Animations */

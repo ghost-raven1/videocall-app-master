@@ -20,13 +20,13 @@
         @click="showSettings = false"
       >
         <div class="card w-full max-w-lg p-6" @click.stop>
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          <h3 class="text-lg font-semibold text-warp-text mb-4">
             Audio Settings
           </h3>
 
           <!-- Microphone Selection -->
           <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label class="block text-sm font-medium text-warp-muted mb-2">
               Microphone
             </label>
             <select
@@ -42,7 +42,7 @@
 
           <!-- Microphone Test -->
           <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label class="block text-sm font-medium text-warp-muted mb-2">
               Microphone Test
             </label>
             <div class="flex items-center space-x-3">
@@ -50,21 +50,21 @@
                 @click="toggleMicTest"
                 :class="[
                   'px-4 py-2 rounded-lg transition-colors',
-                  isTesting ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-blue-500 hover:bg-blue-600 text-white'
+                  isTesting ? 'bg-red-500 hover:bg-red-600 text-white' : 'bg-warp-accent hover:bg-warp-accent/90 text-white'
                 ]"
               >
                 {{ isTesting ? 'Stop Test' : 'Test Microphone' }}
               </button>
               
               <!-- Volume Meter -->
-              <div class="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-4 overflow-hidden">
+              <div class="flex-1 bg-warp-surfaceAlt rounded-full h-4 overflow-hidden">
                 <div
                   class="h-full bg-green-500 transition-all duration-100"
                   :style="{ width: `${audioLevel}%` }"
                 ></div>
               </div>
               
-              <span class="text-sm text-gray-600 dark:text-gray-400 w-12">
+              <span class="text-sm text-warp-muted w-12">
                 {{ Math.round(audioLevel) }}%
               </span>
             </div>
@@ -72,11 +72,11 @@
 
           <!-- Sensitivity (Gain) -->
           <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label class="block text-sm font-medium text-warp-muted mb-2">
               Microphone Sensitivity
             </label>
             <div class="flex items-center space-x-3">
-              <svg class="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+              <svg class="w-4 h-4 text-warp-muted" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path>
               </svg>
               <input
@@ -87,11 +87,11 @@
                 max="100"
                 class="flex-1"
               />
-              <svg class="w-5 h-5 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
+              <svg class="w-5 h-5 text-warp-muted" fill="currentColor" viewBox="0 0 20 20">
                 <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"></path>
                 <path d="M10 2a8 8 0 100 16 8 8 0 000-16z"></path>
               </svg>
-              <span class="text-sm text-gray-600 dark:text-gray-400 w-12">
+              <span class="text-sm text-warp-muted w-12">
                 {{ sensitivity }}%
               </span>
             </div>
@@ -100,7 +100,7 @@
           <!-- Noise Suppression -->
           <div class="mb-6">
             <label class="flex items-center justify-between">
-              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <span class="text-sm font-medium text-warp-muted">
                 Noise Suppression
               </span>
               <input
@@ -110,7 +110,7 @@
                 class="toggle-checkbox"
               />
             </label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p class="text-xs text-warp-muted mt-1">
               Reduces background noise
             </p>
           </div>
@@ -118,7 +118,7 @@
           <!-- Echo Cancellation -->
           <div class="mb-6">
             <label class="flex items-center justify-between">
-              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <span class="text-sm font-medium text-warp-muted">
                 Echo Cancellation
               </span>
               <input
@@ -128,7 +128,7 @@
                 class="toggle-checkbox"
               />
             </label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p class="text-xs text-warp-muted mt-1">
               Prevents audio feedback
             </p>
           </div>
@@ -136,7 +136,7 @@
           <!-- Auto Gain Control -->
           <div class="mb-6">
             <label class="flex items-center justify-between">
-              <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <span class="text-sm font-medium text-warp-muted">
                 Auto Gain Control
               </span>
               <input
@@ -146,14 +146,14 @@
                 class="toggle-checkbox"
               />
             </label>
-            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            <p class="text-xs text-warp-muted mt-1">
               Automatically adjusts volume
             </p>
           </div>
 
           <!-- Audio Quality Preset -->
           <div class="mb-6">
-            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <label class="block text-sm font-medium text-warp-muted mb-2">
               Audio Quality
             </label>
             <div class="grid grid-cols-3 gap-2">
@@ -164,8 +164,8 @@
                 :class="[
                   'px-3 py-2 rounded-lg text-sm transition-colors',
                   currentPreset === preset.value
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                    ? 'bg-warp-accent text-white shadow-warp-sm'
+                    : 'bg-warp-surfaceAlt text-warp-muted hover:bg-warp-surface'
                 ]"
               >
                 {{ preset.label }}
@@ -177,7 +177,7 @@
           <div class="flex justify-between items-center">
             <button
               @click="resetToDefaults"
-              class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+              class="text-sm text-warp-muted hover:text-warp-text"
             >
               Reset to Defaults
             </button>
@@ -415,17 +415,17 @@ onUnmounted(() => {
 
 <style scoped>
 .settings-button {
-  @apply p-2 rounded-full hover:bg-gray-700 transition-colors;
+  @apply p-2 rounded-full hover:bg-warp-surfaceAlt transition-colors text-warp-muted;
 }
 
 .toggle-checkbox {
-  @apply w-12 h-6 rounded-full relative cursor-pointer appearance-none bg-gray-300 dark:bg-gray-600;
-  @apply checked:bg-blue-500 transition-colors;
+  @apply w-12 h-6 rounded-full relative cursor-pointer appearance-none bg-warp-surfaceAlt;
+  @apply checked:bg-warp-accent2 transition-colors;
 }
 
 .toggle-checkbox::after {
   content: '';
-  @apply absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform;
+  @apply absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform;
 }
 
 .toggle-checkbox:checked::after {

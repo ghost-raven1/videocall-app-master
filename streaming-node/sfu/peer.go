@@ -17,6 +17,7 @@ type Peer struct {
 	tracksMutex      sync.RWMutex
 	onTrackHandlers  []func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
 	onICEHandlers    []func(webrtc.ICEConnectionState)
+	onNegotiationNeededHandlers []func()
 	closed           bool
 	closedMutex      sync.RWMutex
 }
@@ -40,6 +41,18 @@ func NewPeer(peerID string, pc *webrtc.PeerConnection, room *Room, logger *logru
 		peer.handleICEConnectionStateChange(state)
 	})
 
+	// Handle negotiation needed when tracks are added
+	pc.OnNegotiationNeeded(func() {
+		peer.logger.WithFields(logrus.Fields{
+			"peerID": peer.id,
+		}).Info("Negotiation needed - new track added")
+		
+		// Call negotiation needed handlers
+		for _, handler := range peer.onNegotiationNeededHandlers {
+			handler()
+		}
+	})
+
 	return peer
 }
 
@@ -48,8 +61,11 @@ func (p *Peer) ID() string {
 	return p.id
 }
 
-// AddTrack adds a remote track to be forwarded to this peer
-func (p *Peer) AddTrack(remoteTrack *webrtc.TrackRemote) error {
+// AddTrack adds a remote track to be forwarded to this peer.
+// originPeerID is the ID of the peer that originally sent this track.
+// We use it in the track/stream IDs so that SFU clients can reliably
+// determine which logical participant a track belongs to.
+func (p *Peer) AddTrack(remoteTrack *webrtc.TrackRemote, originPeerID string) error {
 	p.tracksMutex.Lock()
 	defer p.tracksMutex.Unlock()
 
@@ -62,32 +78,60 @@ func (p *Peer) AddTrack(remoteTrack *webrtc.TrackRemote) error {
 		return nil // Track already added
 	}
 
-	// Create a track to send to this peer
+	// Create a track to send to this peer. We intentionally suffix
+	// the IDs with the ORIGIN peer ID (sender), not with this peer's
+	// ID, so that downstream WebRTC clients can extract the
+	// participant identity from stream.id / track.label.
 	track, err := webrtc.NewTrackLocalStaticRTP(
 		remoteTrack.Codec().RTPCodecCapability,
-		remoteTrack.ID()+"_"+p.id,
-		remoteTrack.StreamID()+"_"+p.id,
+		remoteTrack.ID()+"_"+originPeerID,
+		remoteTrack.StreamID()+"_"+originPeerID,
 	)
 	if err != nil {
 		return err
 	}
 
 	// Add track to peer connection
-	if _, err := p.pc.AddTrack(track); err != nil {
+	sender, err := p.pc.AddTrack(track)
+	if err != nil {
 		return err
 	}
 
 	p.tracks[remoteTrack.ID()] = track
 
 	p.logger.WithFields(logrus.Fields{
-		"peerID":    p.id,
-		"trackID":   remoteTrack.ID(),
-		"streamID":  remoteTrack.StreamID(),
-		"codec":     remoteTrack.Codec().MimeType,
-	}).Debug("Added track to peer")
+		"peerID":         p.id,
+		"originPeerID":   originPeerID,
+		"trackID":        remoteTrack.ID(),
+		"streamID":       remoteTrack.StreamID(),
+		"codec":          remoteTrack.Codec().MimeType,
+		"signalingState": p.pc.SignalingState().String(),
+		"connectionState": p.pc.ConnectionState().String(),
+	}).Info("Added track to peer connection")
 
 	// Start forwarding RTP packets
 	go p.forwardTrack(remoteTrack, track)
+
+	// If connection is already established, trigger renegotiation
+	// OnNegotiationNeeded will be called automatically by WebRTC
+	// We just need to handle it in the server code
+	signalingState := p.pc.SignalingState()
+	if signalingState == webrtc.SignalingStateStable {
+		p.logger.WithFields(logrus.Fields{
+			"peerID":  p.id,
+			"trackID": remoteTrack.ID(),
+		}).Info("Connection stable, OnNegotiationNeeded should be triggered")
+		// The OnNegotiationNeeded handler will be called automatically by WebRTC
+	} else {
+		p.logger.WithFields(logrus.Fields{
+			"peerID":         p.id,
+			"trackID":        remoteTrack.ID(),
+			"signalingState": signalingState.String(),
+		}).Info("Track added before connection stable, will be included in next SDP")
+	}
+
+	// Store sender for potential removal later
+	_ = sender
 
 	return nil
 }
@@ -141,6 +185,11 @@ func (p *Peer) OnICEConnectionStateChange(handler func(webrtc.ICEConnectionState
 	p.onICEHandlers = append(p.onICEHandlers, handler)
 }
 
+// OnNegotiationNeeded adds a handler for when negotiation is needed
+func (p *Peer) OnNegotiationNeeded(handler func()) {
+	p.onNegotiationNeededHandlers = append(p.onNegotiationNeededHandlers, handler)
+}
+
 // GetPeerConnection returns the underlying peer connection
 func (p *Peer) GetPeerConnection() *webrtc.PeerConnection {
 	return p.pc
@@ -190,13 +239,21 @@ func (p *Peer) forwardTrack(remoteTrack *webrtc.TrackRemote, localTrack *webrtc.
 // handleTrack handles incoming tracks from the peer connection
 func (p *Peer) handleTrack(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 	p.logger.WithFields(logrus.Fields{
-		"peerID":  p.id,
-		"trackID": track.ID(),
-		"kind":    track.Kind(),
-	}).Debug("Received track from peer")
+		"peerID":    p.id,
+		"trackID":   track.ID(),
+		"kind":      track.Kind(),
+		"streamID":  track.StreamID(),
+		"codec":     track.Codec().MimeType,
+		"handlers":  len(p.onTrackHandlers),
+	}).Info("Received track from peer connection")
 
 	// Call track handlers
-	for _, handler := range p.onTrackHandlers {
+	for i, handler := range p.onTrackHandlers {
+		p.logger.WithFields(logrus.Fields{
+			"peerID":  p.id,
+			"trackID": track.ID(),
+			"handler": i,
+		}).Debug("Calling track handler")
 		handler(track, receiver)
 	}
 }

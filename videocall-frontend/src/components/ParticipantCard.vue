@@ -2,6 +2,7 @@
   <div
     class="participant-card"
     :class="cardClasses"
+    :data-audio-level="audioLevelClass"
     @click="handleCardClick"
   >
     <!-- Video element -->
@@ -232,8 +233,8 @@ const avatarClasses = computed(() => {
   return [
     `avatar-${props.size}`,
     {
-      'bg-gray-600': !props.participant.isVideoEnabled,
-      'bg-red-600': !props.participant.isAudioEnabled && !props.participant.isVideoEnabled
+      'bg-warp-surfaceAlt/80': !props.participant.isVideoEnabled,
+      'bg-red-600/80': !props.participant.isAudioEnabled && !props.participant.isVideoEnabled
     }
   ]
 })
@@ -325,10 +326,27 @@ watch(() => props.participant.stream, (newStream) => {
         participantName: props.participant.name
       })
       
-      // Ensure video plays
-      videoRef.value.play().catch(err => {
-        console.warn(`Failed to autoplay video for participant ${props.participant.id}:`, err)
-      })
+      // Ensure video plays; guard against AbortError due to rapid src changes
+      try {
+        // Hint the media element to refresh its internal state
+        if (typeof videoRef.value.load === 'function') {
+          videoRef.value.load()
+        }
+        const playPromise = videoRef.value.play()
+        if (playPromise && typeof playPromise.catch === 'function') {
+          playPromise.catch((err) => {
+            console.warn(`Failed to autoplay video for participant ${props.participant.id}:`, err)
+            // Retry once when data is ready
+            const retryPlay = () => {
+              if (!videoRef.value) return
+              videoRef.value.play().catch(() => {})
+            }
+            videoRef.value.addEventListener('loadeddata', retryPlay, { once: true })
+          })
+        }
+      } catch (err) {
+        console.warn(`Video play attempt errored for ${props.participant.id}:`, err)
+      }
     } else if (videoRef.value && !newStream) {
       videoRef.value.srcObject = null
       console.log(`ParticipantCard: Removed stream for ${props.participant.id}`)
@@ -356,46 +374,30 @@ watch(() => props.participant.stream, (newStream) => {
 }, { immediate: true })
 
 // Watch for audio enabled state changes
-watch(() => props.participant.isAudioEnabled, (isEnabled) => {
-  if (!props.isLocal && audioRef.value) {
-    audioRef.value.muted = !isEnabled
-    if (isEnabled && props.participant.stream) {
-      // Ensure audio plays when enabled
-      audioRef.value.play().catch(err => {
-        console.warn(`Failed to play audio after enabling for ${props.participant.id}:`, err)
-      })
+watch(
+  () => props.participant.isAudioEnabled,
+  (isEnabled) => {
+    if (!props.isLocal && audioRef.value) {
+      audioRef.value.muted = !isEnabled
+      if (isEnabled && props.participant.stream) {
+        // Ensure audio plays when enabled
+        audioRef.value.play().catch((err) => {
+          console.warn(
+            `Failed to play audio after enabling for ${props.participant.id}:`,
+            err,
+          )
+        })
+      }
+      console.log(
+        `ParticipantCard: Audio ${isEnabled ? 'unmuted' : 'muted'} for ${props.participant.id}`,
+      )
     }
-    console.log(`ParticipantCard: Audio ${isEnabled ? 'unmuted' : 'muted'} for ${props.participant.id}`)
-  }
-})
+  },
+  { immediate: true },
+)
 
 // Lifecycle
-onMounted(() => {
-  if (props.participant.stream) {
-    if (videoRef.value) {
-      videoRef.value.srcObject = props.participant.stream
-      console.log(`ParticipantCard: Mounted with stream for ${props.participant.id}`)
-      
-      // Ensure video plays
-      videoRef.value.play().catch(err => {
-        console.warn(`Failed to autoplay video on mount for participant ${props.participant.id}:`, err)
-      })
-    }
-    
-    // Setup audio for remote participants
-    if (!props.isLocal && audioRef.value) {
-      audioRef.value.srcObject = props.participant.stream
-      audioRef.value.muted = !props.participant.isAudioEnabled
-      audioRef.value.play().catch(err => {
-        console.warn(`Failed to autoplay audio on mount for participant ${props.participant.id}:`, err)
-      })
-      console.log(`ParticipantCard: Audio setup on mount for ${props.participant.id}`, {
-        muted: audioRef.value.muted,
-        isAudioEnabled: props.participant.isAudioEnabled
-      })
-    }
-  }
-})
+// Avoid duplicating stream setup here; watcher above runs immediately
 
 onUnmounted(() => {
   if (videoRef.value) {
@@ -409,12 +411,12 @@ onUnmounted(() => {
 
 <style scoped>
 .participant-card {
-  @apply relative bg-gray-900 rounded-lg overflow-hidden transition-all duration-300;
+  @apply relative bg-warp-surface rounded-lg overflow-hidden transition-all duration-300 border border-warp-border/60 shadow-sm;
   aspect-ratio: 16/9;
 }
 
 .participant-card:hover {
-  @apply shadow-xl;
+  @apply shadow-warp-md -translate-y-0.5;
 }
 
 /* Speaking indicator - pulsing border */
@@ -493,7 +495,7 @@ onUnmounted(() => {
 
 /* Avatar styles */
 .participant-avatar {
-  @apply w-full h-full flex items-center justify-center;
+  @apply w-full h-full flex items-center justify-center bg-warp-surfaceAlt/60;
 }
 
 .avatar-content {
@@ -501,11 +503,11 @@ onUnmounted(() => {
 }
 
 .avatar-icon {
-  @apply w-12 h-12 text-gray-300 mb-2;
+  @apply w-12 h-12 text-warp-muted mb-2;
 }
 
 .participant-name {
-  @apply text-white text-sm font-medium;
+  @apply text-warp-text text-sm font-medium;
 }
 
 /* Connection indicator */
@@ -532,7 +534,7 @@ onUnmounted(() => {
 }
 
 .connection-text {
-  @apply text-white font-medium;
+  @apply text-warp-muted font-medium;
 }
 
 /* Participant info overlay */
@@ -570,7 +572,7 @@ onUnmounted(() => {
 }
 
 .audio-bar {
-  @apply w-1 bg-gray-400 transition-all duration-150;
+  @apply w-1 bg-warp-surfaceAlt transition-all duration-150;
   height: 12px;
 }
 
@@ -608,7 +610,7 @@ onUnmounted(() => {
 }
 
 .quality-text {
-  @apply text-white text-xs;
+  @apply text-warp-muted text-xs;
 }
 
 /* Media controls */

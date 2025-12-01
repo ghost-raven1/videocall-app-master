@@ -1,9 +1,9 @@
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-4">
+  <div class="min-h-screen flex items-center justify-center px-4 text-warp-text">
     <div class="card w-full max-w-md p-8 animate-fade-in">
       <div class="text-center mb-8">
         <div
-          class="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4"
+          class="w-16 h-16 bg-warp-accent rounded-full flex items-center justify-center mx-auto mb-4 border border-warp-border"
         >
           <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -14,22 +14,23 @@
             ></path>
           </svg>
         </div>
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-2">{{ $t('joinRoom.joinTitle') }}</h1>
-        <p class="text-gray-600 dark:text-gray-300">
-          {{ $t('joinRoom.roomCode') }}: <span class="font-mono font-bold text-lg">{{ roomCode }}</span>
+        <h1 class="text-2xl font-semibold text-warp-text mb-2">{{ $t('joinRoom.joinTitle') }}</h1>
+        <p class="text-warp-muted">
+          {{ $t('joinRoom.roomCode') }}:
+          <span class="code-badge ml-1">{{ roomCode }}</span>
         </p>
       </div>
 
       <div v-if="isJoining" class="text-center py-8">
         <div
-          class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"
+          class="animate-spin rounded-full h-12 w-12 border-b-2 border-warp-accent mx-auto mb-4"
         ></div>
-        <p class="text-gray-600 dark:text-gray-300">{{ $t('joinRoom.joiningRoom') }}</p>
+        <p class="text-warp-muted">{{ $t('joinRoom.joiningRoom') }}</p>
       </div>
 
       <div v-else-if="error" class="text-center py-8">
         <div
-          class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"
+          class="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500/40"
         >
           <svg class="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -40,8 +41,8 @@
             ></path>
           </svg>
         </div>
-        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">{{ $t('joinRoom.roomNotFound') }}</h3>
-        <p class="text-gray-600 dark:text-gray-300 mb-4">{{ error }}</p>
+        <h3 class="text-lg font-semibold text-warp-text mb-2">{{ $t('joinRoom.roomNotFound') }}</h3>
+        <p class="text-warp-muted mb-4">{{ error }}</p>
         <button @click="$router.push('/')" class="btn-primary px-6 py-2">{{ $t('app.backToDashboard') }}</button>
       </div>
 
@@ -55,7 +56,7 @@
         <div class="text-center">
           <button
             @click="$router.push('/')"
-            class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            class="text-warp-muted hover:text-warp-text transition-colors"
           >
             {{ $t('app.backToDashboard') }}
           </button>
@@ -65,27 +66,28 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useRoomsStore } from '../stores/rooms'
+import { utils } from '@/services/utils'
 
 const route = useRoute()
 const router = useRouter()
 const roomsStore = useRoomsStore()
 
-const roomCode = ref('')
-const isJoining = ref(false)
-const error = ref('')
+const roomCode = ref<string>('')
+const isJoining = ref<boolean>(false)
+const error = ref<string>('')
 
 onMounted(() => {
-  roomCode.value = route.params.shortCode
+  roomCode.value = utils.normalizeRouteParam(route.params.shortCode)
   if (!roomCode.value) {
     router.push('/')
   }
 })
 
-const joinRoom = async () => {
+const joinRoom = async (): Promise<void> => {
   try {
     isJoining.value = true
     const result = await roomsStore.joinRoom(roomCode.value)

@@ -17,7 +17,7 @@
       <div v-else class="waiting-state">
         <div class="waiting-content">
           <div class="waiting-icon">
-            <svg class="w-16 h-16 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-16 h-16 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
             </svg>
           </div>
@@ -107,7 +107,7 @@
         <!-- Main grid area -->
         <div class="sidebar-main-grid">
           <ParticipantCard
-            v-for="participant in remoteParticipants.slice(0, Math.min(remoteParticipants.length, 6))"
+            v-for="participant in visibleRemoteParticipants.slice(0, Math.min(visibleRemoteParticipants.length, 6))"
             :key="participant.id"
             :participant="participant"
             :is-local="false"
@@ -120,7 +120,7 @@
         </div>
         
         <!-- Sidebar with remaining participants -->
-        <div class="sidebar-participants" v-if="remoteParticipants.length > 6 || webrtcStore.hasLocalVideo">
+        <div class="sidebar-participants" v-if="visibleRemoteParticipants.length > 6 || webrtcStore.hasLocalVideo">
           <ParticipantCard
             v-if="webrtcStore.hasLocalVideo"
             :participant="localParticipant"
@@ -130,7 +130,7 @@
             class="grid-item"
           />
           <ParticipantCard
-            v-for="participant in remoteParticipants.slice(6)"
+            v-for="participant in visibleRemoteParticipants.slice(6)"
             :key="participant.id"
             :participant="participant"
             :is-local="false"
@@ -143,7 +143,7 @@
         </div>
       </template>
 
-      <!-- Grid/Auto layout: Standard grid -->
+        <!-- Grid/Auto layout: Standard grid -->
       <template v-else>
         <!-- Local participant (always in bottom right if video is enabled) -->
         <ParticipantCard
@@ -156,16 +156,19 @@
           :class="localParticipantPosition"
         />
 
-        <!-- Remote participants -->
+        <!-- Remote participants (paginated) -->
         <ParticipantCard
-          v-for="participant in remoteParticipants"
+          v-for="participant in visibleRemoteParticipants"
           :key="participant.id"
           :participant="participant"
           :is-local="false"
           :size="participantCardSize"
           :show-controls="true"
           class="grid-item remote-participant"
-          :class="{ 'dominant-speaker': participant.isDominantSpeaker }"
+          :class="{
+            'dominant-speaker': participant.isDominantSpeaker,
+            'pinned-participant': participant.id === pinnedParticipantId,
+          }"
           @toggle-video="onToggleParticipantVideo"
           @toggle-audio="onToggleParticipantAudio"
         />
@@ -177,13 +180,42 @@
         class="participants-count-overlay"
       >
         <div class="participants-count">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-          </svg>
-          {{ participantCount }}
+          <div class="flex items-center space-x-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+            </svg>
+            <span>{{ participantCount }}</span>
+          </div>
+          <div v-if="hiddenCount > 0" class="text-[10px] opacity-80 mt-0.5">
+            +{{ hiddenCount }} hidden
+          </div>
         </div>
       </div>
-    </div>
+
+        <!-- Simple pagination controls when we have multiple pages -->
+        <div
+          v-if="totalPages > 1"
+          class="participants-pagination mt-2"
+        >
+          <button
+            class="pagination-btn"
+            :disabled="currentPage <= 1"
+            @click="currentPage = Math.max(1, currentPage - 1)"
+          >
+            ‹
+          </button>
+          <span class="pagination-label">
+            Page {{ currentPage }} / {{ totalPages }}
+          </span>
+          <button
+            class="pagination-btn"
+            :disabled="currentPage >= totalPages"
+            @click="currentPage = Math.min(totalPages, currentPage + 1)"
+          >
+            ›
+          </button>
+        </div>
+      </div>
 
     <!-- Loading overlay for grid transitions -->
     <div
@@ -220,7 +252,15 @@ const props = defineProps({
     type: String,
     default: 'auto', // 'auto', 'grid', 'focus', 'sidebar'
     validator: (value) => ['auto', 'grid', 'focus', 'sidebar'].includes(value)
-  }
+  },
+  pinnedParticipantId: {
+    type: String,
+    default: ''
+  },
+  maxParticipantsPerPage: {
+    type: Number,
+    default: 9,
+  },
 })
 
 // Emits
@@ -232,18 +272,51 @@ const isTransitioning = ref(false)
 // Computed properties
 const participantCount = computed(() => webrtcStore.participantCount)
 
-// Filter participants: show all participants, but prioritize those with video enabled
+// Filter participants: show all participants, but prioritize pinned and those with video enabled
 const remoteParticipants = computed(() => {
   const participants = webrtcStore.remoteParticipants || []
-  // Sort: participants with video enabled first, then by connection state
+  const pinnedId = props.pinnedParticipantId
+  // Sort: pinned first, then participants with video enabled, then by connection state
   return [...participants].sort((a, b) => {
-    // First sort by video enabled
+    if (pinnedId) {
+      if (a.id === pinnedId && b.id !== pinnedId) return -1
+      if (b.id === pinnedId && a.id !== pinnedId) return 1
+    }
+    // Then sort by video enabled
     if (a.isVideoEnabled && !b.isVideoEnabled) return -1
     if (!a.isVideoEnabled && b.isVideoEnabled) return 1
     // Then by connection state
-    const stateOrder = { 'connected': 0, 'connecting': 1, 'new': 2, 'disconnected': 3, 'failed': 4 }
+    const stateOrder = { connected: 0, connecting: 1, new: 2, disconnected: 3, failed: 4 }
     return (stateOrder[a.connectionState] || 5) - (stateOrder[b.connectionState] || 5)
   })
+})
+
+// Pagination for large rooms based on maxParticipantsPerPage
+const currentPage = ref(1)
+
+const maxPerPage = computed(() => {
+  const raw = Number(props.maxParticipantsPerPage) || 9
+  return Math.max(1, raw)
+})
+
+const totalPages = computed(() => {
+  if (remoteParticipants.value.length === 0) return 1
+  return Math.max(1, Math.ceil(remoteParticipants.value.length / maxPerPage.value))
+})
+
+const visibleRemoteParticipants = computed(() => {
+  if (remoteParticipants.value.length <= maxPerPage.value) {
+    return remoteParticipants.value
+  }
+  const page = Math.min(currentPage.value, totalPages.value)
+  const start = (page - 1) * maxPerPage.value
+  return remoteParticipants.value.slice(start, start + maxPerPage.value)
+})
+
+const hiddenCount = computed(() => {
+  const total = remoteParticipants.value.length
+  const visible = visibleRemoteParticipants.value.length
+  return Math.max(0, total - visible)
 })
 
 const localParticipant = computed(() => ({
@@ -313,6 +386,10 @@ const onToggleParticipantAudio = (participantId) => {
 
 const updateGridLayout = () => {
   const count = participantCount.value
+  // Reset page when participant count shrinks
+  if (currentPage.value > totalPages.value) {
+    currentPage.value = totalPages.value
+  }
   isTransitioning.value = true
 
   // Calculate optimal grid dimensions
@@ -338,6 +415,12 @@ watch(participantCount, () => {
   updateGridLayout()
 })
 
+watch(maxPerPage, () => {
+  // Reset to first page when page size changes
+  currentPage.value = 1
+  updateGridLayout()
+})
+
 // Watch for layout changes to trigger re-render
 watch(() => props.layout, (newLayout, oldLayout) => {
   console.log('Layout prop changed in ParticipantGrid:', { old: oldLayout, new: newLayout })
@@ -360,7 +443,11 @@ onUnmounted(() => {
 <style scoped>
 .participant-grid-container {
   @apply relative w-full h-full overflow-hidden;
-  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+  /* Warp-style deep space gradient instead of flat gray */
+  background:
+    radial-gradient(circle at top, rgba(59, 130, 246, 0.35), transparent 55%),
+    radial-gradient(circle at bottom, rgba(147, 51, 234, 0.25), transparent 55%),
+    #020617;
 }
 
 .single-participant {
@@ -374,7 +461,10 @@ onUnmounted(() => {
 
 .multi-participants {
   @apply w-full h-full relative;
-  background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+  background:
+    radial-gradient(circle at top, rgba(59, 130, 246, 0.35), transparent 55%),
+    radial-gradient(circle at bottom, rgba(147, 51, 234, 0.25), transparent 55%),
+    #020617;
 }
 
 .grid-small {
@@ -445,12 +535,40 @@ onUnmounted(() => {
   @apply ring-2 ring-yellow-400;
 }
 
+.grid-item.pinned-participant {
+  @apply ring-2 ring-emerald-400;
+}
+
 .participants-count-overlay {
   @apply absolute top-4 right-4 z-30;
 }
 
 .participants-count {
-  @apply bg-black bg-opacity-50 text-white px-3 py-2 rounded-lg text-sm flex items-center space-x-2;
+  @apply bg-warp-surfaceAlt/90 text-warp-text px-3 py-2 rounded-lg text-xs flex flex-col items-end space-y-0.5 border border-warp-border/70 shadow-warp-sm;
+}
+
+.participants-pagination {
+  @apply flex items-center justify-end space-x-2 text-xs text-warp-muted pr-1;
+}
+
+.pagination-btn {
+  @apply px-2 py-1 rounded bg-warp-surfaceAlt hover:bg-warp-surface text-warp-text border border-warp-border/70 disabled:opacity-40 disabled:cursor-not-allowed;
+}
+
+.pagination-label {
+  @apply px-2 py-1 bg-warp-surfaceAlt/80 text-warp-text rounded border border-warp-border/60;
+}
+
+.participants-pagination {
+  @apply flex items-center justify-end space-x-2 text-xs text-white pr-1;
+}
+
+.pagination-btn {
+  @apply px-2 py-1 rounded bg-black bg-opacity-40 hover:bg-opacity-70 disabled:opacity-40 disabled:cursor-not-allowed;
+}
+
+.pagination-label {
+  @apply px-2 py-1 bg-black bg-opacity-30 rounded;
 }
 
 .waiting-state {
@@ -462,24 +580,24 @@ onUnmounted(() => {
 }
 
 .waiting-icon {
-  @apply w-32 h-32 bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-6;
+  @apply w-32 h-32 bg-warp-surfaceAlt rounded-full flex items-center justify-center mx-auto mb-6 shadow-warp-md;
   animation: bounce-gentle 2s ease-in-out infinite;
 }
 
 .waiting-title {
-  @apply text-xl font-medium mb-2;
+  @apply text-xl font-medium mb-2 text-warp-text;
 }
 
 .waiting-subtitle {
-  @apply text-gray-400 mb-4;
+  @apply text-sm text-warp-muted mb-4;
 }
 
 .room-code-display {
-  @apply bg-gray-800 px-4 py-3 rounded-xl inline-block;
+  @apply bg-warp-surfaceAlt px-4 py-3 rounded-xl inline-block border border-warp-border;
 }
 
 .room-code {
-  @apply font-mono font-bold text-2xl tracking-wider text-green-400;
+  @apply font-mono font-bold text-2xl tracking-wider text-warp-accent2;
 }
 
 .grid-transition-overlay {
@@ -493,15 +611,15 @@ onUnmounted(() => {
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .local-participant {
-    width: 120px;
-    height: 90px;
-    bottom: 10px;
-    right: 10px;
+    width: 112px;
+    height: 84px;
+    bottom: 8px;
+    right: 8px;
   }
 
   .participants-count-overlay {
-    top: 2px;
-    right: 2px;
+    top: 4px;
+    right: 4px;
   }
 
   .grid-small,
@@ -509,6 +627,16 @@ onUnmounted(() => {
   .grid-large {
     gap: 0.5rem;
     padding: 0.5rem;
+  }
+
+  .focus-layout,
+  .sidebar-layout {
+    @apply flex-col;
+  }
+
+  .focus-sidebar,
+  .sidebar-participants {
+    @apply w-full flex-row overflow-x-auto overflow-y-hidden;
   }
 }
 

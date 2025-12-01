@@ -44,11 +44,11 @@
         @click="showRecordingsList = false"
       >
         <div class="card w-full max-w-2xl p-6 max-h-96 overflow-y-auto" @click.stop>
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          <h3 class="text-lg font-semibold text-warp-text mb-4">
             Recordings
           </h3>
 
-          <div v-if="recordings.length === 0" class="text-center py-8 text-gray-500">
+          <div v-if="recordings.length === 0" class="text-center py-8 text-warp-muted">
             No recordings yet
           </div>
 
@@ -56,13 +56,13 @@
             <div
               v-for="recording in recordings"
               :key="recording.id"
-              class="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
+              class="flex items-center justify-between p-3 bg-warp-surfaceAlt/80 rounded-lg border border-warp-border/60"
             >
               <div class="flex-1">
-                <p class="font-medium text-gray-900 dark:text-white">
+                <p class="font-medium text-warp-text">
                   {{ formatDate(recording.started_at) }}
                 </p>
-                <p class="text-sm text-gray-500">
+                <p class="text-sm text-warp-muted">
                   Duration: {{ recording.formatted_duration }} | 
                   Size: {{ recording.file_size_mb }} MB | 
                   Status: {{ recording.status }}
@@ -321,7 +321,7 @@ onUnmounted(() => {
 }
 
 .btn-stop-record {
-  @apply flex items-center space-x-2 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply flex items-center space-x-2 px-4 py-2 bg-warp-surfaceAlt hover:bg-warp-surface text-warp-text rounded-full transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .recording-indicator {

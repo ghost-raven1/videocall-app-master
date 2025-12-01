@@ -2,12 +2,12 @@
   <div class="relative">
     <button
       @click="toggleLanguageMenu"
-      class="flex items-center space-x-2 p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+      class="flex items-center space-x-2 p-2 rounded-md text-warp-muted hover:text-warp-text hover:bg-warp-surfaceAlt transition-colors focus:outline-none focus:ring-2 focus:ring-warp-accent"
       :aria-label="$t('admin.common.language', 'Language')"
       :title="$t('admin.common.language', 'Language')"
     >
       <!-- Current language flag/icon -->
-      <div class="w-6 h-4 rounded-sm overflow-hidden border border-gray-300 dark:border-gray-600">
+      <div class="w-6 h-4 rounded-sm overflow-hidden border border-warp-border/60">
         <img
           :src="currentLanguage.flag"
           :alt="currentLanguage.name"
@@ -16,7 +16,7 @@
       </div>
 
       <!-- Language code -->
-      <span class="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-300">
+      <span class="hidden sm:block text-sm font-medium text-warp-text">
         {{ currentLanguage.code.toUpperCase() }}
       </span>
 
@@ -29,12 +29,12 @@
     <!-- Language dropdown menu -->
     <div
       v-if="showLanguageMenu"
-      class="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-md shadow-lg py-1 z-50 border border-gray-200 dark:border-gray-700"
+      class="absolute right-0 mt-2 w-48 bg-warp-surface rounded-md shadow-warp-md py-1 z-50 border border-warp-border/70"
       role="menu"
       aria-labelledby="language-menu"
     >
-      <div class="px-4 py-2 border-b border-gray-200 dark:border-gray-700">
-        <p class="text-sm font-medium text-gray-900 dark:text-white">
+      <div class="px-4 py-2 border-b border-warp-border/70">
+        <p class="text-sm font-medium text-warp-text">
           {{ $t('admin.common.selectLanguage', 'Select Language') }}
         </p>
       </div>
@@ -43,16 +43,16 @@
         v-for="language in availableLanguages"
         :key="language.code"
         @click="switchLanguage(language.code)"
-        class="flex items-center space-x-3 w-full text-left px-4 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+        class="flex items-center space-x-3 w-full text-left px-4 py-2 text-sm hover:bg-warp-surfaceAlt transition-colors"
         :class="{
-          'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300': language.code === currentLanguageCode,
-          'text-gray-700 dark:text-gray-300': language.code !== currentLanguageCode
+          'bg-warp-accent2/10 text-warp-accent2': language.code === currentLanguageCode,
+          'text-warp-muted': language.code !== currentLanguageCode
         }"
         role="menuitem"
         :aria-current="language.code === currentLanguageCode ? 'true' : 'false'"
       >
         <!-- Language flag -->
-        <div class="w-5 h-4 rounded-sm overflow-hidden border border-gray-300 dark:border-gray-600">
+        <div class="w-5 h-4 rounded-sm overflow-hidden border border-warp-border/60">
           <img
             :src="language.flag"
             :alt="language.name"

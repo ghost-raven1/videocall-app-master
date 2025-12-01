@@ -3,7 +3,7 @@
   <div class="admin-rooms space-y-6">
     <!-- Header -->
     <div class="flex items-center justify-between">
-      <h2 class="text-2xl font-bold text-gray-900 dark:text-white">Управление комнатами</h2>
+      <h2 class="text-2xl font-bold text-warp-text">Управление комнатами</h2>
       <div class="flex space-x-3">
         <button
           @click="showCreateModal = true"
@@ -22,10 +22,10 @@
     </div>
 
     <!-- Filters and Search -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+    <div class="card p-6">
       <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label class="block text-sm font-medium text-warp-muted mb-2">
             Поиск
           </label>
           <input
@@ -33,17 +33,17 @@
             @input="debounceSearch"
             type="text"
             placeholder="Поиск по ID, коду..."
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+            class="w-full px-3 py-2 rounded-lg border border-warp-border bg-warp-surfaceAlt text-warp-text focus:ring-2 focus:ring-warp-accent focus:border-warp-accent"
           />
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label class="block text-sm font-medium text-warp-muted mb-2">
             Статус
           </label>
           <select
             v-model="filters.status"
             @change="loadRooms"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+            class="w-full px-3 py-2 rounded-lg border border-warp-border bg-warp-surfaceAlt text-warp-text focus:ring-2 focus:ring-warp-accent focus:border-warp-accent"
           >
             <option value="">Все статусы</option>
             <option value="active">Активные</option>
@@ -52,13 +52,13 @@
           </select>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          <label class="block text-sm font-medium text-warp-muted mb-2">
             Тип
           </label>
           <select
             v-model="filters.type"
             @change="loadRooms"
-            class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+            class="w-full px-3 py-2 rounded-lg border border-warp-border bg-warp-surfaceAlt text-warp-text focus:ring-2 focus:ring-warp-accent focus:border-warp-accent"
           >
             <option value="">Все типы</option>
             <option value="public">Публичные</option>
@@ -68,7 +68,7 @@
         <div class="flex items-end">
           <button
             @click="resetFilters"
-            class="w-full px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+            class="w-full px-4 py-2 text-warp-muted hover:text-warp-text"
           >
             Сбросить фильтры
           </button>
@@ -106,38 +106,38 @@
     </div>
 
     <!-- Rooms Table -->
-    <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden">
+    <div class="card overflow-hidden">
       <div class="overflow-x-auto">
-        <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead class="bg-gray-50 dark:bg-gray-700">
+        <table class="min-w-full divide-y divide-warp-border/60">
+          <thead class="bg-warp-surfaceAlt">
             <tr>
               <th class="px-6 py-3 text-left">
                 <input
                   type="checkbox"
                   :checked="selectAll"
                   @change="toggleSelectAll"
-                  class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  class="rounded border-warp-border text-warp-accent focus:ring-warp-accent"
                 />
               </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th class="px-6 py-3 text-left text-xs font-medium text-warp-muted uppercase tracking-wider">
                 Комната
               </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th class="px-6 py-3 text-left text-xs font-medium text-warp-muted uppercase tracking-wider">
                 Статус
               </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th class="px-6 py-3 text-left text-xs font-medium text-warp-muted uppercase tracking-wider">
                 Участники
               </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th class="px-6 py-3 text-left text-xs font-medium text-warp-muted uppercase tracking-wider">
                 Создано
               </th>
-              <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+              <th class="px-6 py-3 text-left text-xs font-medium text-warp-muted uppercase tracking-wider">
                 Действия
               </th>
             </tr>
           </thead>
-          <tbody class="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-            <tr v-for="room in rooms" :key="room.id" class="hover:bg-gray-50 dark:hover:bg-gray-700">
+          <tbody class="bg-warp-surface divide-y divide-warp-border/60">
+            <tr v-for="room in rooms" :key="room.id" class="hover:bg-warp-surfaceAlt">
               <td class="px-6 py-4 whitespace-nowrap">
                 <input
                   type="checkbox"
@@ -162,16 +162,16 @@
                 <span :class="[
                   'inline-flex px-2 py-1 text-xs font-semibold rounded-full',
                   room.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400' :
-                  room.status === 'inactive' ? 'bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400' :
+                  room.status === 'inactive' ? 'bg-warp-surfaceAlt text-warp-muted border border-warp-border/60' :
                   'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400'
                 ]">
                   {{ room.status === 'active' ? 'Активна' : room.status === 'inactive' ? 'Неактивна' : 'Ошибка' }}
                 </span>
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-warp-text">
                 {{ room.participants || 0 }} / {{ room.max_participants || 50 }}
               </td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+              <td class="px-6 py-4 whitespace-nowrap text-sm text-warp-muted">
                 {{ formatDate(room.created_at) }}
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -203,26 +203,26 @@
       </div>
 
       <!-- Pagination -->
-      <div class="bg-white dark:bg-gray-800 px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-gray-700 sm:px-6">
+      <div class="bg-warp-surface px-4 py-3 flex items-center justify-between border-t border-warp-border sm:px-6">
         <div class="flex-1 flex justify-between sm:hidden">
           <button
             @click="previousPage"
             :disabled="currentPage === 1"
-            class="relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            class="relative inline-flex items-center px-4 py-2 border border-warp-border text-sm font-medium rounded-md text-warp-text bg-warp-surface hover:bg-warp-surfaceAlt disabled:opacity-50"
           >
             Назад
           </button>
           <button
             @click="nextPage"
             :disabled="currentPage >= totalPages"
-            class="ml-3 relative inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            class="ml-3 relative inline-flex items-center px-4 py-2 border border-warp-border text-sm font-medium rounded-md text-warp-text bg-warp-surface hover:bg-warp-surfaceAlt disabled:opacity-50"
           >
             Далее
           </button>
         </div>
         <div class="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
           <div>
-            <p class="text-sm text-gray-700 dark:text-gray-300">
+            <p class="text-sm text-warp-muted">
               Показано <span class="font-medium">{{ ((currentPage - 1) * perPage) + 1 }}</span>
               до <span class="font-medium">{{ Math.min(currentPage * perPage, total) }}</span>
               из <span class="font-medium">{{ total }}</span> результатов
@@ -233,14 +233,14 @@
               <button
                 @click="previousPage"
                 :disabled="currentPage === 1"
-                class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                class="relative inline-flex items-center px-2 py-2 rounded-l-md border border-warp-border bg-warp-surface text-sm font-medium text-warp-muted hover:bg-warp-surfaceAlt disabled:opacity-50"
               >
                 Назад
               </button>
               <button
                 @click="nextPage"
                 :disabled="currentPage >= totalPages"
-                class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                class="relative inline-flex items-center px-2 py-2 rounded-r-md border border-warp-border bg-warp-surface text-sm font-medium text-warp-muted hover:bg-warp-surfaceAlt disabled:opacity-50"
               >
                 Далее
               </button>
@@ -256,26 +256,26 @@
     </div>
 
     <!-- Create Room Modal -->
-    <div v-if="showCreateModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
-      <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+    <div v-if="showCreateModal" class="fixed inset-0 bg-black/60 overflow-y-auto h-full w-full z-50">
+      <div class="relative top-20 mx-auto p-5 w-96 card">
         <div class="mt-3">
-          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
+          <h3 class="text-lg font-medium text-warp-text mb-4">
             Создать новую комнату
           </h3>
           <form @submit.prevent="createRoom">
             <div class="mb-4">
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label class="block text-sm font-medium text-warp-muted mb-2">
                 Название комнаты
               </label>
               <input
                 v-model="newRoom.name"
                 type="text"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                class="w-full px-3 py-2 rounded-lg border border-warp-border bg-warp-surfaceAlt text-warp-text focus:ring-2 focus:ring-warp-accent focus:border-warp-accent"
                 placeholder="Введите название комнаты"
               />
             </div>
             <div class="mb-4">
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label class="block text-sm font-medium text-warp-muted mb-2">
                 Максимум участников
               </label>
               <input
@@ -283,7 +283,7 @@
                 type="number"
                 min="2"
                 max="100"
-                class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
+                class="w-full px-3 py-2 rounded-lg border border-warp-border bg-warp-surfaceAlt text-warp-text focus:ring-2 focus:ring-warp-accent focus:border-warp-accent"
               />
             </div>
             <div class="mb-4">
@@ -291,9 +291,9 @@
                 <input
                   v-model="newRoom.is_private"
                   type="checkbox"
-                  class="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  class="rounded border-warp-border text-warp-accent focus:ring-warp-accent"
                 />
-                <span class="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                <span class="ml-2 text-sm text-warp-muted">
                   Приватная комната
                 </span>
               </label>
@@ -302,14 +302,14 @@
               <button
                 type="button"
                 @click="showCreateModal = false"
-                class="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700"
+                class="btn-secondary px-4 py-2"
               >
                 Отмена
               </button>
               <button
                 type="submit"
                 :disabled="creating"
-                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                class="btn-primary px-4 py-2 disabled:opacity-50"
               >
                 {{ creating ? 'Создание...' : 'Создать' }}
               </button>

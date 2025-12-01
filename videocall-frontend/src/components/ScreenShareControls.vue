@@ -4,7 +4,7 @@
     <button
       v-if="!isSharing"
       @click="startScreenShare"
-      class="btn-screen-share flex items-center space-x-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors"
+      class="btn-screen-share flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors bg-warp-accent hover:bg-warp-accent/90 text-white shadow-warp-sm"
       title="Share your screen"
     >
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -17,7 +17,7 @@
     <button
       v-else
       @click="stopScreenShare"
-      class="btn-stop-share flex items-center space-x-2 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors animate-pulse"
+      class="btn-stop-share flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors bg-red-600 hover:bg-red-700 text-white shadow-warp-sm animate-pulse"
       title="Stop sharing"
     >
       <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -29,24 +29,24 @@
 
     <!-- Active Screen Shares List -->
     <div v-if="hasActiveSessions && activeSessions && activeSessions.length > 0" class="mt-4 space-y-2">
-      <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Active Screen Shares:</h4>
+      <h4 class="text-sm font-semibold text-warp-muted">Active Screen Shares:</h4>
       <div
         v-for="session in (activeSessions || [])"
         :key="session.id"
-        class="flex items-center justify-between p-3 bg-gray-100 dark:bg-gray-700 rounded-lg"
+        class="flex items-center justify-between p-3 bg-warp-surfaceAlt/80 rounded-lg border border-warp-border/60"
       >
         <div class="flex items-center space-x-3">
-          <div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span class="text-sm font-medium text-gray-900 dark:text-white">
+          <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+          <span class="text-sm font-medium text-warp-text">
             {{ session.participant.display_name }}
           </span>
-          <span class="text-xs text-gray-500 dark:text-gray-400">
+          <span class="text-xs text-warp-muted">
             {{ formatDuration(session.started_at) }}
           </span>
         </div>
         <button
           @click="viewScreenShare(session)"
-          class="px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white text-sm rounded transition-colors"
+          class="px-3 py-1 btn-primary text-sm"
         >
           View
         </button>
@@ -63,7 +63,7 @@
         <!-- Close Button -->
         <button
           @click="closeViewer"
-          class="absolute top-6 right-6 z-10 p-2 bg-gray-900 bg-opacity-50 hover:bg-opacity-75 text-white rounded-full transition-colors"
+          class="absolute top-6 right-6 z-10 p-2 bg-warp-surfaceAlt/80 hover:bg-warp-surface text-warp-text rounded-full transition-colors shadow-warp-sm"
         >
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -71,7 +71,7 @@
         </button>
 
         <!-- Screen Share Info -->
-        <div class="absolute top-6 left-6 z-10 px-4 py-2 bg-gray-900 bg-opacity-75 text-white rounded-lg">
+        <div class="absolute top-6 left-6 z-10 px-4 py-2 bg-warp-surfaceAlt/90 text-warp-text rounded-lg border border-warp-border">
           <p class="text-sm font-medium">{{ viewingSession.participant.display_name }}'s screen</p>
         </div>
 

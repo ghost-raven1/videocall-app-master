@@ -1,11 +1,11 @@
 // src/components/ActionCard.vue - Reusable action card component
 <template>
-  <div class="card p-6 hover:shadow-lg transition-shadow cursor-pointer" @click="handleClick">
+  <div class="card p-6 hover:shadow-warp-lg transition-shadow cursor-pointer" @click="handleClick">
     <div class="flex items-center justify-between mb-4">
       <div
         :class="[
           'w-12 h-12 rounded-full flex items-center justify-center',
-          loading ? 'bg-gray-200 dark:bg-gray-700' : 'bg-green-100 dark:bg-green-900',
+          loading ? 'bg-warp-surfaceAlt' : 'bg-warp-accent/10',
         ]"
       >
         <div
@@ -43,11 +43,11 @@
       </div>
     </div>
 
-    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">{{ title }}</h3>
-    <p class="text-gray-600 dark:text-gray-300 text-sm">{{ description }}</p>
+    <h3 class="text-lg font-semibold text-warp-text mb-2">{{ title }}</h3>
+    <p class="text-warp-muted text-sm">{{ description }}</p>
 
     <div class="mt-4 flex justify-end">
-      <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg class="w-5 h-5 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           stroke-linecap="round"
           stroke-linejoin="round"

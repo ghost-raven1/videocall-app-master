@@ -249,32 +249,26 @@ export const useAdminStore = defineStore('admin', {
     // Dashboard actions
     async loadDashboardStats() {
       if (!this.areStatsStale) {
-        console.log('Using cached stats')
         return
       }
 
       this.ui.loading = true
 
       try {
-        // Real API integration
-        const response = await this.api.get('/admin/dashboard/stats')
-        this.stats = response.data
+        // Use real backend analytics endpoint
+        const data = await this.api.get('/rooms/admin/dashboard/stats')
+
+        this.stats = {
+          activeRooms: data.activeRooms ?? 0,
+          onlineUsers: data.onlineUsers ?? 0,
+          totalCalls: data.totalCalls ?? 0,
+          serverLoad: data.serverLoad ?? 0,
+        }
 
         this.cache.stats = Date.now()
       } catch (error) {
         console.error('Failed to load dashboard stats:', error)
-
-        // Fallback to mock data if API fails
-        await new Promise(resolve => setTimeout(resolve, 1000))
-
-        this.stats = {
-          activeRooms: Math.floor(Math.random() * 50) + 10,
-          onlineUsers: Math.floor(Math.random() * 200) + 50,
-          totalCalls: Math.floor(Math.random() * 1000) + 500,
-          serverLoad: Math.floor(Math.random() * 40) + 10,
-        }
-
-        this.cache.stats = Date.now()
+        throw error
       } finally {
         this.ui.loading = false
       }
@@ -282,21 +276,20 @@ export const useAdminStore = defineStore('admin', {
 
     async loadSystemStatus() {
       try {
-        // Mock system status check
-        await new Promise(resolve => setTimeout(resolve, 500))
+        const data = await this.api.get('/rooms/admin/health/')
 
         this.systemStatus = {
           websocket: {
-            status: Math.random() > 0.1 ? 'online' : 'offline',
-            lastCheck: new Date(),
+            status: data.system_metrics?.active_rooms >= 0 ? 'online' : 'unknown',
+            lastCheck: data.calculated_at || new Date(),
           },
           sfu: {
-            status: Math.random() > 0.1 ? 'online' : 'offline',
-            lastCheck: new Date(),
+            status: 'unknown',
+            lastCheck: data.calculated_at || new Date(),
           },
           database: {
-            status: Math.random() > 0.1 ? 'online' : 'offline',
-            lastCheck: new Date(),
+            status: data.system_metrics ? 'online' : 'unknown',
+            lastCheck: data.calculated_at || new Date(),
           },
         }
       } catch (error) {
@@ -306,29 +299,14 @@ export const useAdminStore = defineStore('admin', {
 
     async loadRecentActivity() {
       try {
-        // Mock recent activity
-        await new Promise(resolve => setTimeout(resolve, 300))
+        const data = await this.api.get('/rooms/admin/activity/logs/')
 
-        this.recentActivity = [
-          {
-            id: 1,
-            type: 'room_created',
-            description: 'Создана новая комната: ABC123',
-            timestamp: new Date(Date.now() - 2 * 60 * 1000),
-          },
-          {
-            id: 2,
-            type: 'user_login',
-            description: 'Пользователь вошел в систему',
-            timestamp: new Date(Date.now() - 5 * 60 * 1000),
-          },
-          {
-            id: 3,
-            type: 'room_ended',
-            description: 'Завершен звонок в комнате: XYZ789',
-            timestamp: new Date(Date.now() - 10 * 60 * 1000),
-          },
-        ]
+        this.recentActivity = (data.logs || []).map((log, index) => ({
+          id: log.id || index,
+          type: log.action,
+          description: `${log.user || 'User'} • ${log.action}`,
+          timestamp: new Date(log.timestamp),
+        }))
       } catch (error) {
         console.error('Failed to load recent activity:', error)
       }
@@ -337,32 +315,61 @@ export const useAdminStore = defineStore('admin', {
     // Rooms management actions
     async loadRooms(params = {}) {
       this.rooms.loading = true
+      this.roomManagement.loading = true
 
       try {
         const {
           page = 1,
           perPage = 20,
+          search = '',
+          status = '',
         } = params
 
-        // Mock API call
-        await new Promise(resolve => setTimeout(resolve, 800))
+        // Use real admin search endpoint based on activity logs
+        const searchParams = {
+          active_only: status === 'active' ? 'true' : 'false',
+        }
 
-        // Mock data
-        const mockRooms = Array.from({ length: 25 }, (_, i) => ({
-          id: i + 1,
-          room_id: `room-${i + 1}`,
-          short_code: `ABC${(i + 100).toString().padStart(3, '0')}`,
-          name: `Комната ${i + 1}`,
-          status: ['active', 'inactive', 'error'][Math.floor(Math.random() * 3)],
-          participants: Math.floor(Math.random() * 10),
-          created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000),
-          last_activity: new Date(Date.now() - Math.random() * 60 * 60 * 1000),
-        }))
+        if (search) {
+          // Backend currently supports filtering by room_id and ip_address.
+          // We send the search value as room_id; more advanced search
+          // can be added later without changing this contract.
+          searchParams.room_id = search
+        }
 
-        this.rooms.list = mockRooms.slice((page - 1) * perPage, page * perPage)
-        this.rooms.total = mockRooms.length
+        const data = await this.api.get('/rooms/admin/search/', searchParams)
+
+        const allRooms = (data.rooms || []).map((item, index) => {
+          const roomId = item.room_id || item.id || String(index)
+          const lastActivity = item.last_activity || item.timestamp || null
+          const participantCount = item.participant_count || 0
+
+          return {
+            id: roomId,
+            room_id: roomId,
+            short_code: item.short_code || '',
+            name: item.name || '',
+            status: 'active',
+            participants: participantCount,
+            max_participants: item.max_participants || null,
+            created_at: item.created_at || lastActivity,
+            last_activity: lastActivity,
+            type: 'public',
+          }
+        })
+
+        const startIndex = (page - 1) * perPage
+        const paginatedRooms = allRooms.slice(startIndex, startIndex + perPage)
+
+        this.rooms.list = paginatedRooms
+        this.rooms.total = allRooms.length
         this.rooms.currentPage = page
         this.rooms.perPage = perPage
+
+        this.roomManagement.rooms = paginatedRooms
+        this.roomManagement.total = allRooms.length
+        this.roomManagement.currentPage = page
+        this.roomManagement.perPage = perPage
 
         this.cache.rooms = Date.now()
       } catch (error) {
@@ -370,24 +377,30 @@ export const useAdminStore = defineStore('admin', {
         throw error
       } finally {
         this.rooms.loading = false
+        this.roomManagement.loading = false
       }
     },
 
-    async createRoom(roomData) {
+    async createRoom(roomData = {}) {
       try {
-        // Mock API call
-        await new Promise(resolve => setTimeout(resolve, 500))
+        // Use public room creation endpoint; admin-specific metadata like
+        // max_participants is currently managed on the backend side.
+        const data = await this.api.post('/rooms/create/', {})
 
         const newRoom = {
-          id: Date.now(),
-          room_id: `room-${Date.now()}`,
-          short_code: `NEW${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
-          name: roomData.name || 'Новая комната',
+          id: data.room_id,
+          room_id: data.room_id,
+          short_code: data.short_code,
+          name: roomData.name || '',
           status: 'active',
           participants: 0,
-          created_at: new Date(),
-          last_activity: new Date(),
+          max_participants: data.max_participants || null,
+          created_at: null,
+          last_activity: null,
         }
+
+        this.roomManagement.rooms.unshift(newRoom)
+        this.roomManagement.total += 1
 
         this.rooms.list.unshift(newRoom)
         this.rooms.total += 1
@@ -401,14 +414,20 @@ export const useAdminStore = defineStore('admin', {
 
     async deleteRoom(roomId) {
       try {
-        // Mock API call
-        await new Promise(resolve => setTimeout(resolve, 300))
+        await this.api.delete(`/rooms/${roomId}/delete/`)
 
-        const index = this.rooms.list.findIndex(room => room.id === roomId)
-        if (index > -1) {
-          this.rooms.list.splice(index, 1)
-          this.rooms.total -= 1
+        const removeFromCollection = (collection) => {
+          const index = collection.findIndex(room => room.id === roomId || room.room_id === roomId)
+          if (index > -1) {
+            collection.splice(index, 1)
+          }
         }
+
+        removeFromCollection(this.rooms.list)
+        removeFromCollection(this.roomManagement.rooms)
+
+        if (this.rooms.total > 0) this.rooms.total -= 1
+        if (this.roomManagement.total > 0) this.roomManagement.total -= 1
 
         return { success: true }
       } catch (error) {
@@ -460,24 +479,15 @@ export const useAdminStore = defineStore('admin', {
       this.analytics.loading = true
 
       try {
-        // Mock API call
-        await new Promise(resolve => setTimeout(resolve, 1000))
+        // Use the same dashboard stats endpoint as the main admin dashboard.
+        // Detailed per-hour/per-day charts can be added later based on
+        // RoomAnalytics data, but we avoid any random or fake values here.
+        await this.api.get('/rooms/admin/dashboard/stats')
 
-        // Mock analytics data
         this.analytics = {
-          callsByHour: Array.from({ length: 24 }, (_, i) => ({
-            hour: i,
-            calls: Math.floor(Math.random() * 50),
-          })),
-          usersByDay: Array.from({ length: 7 }, (_, i) => ({
-            day: ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'][i],
-            users: Math.floor(Math.random() * 200) + 50,
-          })),
-          roomsByStatus: [
-            { status: 'active', count: Math.floor(Math.random() * 20) + 10 },
-            { status: 'inactive', count: Math.floor(Math.random() * 15) + 5 },
-            { status: 'error', count: Math.floor(Math.random() * 5) },
-          ],
+          callsByHour: [],
+          usersByDay: [],
+          roomsByStatus: [],
         }
 
         this.cache.analytics = Date.now()
@@ -707,10 +717,10 @@ export const useAdminStore = defineStore('admin', {
 
     async forceCloseRoom(roomId, reason = '') {
       try {
-        const response = await this.api.post(`/admin/rooms/${roomId}/force-close`, { reason })
+        const response = await this.api.post(`/rooms/admin/force-close/${roomId}/`, { reason })
 
-        // Update room status
-        const index = this.roomManagement.rooms.findIndex(r => r.id === roomId)
+        // Update room status in local state
+        const index = this.roomManagement.rooms.findIndex(r => r.id === roomId || r.room_id === roomId)
         if (index > -1) {
           this.roomManagement.rooms[index].status = 'inactive'
         }
@@ -734,31 +744,34 @@ export const useAdminStore = defineStore('admin', {
 
     async getRoomStats(roomId) {
       try {
-        const response = await this.api.get(`/admin/rooms/${roomId}/stats`)
-        return response.data
+        // Use real room statistics endpoint
+        const response = await this.api.get(`/rooms/${roomId}/statistics/`)
+        return response
       } catch (error) {
         console.error('Failed to load room stats:', error)
-        // Return mock stats
-        return {
-          totalParticipants: 0,
-          totalDuration: 0,
-          totalSessions: 0,
-          lastActivity: null
-        }
+        throw error
       }
     },
 
     async bulkUpdateRooms(roomIds, action) {
       try {
-        const response = await this.api.post('/admin/rooms/bulk', {
-          room_ids: roomIds,
-          action
-        })
+        if (!Array.isArray(roomIds) || roomIds.length === 0) {
+          return { success: true, updated: 0 }
+        }
 
-        // Reload rooms list
+        if (action === 'close') {
+          for (const roomId of roomIds) {
+            await this.forceCloseRoom(roomId, 'Bulk close from admin panel')
+          }
+        } else if (action === 'delete') {
+          for (const roomId of roomIds) {
+            await this.api.delete(`/rooms/${roomId}/delete/`)
+          }
+        }
+
         await this.loadRooms()
 
-        return { success: true, updated: response.updated || 0 }
+        return { success: true, updated: roomIds.length }
       } catch (error) {
         console.error('Failed to bulk update rooms:', error)
         throw error
@@ -787,26 +800,21 @@ export const useAdminStore = defineStore('admin', {
 
       this.realTimeMonitor.active = true
 
-      // Update every 5 seconds
+      // Update every 5 seconds using real system health metrics
       this.realTimeMonitor.interval = setInterval(async () => {
         try {
-          const response = await this.api.get('/admin/monitoring/realtime')
+          const data = await this.api.get('/rooms/admin/health/')
+          const metrics = data.system_metrics || {}
 
           this.realTimeMonitor.data = {
-            websocketConnections: response.websocket_connections || 0,
-            activeRooms: response.active_rooms || 0,
-            cpuUsage: response.cpu_usage || 0,
-            memoryUsage: response.memory_usage || 0
+            websocketConnections: metrics.websocket_connections || 0,
+            activeRooms: metrics.active_rooms || 0,
+            cpuUsage: metrics.avg_cpu_usage || 0,
+            memoryUsage: metrics.avg_memory_usage || 0,
           }
         } catch (error) {
           console.error('Failed to update real-time data:', error)
-          // Use mock data as fallback
-          this.realTimeMonitor.data = {
-            websocketConnections: Math.floor(Math.random() * 20) + 140,
-            activeRooms: Math.floor(Math.random() * 5) + 20,
-            cpuUsage: Math.floor(Math.random() * 20) + 30,
-            memoryUsage: Math.floor(Math.random() * 15) + 55
-          }
+          // Keep last known values; do not inject random data.
         }
       }, 5000)
     },

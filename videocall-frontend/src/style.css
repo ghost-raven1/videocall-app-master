@@ -3,37 +3,70 @@
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
 
-/* Custom component styles */
+/* Custom component styles - Warp theme */
+.warp-page {
+  @apply min-h-screen bg-warp-bg text-warp-text bg-warp-radial relative overflow-hidden;
+}
+
+.warp-page-inner {
+  @apply max-w-6xl mx-auto px-4 py-8 md:py-12 relative;
+}
+
 .card {
-  @apply bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700;
+  @apply bg-warp-surface/90 border border-warp-border rounded-warp shadow-warp-sm backdrop-blur-md text-warp-text;
+}
+
+/* Badge system */
+.badge {
+  @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+}
+
+.badge-success {
+  @apply badge bg-emerald-500/90 text-white;
+}
+
+.badge-warning {
+  @apply badge bg-amber-500/90 text-black;
+}
+
+.badge-danger {
+  @apply badge bg-red-500/90 text-white;
+}
+
+.badge-muted {
+  @apply badge bg-warp-surfaceAlt/80 text-warp-muted;
 }
 
 .btn-primary {
-  @apply bg-green-500 hover:bg-green-600 text-white font-medium py-2 px-4 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50;
+  @apply inline-flex items-center justify-center bg-gradient-to-r from-warp-accent to-warp-accent2 text-white font-medium py-2.5 px-4 rounded-full shadow-warp-sm transition-all duration-200 hover:shadow-warp-md hover:translate-y-[-1px] focus:outline-none focus:ring-2 focus:ring-warp-accent/70 focus:ring-offset-2 focus:ring-offset-warp-bg;
 }
 
 .btn-secondary {
-  @apply bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-900 dark:text-white font-medium py-2 px-4 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50;
+  @apply inline-flex items-center justify-center bg-warp-surfaceAlt/80 text-warp-text font-medium py-2.5 px-4 rounded-full border border-warp-border shadow-sm transition-all duration-200 hover:border-warp-accent/60 hover:bg-warp-surfaceAlt focus:outline-none focus:ring-2 focus:ring-warp-border focus:ring-offset-2 focus:ring-offset-warp-bg;
 }
 
 .input-field {
-  @apply w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent;
+  @apply w-full px-3.5 py-2.5 rounded-xl border border-warp-border bg-warp-surfaceAlt/80 text-warp-text placeholder-warp-muted text-sm focus:outline-none focus:ring-2 focus:ring-warp-accent focus:border-transparent shadow-sm;
+}
+
+.code-badge {
+  @apply inline-flex items-center px-2.5 py-1 rounded-full border border-warp-accent/60 bg-warp-surfaceAlt/80 text-xs font-mono tracking-[0.18em] uppercase text-warp-text/90;
 }
 
 .control-button {
-  @apply p-3 rounded-full shadow-lg transition-all duration-200 hover:scale-105 active:scale-95;
+  @apply p-3 rounded-full bg-warp-surfaceAlt border border-warp-border shadow-warp-sm text-warp-text transition-all duration-200 hover:shadow-warp-md hover:-translate-y-0.5 active:translate-y-px;
 }
 
 .control-button-active {
-  @apply bg-green-500 hover:bg-green-600 text-white;
+  @apply bg-gradient-to-r from-warp-accent to-warp-accent2 text-white border-transparent;
 }
 
 .control-button-inactive {
-  @apply bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200;
+  @apply bg-warp-surfaceAlt text-warp-muted;
 }
 
 .control-button-danger {
-  @apply bg-red-500 hover:bg-red-600 text-white;
+  @apply bg-red-500 hover:bg-red-600 text-white border-transparent;
 }
 
 /* Animations */
@@ -121,7 +154,7 @@
 /* Small mobile devices */
 @media (max-width: 480px) {
   .room-controls {
-    @apply fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 py-2 shadow-lg z-10;
+    @apply fixed bottom-0 left-0 right-0 bg-warp-surface/95 border-t border-warp-border py-2 shadow-warp-md z-10;
   }
   
   .participant-card {

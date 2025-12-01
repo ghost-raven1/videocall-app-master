@@ -28,9 +28,25 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
             self.room_id = self.scope['url_route']['kwargs']['room_id']
             self.room_group_name = f'room_{self.room_id}'
 
-            # Get participant ID from session or generate one
-            session = self.scope.get('session', {})
-            self.participant_id = session.get('session_key') or f'temp_{timezone.now().timestamp()}'
+            # Get participant ID from Django session or generate a temporary one
+            #
+            # HTTP join_room view ensures request.session.session_key is created and
+            # uses it as participant_id when adding the user to the room. Here we
+            # must reuse the same session_key so that WebSocket participant IDs are
+            # stable across reconnects and match the HTTP API.
+            session = self.scope.get('session')
+            if session is not None and getattr(session, 'session_key', None):
+                # Reuse existing Django session key
+                self.participant_id = session.session_key
+            else:
+                # Fallback for edge-cases where session middleware is not available
+                # (e.g. direct WebSocket access without HTTP join)
+                self.participant_id = f'temp_{timezone.now().timestamp()}'
+                logger.warning(
+                    "Using temporary participant_id %s for room %s because no Django session_key was found",
+                    self.participant_id,
+                    self.room_id,
+                )
 
             # Verify room exists and user can join
             room_data = await self.get_room_data(self.room_id)
@@ -58,6 +74,29 @@ class VideoCallConsumer(AsyncWebsocketConsumer):
 
             # Get SFU information for the room
             sfu_info = await self.get_room_sfu_info(self.room_id)
+
+            # Inform the newly connected client about existing participants
+            # so that both sides see a symmetric list. RoomManager stores
+            # participant IDs in Redis; we send synthetic user_joined
+            # events for each existing participant directly to this client.
+            existing_participants = [
+                p for p in participants if p != self.participant_id
+            ]
+            for existing_id in existing_participants:
+                try:
+                    await self.send(text_data=json.dumps({
+                        'type': 'user_joined',
+                        'participant_id': existing_id,
+                        'timestamp': timezone.now().isoformat(),
+                        'sfu_info': sfu_info,
+                    }))
+                except Exception as send_err:
+                    logger.error(
+                        "Failed to send existing participant %s to %s: %s",
+                        existing_id,
+                        self.participant_id,
+                        send_err,
+                    )
 
             # Notify other participants about new user
             await self.channel_layer.group_send(

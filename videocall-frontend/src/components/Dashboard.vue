@@ -1,13 +1,13 @@
 // src/components/Dashboard.vue - Main dashboard component
 <template>
-  <div class="min-h-screen bg-gray-50 dark:bg-gray-900">
+  <div class="min-h-screen text-warp-text">
     <!-- Header -->
     <header
-      class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700"
+      class="bg-warp-surface/95 backdrop-blur-md shadow-warp-sm border-b border-warp-border/80"
     >
       <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
         <div class="flex items-center space-x-3">
-          <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
+          <div class="w-10 h-10 rounded-full flex items-center justify-center bg-warp-accent shadow-warp-md border border-warp-border/80">
             <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
@@ -17,7 +17,7 @@
               ></path>
             </svg>
           </div>
-          <h1 class="text-xl font-semibold text-gray-900 dark:text-white">
+          <h1 class="text-xl font-semibold text-warp-text">
             {{ $t('dashboard.videoCall') }}
           </h1>
         </div>
@@ -27,7 +27,7 @@
           <button
             v-if="globalStore.user?.role === 'admin' || globalStore.user?.is_staff"
             @click="goToAdminPanel"
-            class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+            class="text-warp-muted hover:text-warp-text transition-colors"
             title="Админ-панель"
           >
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -38,7 +38,7 @@
 
           <button
             @click="handleLogout"
-            class="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
+            class="text-warp-muted hover:text-warp-text transition-colors"
             title="Выйти"
           >
             <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -55,10 +55,10 @@
     </header>
 
     <!-- Main Content -->
-    <main class="max-w-4xl mx-auto px-4 py-8">
+    <main class="max-w-4xl mx-auto px-4 py-8 space-y-8">
       <!-- Admin Panel Section -->
       <div v-if="isAdminView" class="mb-8">
-        <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-4">
+        <h2 class="text-xl font-bold text-warp-text mb-4">
           Панель администратора
         </h2>
         <div class="card p-6">
@@ -118,7 +118,7 @@
 
       <!-- Room History -->
       <div v-if="roomsStore.roomHistory.length > 0" class="mb-8">
-        <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <h2 class="text-lg font-semibold text-warp-text mb-4">
           {{ $t('dashboard.recentRooms') }}
         </h2>
         <div class="space-y-2">
@@ -128,10 +128,10 @@
             class="card p-4 flex items-center justify-between"
           >
             <div class="flex-1">
-              <p class="font-medium text-gray-900 dark:text-white">
+              <p class="font-medium text-warp-text">
                 {{ room.short_code }}
               </p>
-              <p class="text-sm text-gray-500 dark:text-gray-400">
+              <p class="text-sm text-warp-muted">
                 {{ utils.formatRelativeTime(new Date(room.joined_at)) }}
               </p>
             </div>
@@ -151,17 +151,17 @@
     <Teleport to="body">
       <div
         v-if="showJoinModal"
-        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+        class="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-md flex items-center justify-center z-50 p-4"
         @click="showJoinModal = false"
       >
         <div class="card w-full max-w-md p-6 animate-slide-up" @click.stop>
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          <h3 class="text-lg font-semibold text-warp-text mb-4">
             {{ $t('app.modals.joinVideoCall.title') }}
           </h3>
 
           <form @submit.prevent="handleJoinSubmit" class="space-y-4">
             <div>
-              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label class="block text-sm font-medium text-warp-muted mb-2">
                 {{ $t('app.modals.joinVideoCall.title') }}
               </label>
               <input

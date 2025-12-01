@@ -40,6 +40,20 @@ type WebRTCConfig struct {
 	MaxBitrate           int                `yaml:"max_bitrate"`
 	MinBitrate           int                `yaml:"min_bitrate"`
 	DefaultBitrate       int                `yaml:"default_bitrate"`
+	// Optional UDP port range for ICE. When set, the SFU will only use
+	// ports in this range for its UDP sockets. This is important when
+	// running inside Docker with a fixed port mapping (e.g. 8081-8090).
+	UDPPortMin           int                `yaml:"udp_port_min"`
+	UDPPortMax           int                `yaml:"udp_port_max"`
+	// Optional external IPs used in ICE candidates (NAT 1:1 mapping).
+	// When running in Docker on a developer machine, this should usually
+	// point to the host (e.g. 127.0.0.1, host.docker.internal) so that
+	// browsers connect to the host ports that are forwarded into the
+	// container.
+	NAT1To1IPs           []string           `yaml:"nat_1to1_ips"`
+	// Candidate type for NAT1To1 mapping ("host", "srflx", ...). Usually
+	// "host" is what we want for local development.
+	NAT1To1CandidateType string             `yaml:"nat_1to1_candidate_type"`
 }
 
 // QualityConfig holds quality adaptation configuration
@@ -132,6 +146,12 @@ func getDefaultConfig() *Config {
 			MaxBitrate:           5000000, // 5 Mbps
 			MinBitrate:           100000,  // 100 kbps
 			DefaultBitrate:       1000000, // 1 Mbps
+			// By default do not restrict UDP port range; can be overridden via env
+			UDPPortMin:           0,
+			UDPPortMax:           0,
+			// By default no explicit NAT1To1 mapping; can be overridden via env
+			NAT1To1IPs:           nil,
+			NAT1To1CandidateType: "host",
 		},
 		Quality: QualityConfig{
 			EnableAdaptation:      true,
@@ -221,6 +241,34 @@ func overrideFromEnv(config *Config) *Config {
 		if bitrate, err := strconv.Atoi(val); err == nil {
 			config.WebRTC.DefaultBitrate = bitrate
 		}
+	}
+	// Optional UDP port range for ICE (useful behind Docker port mapping)
+	if val := os.Getenv("WEBRTC_UDP_PORT_MIN"); val != "" {
+		if port, err := strconv.Atoi(val); err == nil {
+			config.WebRTC.UDPPortMin = port
+		}
+	}
+	if val := os.Getenv("WEBRTC_UDP_PORT_MAX"); val != "" {
+		if port, err := strconv.Atoi(val); err == nil {
+			config.WebRTC.UDPPortMax = port
+		}
+	}
+	// NAT 1:1 IPs for ICE candidates (comma-separated list)
+	if val := os.Getenv("WEBRTC_NAT_1TO1_IPS"); val != "" {
+		ips := strings.Split(val, ",")
+		var trimmed []string
+		for _, ip := range ips {
+			ip = strings.TrimSpace(ip)
+			if ip != "" {
+				trimmed = append(trimmed, ip)
+			}
+		}
+		if len(trimmed) > 0 {
+			config.WebRTC.NAT1To1IPs = trimmed
+		}
+	}
+	if val := os.Getenv("WEBRTC_NAT_1TO1_CANDIDATE_TYPE"); val != "" {
+		config.WebRTC.NAT1To1CandidateType = val
 	}
 
 	// Quality configuration

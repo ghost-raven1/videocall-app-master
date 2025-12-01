@@ -256,17 +256,25 @@ class RoomManager:
 
     @classmethod
     def create_sfu_room(cls, room_id):
-        """Create SFU room for multi-user video calls with fallback to P2P"""
+        """Create SFU room for multi-user video calls with fallback to P2P.
+
+        In development environments the SFU health check can be flaky (DNS/ports),
+        but the SFU itself may still be reachable. To avoid premature fallback,
+        we log health issues but still attempt room creation.
+        """
         try:
             from .sfu_client import SFUClient
             sfu_client = SFUClient()
 
-            # Check SFU server health first
+            # Check SFU server health first, but do not fail hard on errors
             health_check = sfu_client.health_check()
-
             if not health_check.get('success'):
-                logger.warning(f"SFU server unavailable, falling back to P2P mode for room {room_id}")
-                return cls._fallback_to_p2p_mode(room_id, 'SFU server unavailable')
+                logger.warning(
+                    "SFU health check failed for room %s: %s",
+                    room_id,
+                    health_check.get('error', 'unknown error'),
+                )
+                # Do NOT return fallback here – try to create a room anyway.
 
             # Create SFU room
             sfu_room_response = sfu_client.create_room(room_id)

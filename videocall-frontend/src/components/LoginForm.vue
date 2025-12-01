@@ -1,11 +1,11 @@
 <template>
   <div
-    class="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 p-4"
+    class="min-h-screen flex items-center justify-center px-4 text-warp-text"
   >
     <div class="card w-full max-w-md p-8 animate-fade-in">
       <div class="text-center mb-8">
         <div
-          class="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4"
+          class="w-16 h-16 bg-warp-accent rounded-full flex items-center justify-center mx-auto mb-4 border border-warp-border"
         >
           <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -16,15 +16,15 @@
             ></path>
           </svg>
         </div>
-        <h1 class="text-2xl font-semibold text-gray-900 dark:text-white mb-2">{{ $t('app.name') }}</h1>
-        <p class="text-gray-600 dark:text-gray-300">{{ $t('login.desc') }}</p>
+        <h1 class="text-2xl font-semibold text-warp-text mb-2">{{ $t('app.name') }}</h1>
+        <p class="text-warp-muted">{{ $t('login.desc') }}</p>
       </div>
 
       <form @submit.prevent="handleLogin" class="space-y-6">
         <div>
           <label
             for="password"
-            class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+            class="block text-sm font-medium text-warp-muted mb-2"
           >
             {{ $t('login.password') }}
           </label>
@@ -55,7 +55,7 @@
       </form>
 
       <div class="mt-6 text-center">
-        <p class="text-xs text-gray-500 dark:text-gray-400">
+        <p class="text-xs text-warp-muted">
           {{ $t('app.desc') }}
         </p>
       </div>

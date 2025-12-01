@@ -44,7 +44,7 @@ export default {
     const router = useRouter()
     const globalStore = useGlobalStore()
 
-    const handleLogin = () => {
+    const handleLogin = async () => {
       error.value = ''
       
       if (!email.value || !password.value) {
@@ -52,21 +52,29 @@ export default {
         return
       }
 
-      // Для демонстрации используем хардкод учетных данных
-      // В реальном приложении здесь должен быть запрос к API
-      if (email.value === 'admin@example.com' && password.value === 'admin123') {
-        // Устанавливаем флаг администратора в хранилище
-        globalStore.setUser({
-          id: 'admin-user',
-          name: 'Администратор',
-          email: email.value,
-          isAdmin: true
+      try {
+        const { apiService } = await import('@/services/api')
+        const response = await apiService.adminLogin({
+          email: email.value.trim(),
+          password: password.value,
         })
-        
-        // Перенаправляем на админ-панель
-        router.push('/admin/dashboard')
-      } else {
-        error.value = 'Неверный email или пароль'
+
+        const user = response.data && response.data.user
+        if (!user) {
+          throw new Error('Некорректный ответ сервера')
+        }
+
+        // Сохраняем пользователя в глобальном сторе (динамическое поле)
+        globalStore.user = user
+        if (typeof globalStore.setAuthenticated === 'function') {
+          globalStore.setAuthenticated(true, user)
+        }
+
+        localStorage.setItem('admin_authenticated', 'true')
+        router.push('/admin')
+      } catch (e) {
+        const apiError = (e && e.response && e.response.data && e.response.data.error) || e.message || 'Ошибка входа. Попробуйте позже.'
+        error.value = apiError
       }
     }
 

@@ -7,15 +7,23 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.permissions import AllowAny
 from .chat_models import ChatMessage, ChatAttachment, ScreenShareSession
 from .models import RoomManager
 
 
 class ChatMessageViewSet(viewsets.ModelViewSet):
-    """API for chat messages"""
+    """API for chat messages.
+
+    Authorization model:
+    - Global DRF permission is AllowAny (no JWT required).
+    - Access control is enforced by room_code + participant_id via RoomManager.
+    This позволяет гостям, подключившимся к комнате, пользоваться чатом без регистрации.
+    """
     
     queryset = ChatMessage.objects.all()
     parser_classes = [JSONParser]
+    permission_classes = [AllowAny]
     
     def get_queryset(self):
         """Filter messages by room"""
@@ -206,10 +214,15 @@ class ChatMessageViewSet(viewsets.ModelViewSet):
 
 
 class ChatAttachmentViewSet(viewsets.ModelViewSet):
-    """API for file attachments"""
+    """API for file attachments.
+
+    Гостям, подключенным к комнате, разрешено загружать и скачивать вложения,
+    при этом валидация выполняется через room_code + participant_id.
+    """
     
     queryset = ChatAttachment.objects.all()
     parser_classes = [MultiPartParser, FormParser]
+    permission_classes = [AllowAny]
     
     def create(self, request):
         """Upload file attachment"""
@@ -370,10 +383,15 @@ class ChatAttachmentViewSet(viewsets.ModelViewSet):
 
 
 class ScreenShareViewSet(viewsets.ModelViewSet):
-    """API for screen sharing sessions"""
+    """API for screen sharing sessions.
+
+    Доступ открыт для гостей, но каждая операция проверяет участника по room_code
+    и participant_id через RoomManager.
+    """
     
     queryset = ScreenShareSession.objects.all()
     parser_classes = [JSONParser]
+    permission_classes = [AllowAny]
     
     def create(self, request):
         """Start screen sharing session"""

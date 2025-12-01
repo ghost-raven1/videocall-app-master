@@ -88,8 +88,9 @@ describe('useVideoCallController', () => {
     mockRoomsStore = {
       getRoomInfo: vi.fn().mockResolvedValue({
         success: true,
-        room: { room_id: 'test-room-123', name: 'Test Room' }
+        room: { room_id: 'test-room-123', name: 'Test Room', short_code: 'ABC123' }
       }),
+      joinRoom: vi.fn().mockResolvedValue({ success: true }),
       leaveRoom: vi.fn().mockResolvedValue(undefined)
     }
 
@@ -132,6 +133,7 @@ describe('useVideoCallController', () => {
 
       expect(result.success).toBe(true)
       expect(mockRoomsStore.getRoomInfo).toHaveBeenCalledWith('test-room-123')
+      expect(mockRoomsStore.joinRoom).toHaveBeenCalledWith('ABC123')
       expect(controller.isInitialized.value).toBe(true)
       expect(controller.roomInfo.value).toBeDefined()
     })
@@ -188,6 +190,19 @@ describe('useVideoCallController', () => {
         'Failed to access camera/microphone',
         'error'
       )
+    })
+
+    it('should handle join room failure', async () => {
+      mockRoomsStore.joinRoom.mockResolvedValue({ success: false, error: 'Room is closed' })
+
+      controller = useVideoCallController('test-room-123')
+
+      const result = await controller.initializeCall()
+
+      expect(result.success).toBe(false)
+      expect(result.error).toBe('Room is closed')
+      expect(mockRouter.push).toHaveBeenCalledWith('/')
+      expect(mockGlobalStore.addNotification).toHaveBeenCalledWith('Room is closed', 'error')
     })
 
     it('should handle WebSocket connection failure', async () => {
@@ -334,4 +349,3 @@ describe('useVideoCallController', () => {
     })
   })
 })
-

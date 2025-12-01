@@ -91,10 +91,19 @@
             class="control-btn quality-btn"
             title="Quality settings"
           >
-            <svg class="control-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+            <div class="relative flex items-center">
+              <svg class="control-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              <!-- Small badge when adaptive is active & quality is auto -->
+              <span
+                v-if="videoQuality === 'auto'"
+                class="quality-badge"
+              >
+                {{ adaptiveLevelLabel.charAt(0) }}
+              </span>
+            </div>
             <span class="control-label">Settings</span>
           </button>
         </div>
@@ -257,6 +266,9 @@
             <option value="high">High (1080p)</option>
             <option value="auto">Auto</option>
           </select>
+          <p v-if="videoQuality === 'auto'" class="setting-help">
+            Adaptive: currently <span class="setting-help-highlight">{{ adaptiveLevelLabel }}</span>
+          </p>
         </div>
 
         <div class="setting-group">
@@ -286,17 +298,31 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useWebRTCStore } from '../stores/webrtc'
 
 const webrtcStore = useWebRTCStore()
 
 // Props
-defineProps({
+const props = defineProps({
   participantCount: {
     type: Number,
-    default: 1
-  }
+    default: 1,
+  },
+  isScreenSharing: {
+    type: Boolean,
+    default: false,
+  },
+  // Use real recording state from parent (controller) so UI stays in sync
+  isRecording: {
+    type: Boolean,
+    default: false,
+  },
+  // Current adaptive level from parent ('low' | 'medium' | 'high')
+  adaptiveLevel: {
+    type: String,
+    default: 'high',
+  },
 })
 
 // Emits
@@ -304,16 +330,15 @@ const emit = defineEmits([
   'layout-changed',
   'screen-share-toggled',
   'recording-toggled',
-  'participant-pinned'
+  'participant-pinned',
+  'quality-settings-changed',
 ])
 
-// Reactive state
+// Reactive state (UI only)
 const currentLayout = ref('auto')
 const showLayoutOptions = ref(false)
 const showParticipantsSidebar = ref(false)
 const showQualitySettings = ref(false)
-const isRecording = ref(false)
-const isScreenSharing = ref(false)
 const videoQuality = ref('auto')
 const maxParticipantsPerPage = ref(9)
 const adaptiveQuality = ref(true)
@@ -333,6 +358,13 @@ const layoutLabel = computed(() => {
   return layout ? layout.label : 'Auto'
 })
 
+const adaptiveLevelLabel = computed(() => {
+  const level = (props.adaptiveLevel || 'high').toLowerCase()
+  if (level === 'low') return 'Low'
+  if (level === 'medium') return 'Medium'
+  return 'High'
+})
+
 // Methods
 const toggleLayout = () => {
   showLayoutOptions.value = !showLayoutOptions.value
@@ -349,13 +381,13 @@ const selectLayout = (layoutId) => {
 }
 
 const toggleScreenShare = () => {
-  isScreenSharing.value = !isScreenSharing.value
-  emit('screen-share-toggled', isScreenSharing.value)
+  // Let parent manage actual screen share state via controller
+  emit('screen-share-toggled', !props.isScreenSharing)
 }
 
 const toggleRecording = () => {
-  isRecording.value = !isRecording.value
-  emit('recording-toggled', isRecording.value)
+  // Let parent/controller manage real recording state; we only emit desired next state
+  emit('recording-toggled', !props.isRecording)
 }
 
 const toggleParticipantsSidebar = () => {
@@ -407,6 +439,61 @@ const pinParticipant = (participantId) => {
   emit('participant-pinned', participantId)
 }
 
+// Apply video quality changes to local media constraints and track
+const applyVideoQuality = async (quality) => {
+  try {
+    const constraintsMap = {
+      low: { width: 640, height: 360, frameRate: 15 },
+      medium: { width: 1280, height: 720, frameRate: 30 },
+      high: { width: 1920, height: 1080, frameRate: 60 },
+      auto: { width: 1280, height: 720, frameRate: 30 },
+    }
+
+    const preset = constraintsMap[quality] || constraintsMap.auto
+
+    // Update store media constraints for future getUserMedia calls
+    const mc = webrtcStore.mediaConstraints
+    if (mc && mc.video) {
+      mc.video.width = { ideal: preset.width, max: preset.width }
+      mc.video.height = { ideal: preset.height, max: preset.height }
+      mc.video.frameRate = { ideal: preset.frameRate, max: preset.frameRate }
+    }
+
+    // Apply constraints to current local video track if available
+    const stream = webrtcStore.localStream
+    if (stream && stream.getVideoTracks && stream.getVideoTracks().length > 0) {
+      const track = stream.getVideoTracks()[0]
+      if (track && track.applyConstraints) {
+        await track.applyConstraints({
+          width: { ideal: preset.width, max: preset.width },
+          height: { ideal: preset.height, max: preset.height },
+          frameRate: { ideal: preset.frameRate, max: preset.frameRate },
+        })
+      }
+    }
+  } catch (error) {
+    // Non-fatal; log for debugging
+    console.warn('Failed to apply video quality constraints', quality, error)
+  }
+}
+
+// React when user changes quality setting
+watch(videoQuality, (newQuality) => {
+  applyVideoQuality(newQuality)
+})
+
+// Emit consolidated quality settings whenever user changes controls
+watch(
+  [videoQuality, maxParticipantsPerPage, adaptiveQuality],
+  ([q, max, adaptive]) => {
+    emit('quality-settings-changed', {
+      videoQuality: q,
+      maxParticipantsPerPage: max,
+      adaptiveQuality: !!adaptive,
+    })
+  },
+)
+
 const getConnectionStatusClass = (state) => {
   switch (state) {
     case 'connected': return 'connected'
@@ -445,7 +532,7 @@ const vClickOutside = {
 
 <style scoped>
 .multi-user-controls {
-  @apply bg-gray-900 border-t border-gray-700;
+  @apply bg-warp-surface/95 backdrop-blur-md border-t border-warp-border/80 shadow-warp-md;
 }
 
 .controls-bar {
@@ -462,19 +549,24 @@ const vClickOutside = {
 
 .control-btn {
   @apply flex items-center space-x-2 px-4 py-2 rounded-lg transition-all duration-200;
-  @apply bg-gray-800 hover:bg-gray-700 text-white;
+  @apply bg-warp-surfaceAlt hover:bg-warp-surface text-warp-text;
 }
 
 .control-btn.active {
-  @apply bg-green-600 hover:bg-green-700;
+  @apply bg-warp-accent2 hover:bg-emerald-500 text-white;
 }
 
 .control-btn.recording {
-  @apply bg-red-600 hover:bg-red-700;
+  @apply bg-red-600 hover:bg-red-700 text-white;
 }
 
 .control-icon {
   @apply w-5 h-5;
+}
+
+.quality-badge {
+  @apply absolute -top-1 -right-1 text-[10px] leading-none px-1.5 py-0.5 rounded-full;
+  @apply bg-emerald-500 text-white shadow;
 }
 
 .control-label {
@@ -482,20 +574,20 @@ const vClickOutside = {
 }
 
 .participants-count {
-  @apply bg-gray-700 text-white text-xs px-2 py-1 rounded-full ml-1;
+  @apply bg-warp-surfaceAlt text-warp-text text-xs px-2 py-1 rounded-full ml-1;
 }
 
 /* Layout dropdown */
 .layout-dropdown {
-  @apply absolute bottom-full left-0 mb-2 bg-gray-800 rounded-lg shadow-xl border border-gray-700 py-2 z-50 min-w-48;
+  @apply absolute bottom-full left-0 mb-2 bg-warp-surfaceAlt rounded-lg shadow-xl border border-warp-border py-2 z-50 min-w-48;
 }
 
 .dropdown-item {
-  @apply w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 flex items-center space-x-3;
+  @apply w-full text-left px-4 py-2 text-sm text-warp-text hover:bg-warp-surface flex items-center space-x-3;
 }
 
 .dropdown-item.active {
-  @apply bg-green-600 text-white;
+  @apply bg-warp-accent2 text-white;
 }
 
 .dropdown-icon {
@@ -504,23 +596,20 @@ const vClickOutside = {
 
 /* Participants sidebar */
 .participants-sidebar {
-  @apply absolute top-0 right-0 w-80 h-full bg-gray-800 border-l border-gray-700 shadow-xl z-40;
+  @apply absolute top-0 right-0 w-80 h-full bg-warp-surface border-l border-warp-border shadow-warp-md z-40;
 }
 
-.sidebar-header {
-  @apply flex items-center justify-between p-4 border-b border-gray-700;
-}
 
 .sidebar-title {
-  @apply text-white font-medium;
+  @apply text-warp-text font-medium;
 }
 
 .sidebar-close {
-  @apply p-2 hover:bg-gray-700 rounded-lg transition-colors;
+  @apply p-2 hover:bg-warp-surfaceAlt rounded-lg transition-colors;
 }
 
 .close-icon {
-  @apply w-5 h-5 text-gray-400;
+  @apply w-5 h-5 text-warp-muted;
 }
 
 .participants-list {
@@ -532,15 +621,15 @@ const vClickOutside = {
 }
 
 .participant-item.speaking {
-  @apply bg-green-900 bg-opacity-30;
+  @apply bg-emerald-500/10 border border-emerald-500/60;
 }
 
 .local-participant {
-  @apply bg-gray-700;
+  @apply bg-warp-surfaceAlt;
 }
 
 .participant-avatar {
-  @apply w-10 h-10 rounded-full bg-gray-600 flex items-center justify-center;
+  @apply w-10 h-10 rounded-full bg-warp-surfaceAlt flex items-center justify-center;
 }
 
 .avatar-image {
@@ -548,7 +637,7 @@ const vClickOutside = {
 }
 
 .avatar-icon {
-  @apply w-5 h-5 text-gray-300;
+  @apply w-5 h-5 text-warp-muted;
 }
 
 .participant-info {
@@ -580,7 +669,7 @@ const vClickOutside = {
 }
 
 .status-indicator.disconnected {
-  @apply bg-gray-600 text-white;
+  @apply bg-warp-surfaceAlt text-warp-muted border border-warp-border/60;
 }
 
 .status-indicator.failed {
@@ -597,15 +686,15 @@ const vClickOutside = {
 
 .control-small {
   @apply p-2 rounded-lg transition-colors;
-  @apply bg-gray-700 hover:bg-gray-600;
+  @apply bg-warp-surfaceAlt hover:bg-warp-surface text-warp-text;
 }
 
 .control-small.active {
-  @apply bg-green-600 hover:bg-green-700;
+  @apply bg-warp-accent2 hover:bg-emerald-500 text-white;
 }
 
 .control-small.muted {
-  @apply bg-red-600 hover:bg-red-700;
+  @apply bg-red-600 hover:bg-red-700 text-white;
 }
 
 .control-icon-small {
@@ -613,24 +702,24 @@ const vClickOutside = {
 }
 
 .pin-btn.active {
-  @apply bg-yellow-600 hover:bg-yellow-700;
+  @apply bg-amber-500 hover:bg-amber-600 text-white shadow-warp-sm;
 }
 
 /* Quality settings */
 .quality-settings {
-  @apply absolute top-0 right-0 w-80 h-full bg-gray-800 border-l border-gray-700 shadow-xl z-40;
+  @apply absolute top-0 right-0 w-80 h-full bg-warp-surface border-l border-warp-border shadow-warp-md z-40;
 }
 
 .settings-header {
-  @apply flex items-center justify-between p-4 border-b border-gray-700;
+  @apply flex items-center justify-between p-4 border-b border-warp-border;
 }
 
 .settings-title {
-  @apply text-white font-medium;
+  @apply text-warp-text font-medium;
 }
 
 .settings-close {
-  @apply p-2 hover:bg-gray-700 rounded-lg transition-colors;
+  @apply p-2 hover:bg-warp-surfaceAlt rounded-lg transition-colors;
 }
 
 .settings-content {
@@ -645,9 +734,17 @@ const vClickOutside = {
   @apply text-white text-sm font-medium block;
 }
 
+.setting-help {
+  @apply mt-1 text-xs text-warp-muted;
+}
+
+.setting-help-highlight {
+  @apply font-semibold text-warp-text;
+}
+
 .setting-select,
 .setting-input {
-  @apply w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white;
+  @apply w-full px-3 py-2 bg-warp-surfaceAlt border border-warp-border rounded-lg text-warp-text;
 }
 
 .setting-checkbox {
@@ -655,7 +752,7 @@ const vClickOutside = {
 }
 
 .checkbox-label {
-  @apply text-gray-300 text-sm flex items-center;
+  @apply text-warp-muted text-sm flex items-center;
 }
 
 .recording-dot {
@@ -665,7 +762,7 @@ const vClickOutside = {
 /* Responsive design */
 @media (max-width: 768px) {
   .controls-bar {
-    @apply p-2;
+    @apply p-2 flex-wrap gap-y-2;
   }
 
   .controls-section {
@@ -683,6 +780,20 @@ const vClickOutside = {
   .participants-sidebar,
   .quality-settings {
     @apply w-full;
+  }
+}
+
+@media (max-width: 480px) {
+  .controls-bar {
+    @apply flex-col items-stretch;
+  }
+
+  .controls-section {
+    @apply w-full justify-between;
+  }
+
+  .control-btn {
+    @apply flex-1 justify-center;
   }
 }
 </style>
