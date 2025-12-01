@@ -170,9 +170,10 @@ export class SFUConnectionManager {
             const currentProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
             const host = window.location.hostname
             const port = window.location.port
-            const proxyPort = port === '3001' ? '3000' : port || (currentProtocol === 'wss:' ? '443' : '80')
-            const proxyHost = `${host}:${proxyPort}`
-            browserWsUrl = `${currentProtocol}//${proxyHost}/sfu/ws/`
+            // When frontend runs on 3001 (Vite dev), nginx usually maps to :80.
+            const proxyPort = port === '3001' ? '' : (port || (currentProtocol === 'wss:' ? '443' : '80'))
+            const proxyHost = proxyPort ? `${host}:${proxyPort}` : host
+            browserWsUrl = `${currentProtocol}//${proxyHost}/sfu/ws`
             console.log(`Using SFU proxy via nginx at ${browserWsUrl} (front-end port: ${port})`)
           }
         }
@@ -188,8 +189,9 @@ export class SFUConnectionManager {
         url.searchParams.set('room', roomId)
         url.searchParams.set('peer', peerId)
 
-        console.log(`🔌 Connecting to SFU WebSocket: ${url.toString()} (converted from ${sfuWsUrl})`)
-        this.sfuWebSocket.value = new WebSocket(url.toString())
+        const finalUrl = url.toString()
+        console.log(`🔌 Connecting to SFU WebSocket: ${finalUrl} (converted from ${sfuWsUrl})`)
+        this.sfuWebSocket.value = new WebSocket(finalUrl)
 
         this.sfuWebSocket.value.onopen = () => {
           console.log('SFU WebSocket connected')
@@ -197,12 +199,23 @@ export class SFUConnectionManager {
         }
 
         this.sfuWebSocket.value.onerror = (error) => {
-          console.error('SFU WebSocket error:', error)
+          try {
+            const stateMap = {
+              [WebSocket.CONNECTING]: 'CONNECTING',
+              [WebSocket.OPEN]: 'OPEN',
+              [WebSocket.CLOSING]: 'CLOSING',
+              [WebSocket.CLOSED]: 'CLOSED'
+            } as Record<number, string>
+            const stateName = this.sfuWebSocket.value ? stateMap[this.sfuWebSocket.value.readyState] : 'NOT_CREATED'
+            console.error('SFU WebSocket error:', { error, url: finalUrl, readyState: this.sfuWebSocket.value?.readyState, stateName })
+          } catch (e) {
+            console.error('SFU WebSocket error:', error)
+          }
           reject(error)
         }
 
         this.sfuWebSocket.value.onclose = (event) => {
-          console.log('SFU WebSocket closed:', event.code, event.reason)
+          console.log('SFU WebSocket closed:', { code: event.code, reason: event.reason, url: finalUrl })
           if (event.code !== 1000) {
             this.globalStore.addNotification('SFU connection lost, attempting reconnection...', 'warning', 5000)
           }

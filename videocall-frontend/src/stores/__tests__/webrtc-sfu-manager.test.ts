@@ -143,11 +143,11 @@ describe('SFUConnectionManager', () => {
       const roomId = 'test-room-123'
       const peerId = 'test-peer-123'
 
-      let mockOnOpen: ((event: Event) => void) | null = null
+      let mockOnOpen: (() => void) | null = null
 
       global.WebSocket = vi.fn().mockImplementation((url: string) => {
         const ws = {
-          readyState: WebSocket.CONNECTING,
+          readyState: WebSocket.CONNECTING as number,
           send: vi.fn(),
           close: vi.fn(),
           onopen: null as ((event: Event) => void) | null,
@@ -189,7 +189,7 @@ describe('SFUConnectionManager', () => {
 
       global.WebSocket = vi.fn().mockImplementation(() => {
         const ws = {
-          readyState: WebSocket.CONNECTING,
+          readyState: WebSocket.CONNECTING as number,
           send: vi.fn(),
           close: vi.fn(),
           onopen: null as ((event: Event) => void) | null,
@@ -223,7 +223,7 @@ describe('SFUConnectionManager', () => {
 
       global.WebSocket = vi.fn().mockImplementation(() => {
         const ws = {
-          readyState: WebSocket.CONNECTING,
+          readyState: WebSocket.CONNECTING as number,
           send: vi.fn(),
           close: vi.fn(),
           onopen: null,
@@ -252,7 +252,7 @@ describe('SFUConnectionManager', () => {
       vi.useRealTimers()
     })
 
-    it('should use nginx proxy on port 3000 when frontend runs on 3001', async () => {
+    it('should use nginx proxy on default port when frontend runs on 3001', async () => {
       const originalLocation = window.location
       // Stub window.location to simulate dev server on :3001
       Object.defineProperty(window, 'location', {
@@ -274,7 +274,7 @@ describe('SFUConnectionManager', () => {
       global.WebSocket = vi.fn().mockImplementation((url: string) => {
         capturedUrl = url
         const ws = {
-          readyState: WebSocket.OPEN,
+          readyState: WebSocket.OPEN as number,
           send: vi.fn(),
           close: vi.fn(),
           onopen: null,
@@ -294,8 +294,8 @@ describe('SFUConnectionManager', () => {
 
       await expect(manager.connectToSFUWebSocket(sfuWsUrl, roomId, peerId)).resolves.toBeUndefined()
       expect(capturedUrl).toBeTruthy()
-      // Expect proxy to target port 3000
-      expect(capturedUrl).toMatch(/ws:\/\/localhost:3000\/sfu\/ws\//)
+      // Expect proxy to target default port (no explicit port) without trailing slash
+      expect(capturedUrl).toMatch(/ws:\/\/localhost\/sfu\/ws\?/) // query must follow immediately
 
       // Restore original location
       Object.defineProperty(window, 'location', { value: originalLocation })
