@@ -221,10 +221,11 @@ export const apiService = {
       // Ensure credentials is an object
       let loginData: Credentials
       if (typeof credentials === 'string') {
-        try {
-          loginData = JSON.parse(credentials)
-        } catch (error) {
-          throw new Error('Invalid credentials format')
+        // Backward-compatible password-only login mode used by LoginForm.
+        // Email can be provided via env for deployments; fallback is dev admin.
+        loginData = {
+          email: import.meta.env.VITE_DEFAULT_LOGIN_EMAIL || 'admin@example.com',
+          password: credentials,
         }
       } else {
         loginData = credentials

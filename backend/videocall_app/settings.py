@@ -560,8 +560,9 @@ SFU_PORT = config('SFU_PORT', default='8080', cast=int)
 SFU_API_BASE_URL = f'http://{SFU_HOST}:{SFU_PORT}/api/v1'
 SFU_WS_BASE_URL = f'ws://{SFU_HOST}:{SFU_PORT}/ws'
 
-# Enforce correct SFU host configuration in production (no localhost)
-if not DEBUG and SFU_HOST in ('localhost', '127.0.0.1'):
+# Enforce correct SFU host configuration in production (no localhost).
+# Skip during automated tests where localhost defaults are expected.
+if not DEBUG and not TESTING and SFU_HOST in ('localhost', '127.0.0.1'):
     raise ValueError(
         "SFU_HOST misconfigured for production: 'localhost' is not allowed. "
         "Set SFU_HOST to your SFU service name or domain."

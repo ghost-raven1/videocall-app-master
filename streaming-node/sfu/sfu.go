@@ -18,6 +18,7 @@ type SFU struct {
 	rooms      map[string]*Room
 	roomsMutex sync.RWMutex
 	api        *webrtc.API
+	pcConfig   webrtc.Configuration
 	logger     *logrus.Logger
 }
 
@@ -74,8 +75,27 @@ func NewSFU(cfg *config.Config) *SFU {
 		config: cfg,
 		rooms:  make(map[string]*Room),
 		api:    api,
+		pcConfig: webrtcConfig,
 		logger: logger,
 	}
+}
+
+// GetPeerConnectionConfig returns a copy of default peer connection config.
+func (s *SFU) GetPeerConnectionConfig() webrtc.Configuration {
+	cfg := s.pcConfig
+	servers := make([]webrtc.ICEServer, 0, len(cfg.ICEServers))
+	for _, srv := range cfg.ICEServers {
+		urls := make([]string, len(srv.URLs))
+		copy(urls, srv.URLs)
+		servers = append(servers, webrtc.ICEServer{
+			URLs:           urls,
+			Username:       srv.Username,
+			Credential:     srv.Credential,
+			CredentialType: srv.CredentialType,
+		})
+	}
+	cfg.ICEServers = servers
+	return cfg
 }
 
 // CreateRoom creates a new room or returns existing one

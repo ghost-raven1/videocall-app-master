@@ -157,8 +157,22 @@ export class SFUConnectionManager {
         // Check for environment variable override first
         const envWsUrl = import.meta.env.VITE_SFU_WS_URL
         if (envWsUrl) {
-          // Use environment variable as base URL
+          // Use environment variable as base URL, but if it points to localhost
+          // and the page is opened via LAN IP/domain, rewrite host to current page host.
           browserWsUrl = envWsUrl
+          try {
+            const envUrl = new URL(envWsUrl)
+            const currentHost = window.location.hostname
+            const isLocalEnvHost = envUrl.hostname === 'localhost' || envUrl.hostname === '127.0.0.1'
+            const isCurrentHostLocal = currentHost === 'localhost' || currentHost === '127.0.0.1'
+            if (isLocalEnvHost && !isCurrentHostLocal) {
+              envUrl.hostname = currentHost
+              browserWsUrl = envUrl.toString()
+              console.log(`Using current host for SFU WebSocket: ${browserWsUrl}`)
+            }
+          } catch (e) {
+            console.warn('Invalid VITE_SFU_WS_URL, falling back to runtime conversion:', envWsUrl)
+          }
         } else {
           // Replace internal Docker hostnames with localhost for browser
           if (browserWsUrl.includes('streaming-node:')) {

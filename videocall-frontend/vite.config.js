@@ -85,12 +85,14 @@ export default defineConfig({
         secure: false,
         ws: true,
       },
-      '/admin': {
-        target: (process.env.DOCKER_ENV === 'true' || existsSync('/.dockerenv')) 
-          ? 'http://backend:8000' 
-          : 'http://localhost:8000',
+      '/sfu': {
+        target: (process.env.DOCKER_ENV === 'true' || existsSync('/.dockerenv'))
+          ? 'http://streaming-node:8080'
+          : 'http://localhost:8080',
         changeOrigin: true,
         secure: false,
+        ws: true,
+        rewrite: (path) => path.replace(/^\/sfu/, ''),
       },
     },
   },

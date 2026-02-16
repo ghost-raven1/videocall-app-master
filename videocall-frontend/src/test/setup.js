@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, vi } from 'vitest'
+import { vi } from 'vitest'
 
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
@@ -73,6 +73,9 @@ global.RTCPeerConnection = vi.fn().mockImplementation(() => ({
   onconnectionstatechange: null
 }))
 
+global.RTCSessionDescription = vi.fn().mockImplementation(desc => desc)
+global.RTCIceCandidate = vi.fn().mockImplementation(candidate => candidate)
+
 global.RTCDataChannel = vi.fn().mockImplementation(() => ({
   send: vi.fn(),
   close: vi.fn(),
@@ -102,6 +105,7 @@ vi.mock('axios', () => ({
     post: vi.fn(),
     put: vi.fn(),
     delete: vi.fn(),
+    isAxiosError: vi.fn(error => Boolean(error && error.isAxiosError)),
     create: vi.fn().mockReturnThis(),
     interceptors: {
       request: { use: vi.fn(), eject: vi.fn() },
@@ -109,6 +113,14 @@ vi.mock('axios', () => ({
     }
   }
 }))
+
+global.fetch = vi.fn().mockResolvedValue({
+  ok: true,
+  status: 200,
+  json: vi.fn().mockResolvedValue({}),
+  blob: vi.fn().mockResolvedValue(new Blob()),
+  text: vi.fn().mockResolvedValue(''),
+})
 
 // Global test utilities
 global.testUtils = {
@@ -125,12 +137,3 @@ global.testUtils = {
     return element
   }
 }
-
-// Use fake timers globally in tests to stabilize time-based logic
-beforeAll(() => {
-  vi.useFakeTimers()
-})
-
-afterAll(() => {
-  vi.useRealTimers()
-})

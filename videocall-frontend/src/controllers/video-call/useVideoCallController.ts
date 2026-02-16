@@ -121,7 +121,12 @@ export function useVideoCallController(roomId?: string): VideoCallController {
       // Initialize media
       const mediaResult = await media.initializeMedia()
       if (!mediaResult.success) {
-        globalStore.addNotification('Failed to access camera/microphone', 'error')
+        globalStore.addNotification(
+          mediaResult.error || 'Failed to access camera/microphone',
+          'error',
+          6000
+        )
+        callState.endCall()
         return { success: false, error: mediaResult.error }
       }
 

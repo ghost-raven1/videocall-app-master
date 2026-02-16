@@ -176,7 +176,10 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       }
     })
     
-    // Get TURN servers from env (format: urls:username:credential,urls:username:credential)
+    // Get TURN servers from env.
+    // Supported formats:
+    // 1) turn:host:port
+    // 2) turn:host:port:username:credential
     const turnServers = import.meta.env.VITE_TURN_SERVERS
     if (turnServers) {
       turnServers.split(',').forEach(turnConfig => {
@@ -185,36 +188,53 @@ export const useWebRTCStore = defineStore('webrtc', () => {
         if (!trimmed || trimmed === 'turn' || trimmed === 'stun') {
           return
         }
-        
+
         const parts = trimmed.split(':')
-        if (parts.length >= 3) {
-          const urls = parts[0]
-          // Validate URL before adding
-          if (!isValidUrl(urls)) {
-            // Only warn if it's not just a protocol name
-            if (urls !== 'turn' && urls !== 'stun' && urls !== 'turns') {
-              console.warn('Invalid TURN URL format, skipping:', urls)
-            }
-            return
+        const protocol = parts[0]
+        const isTurnUrl = protocol === 'turn' || protocol === 'turns'
+        if (!isTurnUrl) {
+          if (isValidUrl(trimmed)) {
+            iceServers.push({ urls: trimmed })
+          } else {
+            console.warn('Invalid TURN entry format, skipping:', trimmed)
           }
-          const username = parts[1]
-          const credential = parts.slice(2).join(':') // Handle credentials with colons
+          return
+        }
+
+        if (parts.length < 3) {
+          console.warn('Invalid TURN URL format, skipping:', trimmed)
+          return
+        }
+
+        let urls = `${parts[0]}:${parts[1]}:${parts[2]}`
+        if (
+          window.location.hostname &&
+          window.location.hostname !== 'localhost' &&
+          window.location.hostname !== '127.0.0.1' &&
+          (urls.startsWith('turn:localhost:') || urls.startsWith('turn:127.0.0.1:'))
+        ) {
+          urls = urls
+            .replace('localhost', window.location.hostname)
+            .replace('127.0.0.1', window.location.hostname)
+        }
+
+        if (!isValidUrl(urls)) {
+          console.warn('Invalid TURN URL format, skipping:', urls)
+          return
+        }
+
+        if (parts.length >= 5) {
+          const username = parts[3]
+          const credential = parts.slice(4).join(':')
           iceServers.push({
             urls,
             username,
-            credential
+            credential,
           })
-        } else if (parts.length === 1) {
-          // Just URL without credentials - validate it
-          if (isValidUrl(parts[0])) {
-            iceServers.push({ urls: parts[0] })
-          } else {
-            // Only warn if it's not just a protocol name
-            if (parts[0] !== 'turn' && parts[0] !== 'stun' && parts[0] !== 'turns') {
-              console.warn('Invalid TURN URL format, skipping:', parts[0])
-            }
-          }
+          return
         }
+
+        iceServers.push({ urls })
       })
     }
     
@@ -250,9 +270,15 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     return iceServers
   }
 
-  const rtcConfiguration = {
+  const iceTransportPolicyEnv = String(import.meta.env.VITE_ICE_TRANSPORT_POLICY || '')
+    .trim()
+    .toLowerCase()
+  const iceTransportPolicy = iceTransportPolicyEnv === 'relay' ? 'relay' : 'all'
+
+  const rtcConfiguration: RTCConfiguration = {
     iceServers: getIceServers(),
     iceCandidatePoolSize: 10,
+    iceTransportPolicy,
   }
 
   // Initialize connection managers (updateOverallConnectionState will be defined later)
@@ -291,7 +317,41 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     try {
       globalStore.setLoading(true, 'Accessing camera and microphone...')
 
-      localStream.value = await navigator.mediaDevices.getUserMedia(mediaConstraints.value)
+      const hostname = window.location.hostname
+      const isLocalhost =
+        hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+      const isPrivateIPv4 = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(hostname)
+      const isLocalDevHost = import.meta.env.DEV && (isPrivateIPv4 || hostname.endsWith('.local'))
+
+      if (!window.isSecureContext && !isLocalhost && !isLocalDevHost) {
+        const errorMessage =
+          'Camera/microphone require HTTPS on network addresses. Open via https:// or use localhost on the same device.'
+        globalStore.addNotification(errorMessage, 'error', 10000)
+        return { success: false, error: errorMessage }
+      }
+
+      // In local development, allow HTTP on private LAN addresses so
+      // same-device multi-browser testing works without HTTPS setup.
+      if (!window.isSecureContext && isLocalDevHost) {
+        globalStore.addNotification(
+          'Running media over HTTP in development mode. Use HTTPS in production.',
+          'warning',
+          5000
+        )
+      }
+
+      let timeoutId: ReturnType<typeof setTimeout> | null = null
+      const mediaPromise = navigator.mediaDevices.getUserMedia(mediaConstraints.value)
+      const timeoutPromise = new Promise<MediaStream>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error('MEDIA_TIMEOUT'))
+        }, 15000)
+      })
+
+      localStream.value = await Promise.race([mediaPromise, timeoutPromise])
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
 
       // Set initial media states based on stream tracks
       const videoTrack = localStream.value.getVideoTracks()[0]
@@ -308,7 +368,10 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     } catch (error) {
       let errorMessage = 'Failed to access camera or microphone'
 
-      if (error.name === 'NotAllowedError') {
+      if (error?.message === 'MEDIA_TIMEOUT') {
+        errorMessage =
+          'Media permission request timed out. Allow camera/microphone access in the browser and try again.'
+      } else if (error.name === 'NotAllowedError') {
         errorMessage =
           'Camera and microphone access denied. Please allow permissions and try again.'
       } else if (error.name === 'NotFoundError') {

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -54,6 +56,87 @@ type Message struct {
 type SignalingMessage struct {
 	Type    string                 `json:"type"`
 	Payload map[string]interface{} `json:"payload"`
+}
+
+func extractCandidateType(candidate string) string {
+	marker := " typ "
+	idx := strings.Index(candidate, marker)
+	if idx == -1 {
+		return "unknown"
+	}
+
+	rest := candidate[idx+len(marker):]
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return "unknown"
+	}
+
+	return fields[0]
+}
+
+func truncateCandidate(candidate string) string {
+	if len(candidate) <= 140 {
+		return candidate
+	}
+	return candidate[:140] + "..."
+}
+
+func extractCandidateAddress(candidate string) string {
+	fields := strings.Fields(candidate)
+	if len(fields) < 6 {
+		return ""
+	}
+
+	// Candidate format:
+	// candidate:<foundation> <component> <transport> <priority> <address> <port> typ <type> ...
+	return strings.Trim(fields[4], "[]")
+}
+
+func shouldIgnoreRemoteCandidate(candidate string) (bool, string) {
+	ipStr := extractCandidateAddress(candidate)
+	if ipStr == "" {
+		return false, ""
+	}
+	candidateType := extractCandidateType(candidate)
+
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false, ""
+	}
+
+	if ip.IsUnspecified() {
+		return true, "unspecified-ip"
+	}
+
+	if ip.IsLoopback() {
+		return true, "loopback-ip"
+	}
+
+	// In Docker-based deployments host candidates on private ranges are often
+	// not actually reachable from the SFU container. Prefer srflx/relay.
+	if candidateType == "host" && ip.IsPrivate() {
+		return true, "private-host-ip"
+	}
+
+	// Reject clearly non-routable browser privacy candidates
+	// that cause TURN CreatePermission(403) and delay checks.
+	if ip4 := ip.To4(); ip4 != nil {
+		if ip4[0] >= 224 {
+			return true, "multicast-or-reserved-ipv4"
+		}
+	}
+
+	if ip.To4() == nil && ip.To16() != nil {
+		// Unique local IPv6 (fc00::/7)
+		if ip[0]&0xfe == 0xfc {
+			return true, "unique-local-ipv6"
+		}
+		if ip.IsMulticast() {
+			return true, "multicast-ipv6"
+		}
+	}
+
+	return false, ""
 }
 
 // NewServer creates a new server instance
@@ -550,9 +633,15 @@ func (c *WebSocketConnection) handleOffer(room *sfu.Room, msg Message) {
 		"msgPeerID": msg.PeerID,
 	}).Info("Creating peer connection on server for SFU")
 	
-	// Create peer connection on server side using room's API
-	// Use empty config - ICE servers are configured at API level in SFU
-	pc, err := room.GetAPI().NewPeerConnection(webrtc.Configuration{})
+	// Create peer connection on server side using SFU default config.
+	// This must include ICE servers (STUN/TURN) from config.
+	pcConfig := c.sfu.GetPeerConnectionConfig()
+	c.logger.WithFields(logrus.Fields{
+		"roomID":         c.roomID,
+		"peerID":         c.peerID,
+		"iceServersCount": len(pcConfig.ICEServers),
+	}).Info("Creating peer connection with SFU WebRTC config")
+	pc, err := room.GetAPI().NewPeerConnection(pcConfig)
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to create peer connection")
 		return
@@ -566,14 +655,22 @@ func (c *WebSocketConnection) handleOffer(room *sfu.Room, msg Message) {
 	// Handle ICE candidates from server side
 	pc.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		if candidate != nil {
+			candidateJSON := candidate.ToJSON()
+			c.logger.WithFields(logrus.Fields{
+				"roomID":        c.roomID,
+				"peerID":        c.peerID,
+				"candidateType": extractCandidateType(candidateJSON.Candidate),
+				"candidate":     truncateCandidate(candidateJSON.Candidate),
+			}).Info("Sending local ICE candidate to client")
+
 			iceMsg := Message{
 				Type:   "ice-candidate",
 				RoomID: c.roomID,
 				PeerID: c.peerID,
 				Data: map[string]interface{}{
-					"candidate":      candidate.ToJSON().Candidate,
-					"sdpMLineIndex":  candidate.ToJSON().SDPMLineIndex,
-					"sdpMid":         candidate.ToJSON().SDPMid,
+					"candidate":      candidateJSON.Candidate,
+					"sdpMLineIndex":  candidateJSON.SDPMLineIndex,
+					"sdpMid":         candidateJSON.SDPMid,
 				},
 			}
 			iceBytes, _ := json.Marshal(iceMsg)
@@ -826,6 +923,24 @@ func (c *WebSocketConnection) handleICECandidate(msg Message) {
 		return
 	}
 
+	if ignore, reason := shouldIgnoreRemoteCandidate(candidateStr); ignore {
+		c.logger.WithFields(logrus.Fields{
+			"roomID":        c.roomID,
+			"peerID":        c.peerID,
+			"reason":        reason,
+			"candidateType": extractCandidateType(candidateStr),
+			"candidate":     truncateCandidate(candidateStr),
+		}).Info("Ignoring remote ICE candidate")
+		return
+	}
+
+	c.logger.WithFields(logrus.Fields{
+		"roomID":        c.roomID,
+		"peerID":        c.peerID,
+		"candidateType": extractCandidateType(candidateStr),
+		"candidate":     truncateCandidate(candidateStr),
+	}).Info("Adding remote ICE candidate to peer connection")
+
 	iceCandidate := webrtc.ICECandidateInit{
 		Candidate: candidateStr,
 	}
@@ -842,7 +957,14 @@ func (c *WebSocketConnection) handleICECandidate(msg Message) {
 	err := pc.AddICECandidate(iceCandidate)
 	if err != nil {
 		c.logger.WithError(err).Error("Failed to add ICE candidate")
+		return
 	}
+
+	c.logger.WithFields(logrus.Fields{
+		"roomID":        c.roomID,
+		"peerID":        c.peerID,
+		"candidateType": extractCandidateType(candidateStr),
+	}).Info("Remote ICE candidate added successfully")
 }
 
 func (c *WebSocketConnection) handleBatchedICECandidates(msg Message) {

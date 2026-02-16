@@ -359,13 +359,14 @@ class RoomManager:
 
                 # Delete SFU room
                 result = sfu_client.delete_room(sfu_room_id)
+                error_message = result.get('error') or result.get('message') or 'Unknown SFU cleanup failure'
 
                 if result.get('success'):
                     logger.info(f"SFU room cleaned up: {sfu_room_id}")
                     return {'success': True, 'message': 'SFU room deleted'}
                 else:
-                    logger.error(f"Failed to cleanup SFU room {sfu_room_id}: {result.get('error')}")
-                    return {'success': False, 'error': result.get('error')}
+                    logger.error(f"Failed to cleanup SFU room {sfu_room_id}: {error_message}")
+                    return {'success': False, 'error': error_message}
 
             return {'success': True, 'message': 'No SFU room to cleanup'}
 

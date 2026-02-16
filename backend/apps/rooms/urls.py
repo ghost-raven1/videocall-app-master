@@ -29,16 +29,6 @@ urlpatterns = [
     # Legacy room endpoints (for backward compatibility)
     path('create/', views.create_room, name='create'),
     path('join/', views.join_room, name='join'),
-    path('<str:room_id>/', views.get_room, name='get'),
-    path('<str:room_id>/leave/', views.leave_room, name='leave'),
-    path('<str:room_id>/delete/', views.delete_room, name='delete'),
-
-    # SFU-specific endpoints
-    path('<str:room_id>/sfu/create/', views.create_sfu_room, name='create_sfu_room'),
-    path('<str:room_id>/sfu/info/', views.get_room_sfu_info, name='get_room_sfu_info'),
-    path('<str:room_id>/statistics/', views.get_room_statistics, name='get_room_statistics'),
-    path('<str:room_id>/health/', views.check_room_health, name='check_room_health'),
-    path('sfu/server/stats/', views.get_sfu_server_stats, name='get_sfu_server_stats'),
 
     # Admin-only endpoints
     path('admin/force-close/<str:room_id>/', views.force_close_room, name='force_close_room'),
@@ -51,10 +41,21 @@ urlpatterns = [
     path('admin/rooms/active/', views.RoomManagementViewSet.as_view({'get': 'active_rooms'}), name='active_rooms'),
     path('admin/activity/logs/', views.RoomManagementViewSet.as_view({'get': 'room_activity_logs'}), name='room_activity_logs'),
 
+    # SFU server endpoint without room_id
+    path('sfu/server/stats/', views.get_sfu_server_stats, name='get_sfu_server_stats'),
+
+    # Room-id endpoints (must be below fixed prefixes like admin/* and sfu/*)
+    path('<str:room_id>/', views.get_room, name='get'),
+    path('<str:room_id>/leave/', views.leave_room, name='leave'),
+    path('<str:room_id>/delete/', views.delete_room, name='delete'),
+    path('<str:room_id>/sfu/create/', views.create_sfu_room, name='create_sfu_room'),
+    path('<str:room_id>/sfu/info/', views.get_room_sfu_info, name='get_room_sfu_info'),
+    path('<str:room_id>/statistics/', views.get_room_statistics, name='get_room_statistics'),
+    path('<str:room_id>/health/', views.check_room_health, name='check_room_health'),
+
     # Include router URLs
     path('', include(router.urls)),
     
     # Admin panel aliases (for Vue.js admin)
     path('', include(admin_router.urls)),
 ]
-

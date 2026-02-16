@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -70,7 +71,10 @@ func (dc *DjangoClient) Connect() error {
     // Construct WebSocket URL for Django SFU endpoint
     wsURL := fmt.Sprintf("ws://%s/ws/sfu/", dc.djangoURL)
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	headers := http.Header{}
+	headers.Set("Origin", fmt.Sprintf("http://%s", dc.djangoURL))
+
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, headers)
 	if err != nil {
 		return fmt.Errorf("failed to connect to Django WebSocket: %w", err)
 	}

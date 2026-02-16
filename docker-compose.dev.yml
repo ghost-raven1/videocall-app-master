@@ -8,7 +8,7 @@ services:
     volumes:
       - dev_postgres_data:/var/lib/postgresql/data/
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-videocall_dev}"]
       interval: 10s
@@ -24,7 +24,7 @@ services:
     volumes:
       - dev_redis_data:/data
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -51,10 +51,9 @@ services:
       # Restrict Pion's ICE UDP port range to the ports exposed by Docker
       WEBRTC_UDP_PORT_MIN: 8081
       WEBRTC_UDP_PORT_MAX: 8090
-      # Use host address in ICE candidates so the browser connects to
-      # 127.0.0.1:8081-8090 on the host, which Docker forwards into the
-      # container.
-      WEBRTC_NAT_1TO1_IPS: 127.0.0.1
+      # ICE host candidates are provided via .env.dev (WEBRTC_NAT_1TO1_IPS)
+      # so they can be changed per developer machine without editing compose.
+      WEBRTC_NAT_1TO1_CANDIDATE_TYPE: host
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://127.0.0.1:8080/health"]
       interval: 10s
@@ -72,23 +71,28 @@ services:
       - "3478:3478"           # STUN/TURN UDP/TCP
       - "3478:3478/udp"
       - "3478:3478/tcp"
-      - "49160-49200:49160-49200/udp"  # media relay ports
+      - "55000-55040:55000-55040/udp"  # media relay ports
     command: >
       turnserver
         --no-tls
         --no-dtls
         --listening-ip=0.0.0.0
+        --external-ip=${TURN_EXTERNAL_IP:-192.168.0.105}
         --listening-port=3478
         --fingerprint
         --lt-cred-mech
         --user=turnuser:turnpassword
         --realm=videocall.local
+        --cli-password=turn-cli-local
         --total-quota=100
         --bps-capacity=0
-        --no-stdout-log
+        --allowed-peer-ip=0.0.0.0-255.255.255.255
+        --allowed-peer-ip=::
+        --allow-loopback-peers
+        --verbose
         --log-file=stdout
-        --min-port=49160
-        --max-port=49200
+        --min-port=55000
+        --max-port=55040
     networks:
       - app-network
 
@@ -107,6 +111,9 @@ services:
       DEBUG: "True"
       DB_HOST: db
       DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-videocall_dev}
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-dev_password}
       REDIS_URL: redis://redis:6379/0
       POSTGRES_DB: ${POSTGRES_DB:-videocall_dev}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -182,4 +189,3 @@ networks:
   app-network:
     name: videocall_dev_network
     driver: bridge
-

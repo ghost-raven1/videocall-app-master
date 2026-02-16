@@ -1,0 +1,43 @@
+<testsuites id="" name="" tests="3" failures="3" skipped="0" errors="0" time="1.2933299999999999">
+<testsuite name="multi-user.spec.ts" timestamp="2026-02-16T14:34:17.368Z" hostname="chromium" tests="3" failures="3" skipped="0" time="0.028" errors="0">
+<testcase name="Multi-User Video Call E2E Tests › should handle multiple participants in P2P mode" classname="multi-user.spec.ts" time="0.007">
+<failure message="multi-user.spec.ts:4:3 should handle multiple participants in P2P mode" type="FAILURE">
+<![CDATA[  [chromium] › multi-user.spec.ts:4:3 › Multi-User Video Call E2E Tests › should handle multiple participants in P2P mode 
+
+    Error: browserType.launch: Failed to launch: Error: spawn /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell ENOENT
+    Call log:
+      - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-kdOdgi --remote-debugging-pipe --no-startup-window
+      - [pid=N/A] starting temporary directories cleanup
+      - [pid=N/A] finished temporary directories cleanup
+
+]]>
+</failure>
+</testcase>
+<testcase name="Multi-User Video Call E2E Tests › should handle SFU mode with 3+ participants" classname="multi-user.spec.ts" time="0.01">
+<failure message="multi-user.spec.ts:60:3 should handle SFU mode with 3+ participants" type="FAILURE">
+<![CDATA[  [chromium] › multi-user.spec.ts:60:3 › Multi-User Video Call E2E Tests › should handle SFU mode with 3+ participants 
+
+    Error: browserType.launch: Failed to launch: Error: spawn /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell ENOENT
+    Call log:
+      - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-kcCKkj --remote-debugging-pipe --no-startup-window
+      - [pid=N/A] starting temporary directories cleanup
+      - [pid=N/A] finished temporary directories cleanup
+
+]]>
+</failure>
+</testcase>
+<testcase name="Multi-User Video Call E2E Tests › should handle participant leaving" classname="multi-user.spec.ts" time="0.011">
+<failure message="multi-user.spec.ts:115:3 should handle participant leaving" type="FAILURE">
+<![CDATA[  [chromium] › multi-user.spec.ts:115:3 › Multi-User Video Call E2E Tests › should handle participant leaving 
+
+    Error: browserType.launch: Failed to launch: Error: spawn /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell ENOENT
+    Call log:
+      - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-NmbPjj --remote-debugging-pipe --no-startup-window
+      - [pid=N/A] starting temporary directories cleanup
+      - [pid=N/A] finished temporary directories cleanup
+
+]]>
+</failure>
+</testcase>
+</testsuite>
+</testsuites>
