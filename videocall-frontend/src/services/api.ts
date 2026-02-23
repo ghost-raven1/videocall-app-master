@@ -1,6 +1,7 @@
 // src/services/api.ts - API service layer with JWT support
 import axios, { type AxiosError, type AxiosRequestConfig } from 'axios'
 import type { APIError, APIRequestConfig, Credentials, TokenResponse, APIEnvironment } from '../types/api'
+import { useGlobalStore } from '../stores/global'
 
 // Create axios instance with base configuration
 // In dev mode, always use relative path which will be proxied by Vite
@@ -69,7 +70,6 @@ apiClient.interceptors.response.use(
     // Try to get global store for notifications
     let globalStore = null
     try {
-      const { useGlobalStore } = await import('../stores/global')
       globalStore = useGlobalStore()
     } catch (e) {
       // Store not available, skip notifications

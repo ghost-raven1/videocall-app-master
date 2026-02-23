@@ -16,6 +16,7 @@
           class="p-2 rounded-lg hover:bg-warp-surfaceAlt/80 transition-colors border border-transparent"
           :class="{ 'border-warp-accent/70 bg-warp-surfaceAlt/90': showAttachments }"
           title="View attachments"
+          aria-label="View attachments"
         >
           <svg class="w-5 h-5 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
@@ -27,6 +28,7 @@
           @click="$emit('close')"
           class="p-2 rounded-lg hover:bg-warp-surfaceAlt/80 transition-colors"
           title="Close chat"
+          aria-label="Close chat"
         >
           <svg class="w-5 h-5 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -223,6 +225,7 @@
             class="hidden"
             @change="handleFileSelect"
             :accept="acceptedFileTypes"
+            aria-label="Attach file"
           />
           <svg class="w-6 h-6 text-warp-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
@@ -233,10 +236,10 @@
         <div class="flex-1 relative">
           <textarea
             ref="messageInput"
-            :value="newMessage"
-            @input="onMessageChange"
+            v-model="newMessage"
+            @input="handleMessageInput"
             @keydown.enter.exact.prevent="handleSendMessage"
-            @keydown.enter.shift.exact="handleShiftEnter"
+            @keydown.enter.shift.exact.prevent="handleShiftEnter"
             placeholder="Type a message... (Enter to send, Shift+Enter for new line)"
             rows="1"
             class="w-full px-3.5 py-2 pr-10 bg-warp-surfaceAlt/80 text-warp-text placeholder:text-warp-muted rounded-lg focus:outline-none focus:ring-2 focus:ring-warp-accent/70 resize-none transition-all"
@@ -257,9 +260,10 @@
         <!-- Send button -->
         <button
           @click="handleSendMessage"
-          :disabled="isSending || !canSend"
-          class="btn-primary flex items-center justify-center min-w-[44px] h-11 px-3 disabled:opacity-50 disabled:cursor-not-allowed"
+          :disabled="isSending"
+          class="btn-primary flex items-center justify-center min-w-[44px] h-11 px-3 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warp-accent/70"
           :title="isSending ? 'Sending...' : 'Send message (Enter)'"
+          aria-label="Send message"
         >
           <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -322,6 +326,7 @@
 <script>
 export default {
   name: 'RoomChat',
+  emits: ['close', 'new-message'],
   props: {
     roomCode: {
       type: String,
@@ -337,7 +342,6 @@ export default {
     }
   },
   data() {
-    // Ensure reactive data object
     return {
       messages: [],
       attachments: [],
@@ -357,18 +361,144 @@ export default {
   mounted() {
     this.loadChatHistory()
     this.loadAttachments()
-    this.setupWebSocketListeners()
+    this.attachWebSocket(this.websocket)
+  },
+  watch: {
+    websocket(newSocket, oldSocket) {
+      this.detachWebSocket(oldSocket)
+      this.attachWebSocket(newSocket)
+    },
+    roomCode(newRoomCode, oldRoomCode) {
+      if (!newRoomCode || newRoomCode === oldRoomCode) {
+        return
+      }
+
+      this.messages = []
+      this.attachments = []
+      this.replyingTo = null
+      this.uploadError = null
+      this.loadChatHistory()
+      this.loadAttachments()
+    }
   },
   methods: {
+    attachWebSocket(ws) {
+      if (ws && typeof ws.addEventListener === 'function') {
+        ws.addEventListener('message', this.handleWebSocketMessage)
+      }
+    },
+
+    detachWebSocket(ws) {
+      if (ws && typeof ws.removeEventListener === 'function') {
+        ws.removeEventListener('message', this.handleWebSocketMessage)
+      }
+    },
+
+    normalizeAttachment(rawAttachment = {}) {
+      const fallbackId = `${rawAttachment.original_filename || rawAttachment.file_name || 'file'}-${rawAttachment.file_size || rawAttachment.size || 0}`
+      return {
+        ...rawAttachment,
+        id: rawAttachment.id ? String(rawAttachment.id) : fallbackId,
+        original_filename:
+          rawAttachment.original_filename ||
+          rawAttachment.file_name ||
+          rawAttachment.name ||
+          'attachment',
+        file_size: Number(rawAttachment.file_size || rawAttachment.size || 0),
+        file_type: rawAttachment.file_type || 'other',
+        file_url:
+          rawAttachment.file_url ||
+          rawAttachment.file?.url ||
+          rawAttachment.file ||
+          null
+      }
+    },
+
+    upsertAttachment(rawAttachment) {
+      if (!rawAttachment) {
+        return null
+      }
+
+      const attachment = this.normalizeAttachment(rawAttachment)
+      const idx = this.attachments.findIndex((item) => String(item.id) === String(attachment.id))
+      if (idx === -1) {
+        this.attachments.push(attachment)
+      } else {
+        this.attachments[idx] = {
+          ...this.attachments[idx],
+          ...attachment
+        }
+      }
+      return attachment
+    },
+
+    normalizeMessage(rawMessage = {}) {
+      const senderIdRaw =
+        rawMessage.sender_id ??
+        rawMessage.participant_id ??
+        rawMessage.participant?.id ??
+        null
+      const senderId = senderIdRaw != null ? String(senderIdRaw) : ''
+      const createdAt = rawMessage.created_at || rawMessage.timestamp || new Date().toISOString()
+      const attachments = Array.isArray(rawMessage.attachments)
+        ? rawMessage.attachments.map((attachment) => this.normalizeAttachment(attachment))
+        : []
+      const messageType = rawMessage.message_type || (attachments.length > 0 ? 'file' : 'text')
+
+      return {
+        ...rawMessage,
+        id: rawMessage.id ? String(rawMessage.id) : `local_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+        room_id: rawMessage.room_id || this.roomCode,
+        sender_id: senderId,
+        participant_id: rawMessage.participant_id ? String(rawMessage.participant_id) : senderId,
+        participant_name:
+          rawMessage.participant_name ||
+          rawMessage.participant?.display_name ||
+          (senderId === String(this.participantId) ? 'You' : 'Participant'),
+        content: rawMessage.content ?? rawMessage.message ?? '',
+        created_at: createdAt,
+        edited_at: rawMessage.edited_at || (rawMessage.is_edited ? rawMessage.updated_at || createdAt : null),
+        message_type: messageType,
+        attachments,
+        reply_to: rawMessage.reply_to?.id || rawMessage.reply_to || null
+      }
+    },
+
+    upsertMessage(rawMessage, options = {}) {
+      if (!rawMessage) {
+        return { message: null, isNew: false }
+      }
+
+      const shouldScroll = options.scroll !== false
+      const normalized = this.normalizeMessage(rawMessage)
+      const idx = this.messages.findIndex((item) => String(item.id) === String(normalized.id))
+
+      if (idx === -1) {
+        this.messages.push(normalized)
+      } else {
+        this.messages[idx] = {
+          ...this.messages[idx],
+          ...normalized
+        }
+      }
+
+      if (shouldScroll) {
+        this.$nextTick(() => this.scrollToBottom())
+      }
+
+      return { message: normalized, isNew: idx === -1 }
+    },
+
     toggleAttachments() {
       this.showAttachments = !this.showAttachments
     },
+
     async loadChatHistory() {
       try {
         const response = await fetch(`/api/rooms/chat/messages/history/?room_code=${this.roomCode}&limit=100`)
         const data = await response.json()
-        if (data.success && data.messages) {
-          this.messages = Array.isArray(data.messages) ? data.messages : []
+        if (data.success && Array.isArray(data.messages)) {
+          this.messages = data.messages.map((message) => this.normalizeMessage(message))
           this.$nextTick(() => this.scrollToBottom())
         } else {
           this.messages = []
@@ -378,13 +508,13 @@ export default {
         this.messages = []
       }
     },
-    
+
     async loadAttachments() {
       try {
         const response = await fetch(`/api/rooms/chat/attachments/list_by_room/?room_code=${this.roomCode}`)
         const data = await response.json()
-        if (data.success && data.attachments) {
-          this.attachments = Array.isArray(data.attachments) ? data.attachments : []
+        if (data.success && Array.isArray(data.attachments)) {
+          this.attachments = data.attachments.map((attachment) => this.normalizeAttachment(attachment))
         } else {
           this.attachments = []
         }
@@ -393,39 +523,58 @@ export default {
         this.attachments = []
       }
     },
-    
-    setupWebSocketListeners() {
-      if (this.websocket) {
-        this.websocket.addEventListener('message', this.handleWebSocketMessage)
-      }
-    },
-    
+
     handleWebSocketMessage(event) {
-      const data = JSON.parse(event.data)
-      
+      let data = null
+      try {
+        data = JSON.parse(event.data)
+      } catch (error) {
+        console.warn('Skipping malformed WebSocket chat message:', error)
+        return
+      }
+
+      if (!data || typeof data !== 'object') {
+        return
+      }
+
       if (data.type === 'chat_message') {
-        this.messages.push(data.message)
-        this.$nextTick(() => this.scrollToBottom())
-      } else if (data.type === 'chat_message_edited') {
-        const index = this.messages.findIndex(m => m.id === data.message.id)
-        if (index !== -1) {
-          this.messages[index] = data.message
+        const result = this.upsertMessage(data.message)
+        if (result.isNew && result.message && !this.isOwnMessage(result.message)) {
+          this.$emit('new-message', result.message)
         }
+      } else if (data.type === 'chat_message_edited') {
+        this.upsertMessage(data.message, { scroll: false })
       } else if (data.type === 'chat_message_deleted') {
-        const index = this.messages.findIndex(m => m.id === data.message_id)
+        const index = this.messages.findIndex((message) => String(message.id) === String(data.message_id))
         if (index !== -1) {
-          this.messages[index].is_deleted = true
-          this.messages[index].content = '[Deleted]'
+          this.messages[index] = {
+            ...this.messages[index],
+            is_deleted: true,
+            content: '[Deleted]'
+          }
         }
       } else if (data.type === 'file_uploaded') {
-        this.attachments.push(data.attachment)
-        if (data.message) {
-          this.messages.push(data.message)
-          this.$nextTick(() => this.scrollToBottom())
+        const normalizedAttachment = this.upsertAttachment(data.attachment)
+        const messagePayload = data.message
+          ? { ...data.message }
+          : null
+
+        if (
+          messagePayload &&
+          normalizedAttachment &&
+          (!Array.isArray(messagePayload.attachments) || messagePayload.attachments.length === 0)
+        ) {
+          messagePayload.attachments = [normalizedAttachment]
+          messagePayload.message_type = messagePayload.message_type || 'file'
+        }
+
+        const result = this.upsertMessage(messagePayload)
+        if (result.isNew && result.message && !this.isOwnMessage(result.message)) {
+          this.$emit('new-message', result.message)
         }
       }
     },
-    
+
     // v-model handles syncing; we only adjust sizing on input
     handleMessageInput() {
       // Auto-resize textarea based on content
@@ -437,15 +586,11 @@ export default {
       })
     },
 
-    onMessageChange(event) {
-      // Manual sync of textarea value to reactive state
-      const val = event && event.target ? event.target.value : ''
-      this.newMessage = typeof val === 'string' ? val : ''
-      this.handleMessageInput()
-    },
-
-    
     handleShiftEnter(event) {
+      if (event && typeof event.preventDefault === 'function') {
+        event.preventDefault()
+      }
+
       // Shift+Enter should allow newline - insert newline at cursor position
       const textarea = event && event.target
       if (!textarea || typeof textarea.selectionStart !== 'number') {
@@ -462,104 +607,88 @@ export default {
         this.handleMessageInput()
       })
     },
-    
+
     async handleSendMessage() {
-      // Prevent double-sending
       if (this.isSending) {
         return
       }
-      
-      // Get message text and trim
-      const messageText = (this.newMessage && typeof this.newMessage === 'string') ? this.newMessage.trim() : ''
-      
-      // Check if we have something to send
-      if (!this.canSend) {
+
+      const messageText =
+        this.newMessage && typeof this.newMessage === 'string'
+          ? this.newMessage.trim()
+          : ''
+
+      const normalizedMessageText =
+        typeof messageText === 'string' && messageText.trim().length > 0
+          ? messageText.trim()
+          : ''
+
+      const hasFileToSend = !!(this.selectedFile && this.selectedFile.name)
+      if (!normalizedMessageText && !hasFileToSend) {
         return
       }
-      
-      // Set sending state
+
       this.isSending = true
       this.uploadError = null
-      
+
       try {
         if (this.selectedFile) {
           await this.uploadFile()
         } else {
-          // Use apiService instead of fetch
           const { apiService } = await import('@/services/api')
-          
           const response = await apiService.sendChatMessage(
             this.roomCode,
             this.participantId,
-            messageText,
+            normalizedMessageText,
             'text',
             this.replyingTo?.id
           )
-          
+
           if (response && (response.status === 201 || response.status === 200 || response.data?.success)) {
-            // Add message to local list immediately for better UX
             const messageData = response.data?.message || response.data
-            if (messageData) {
-              this.messages.push({
-                id: messageData.id || `msg_${Date.now()}`,
-                room_id: this.roomCode,
-                participant_id: messageData.sender_id || this.participantId,
-                participant_name: messageData.participant?.display_name || 'You',
-                message: messageData.content || messageText,
-                timestamp: messageData.created_at || new Date().toISOString(),
-                message_type: 'text',
-                reply_to: this.replyingTo?.id
-              })
-            }
-            
-            // Broadcast via WebSocket
-            if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+            const upserted = this.upsertMessage(messageData)
+
+            // Broadcast message with its server id to avoid duplicate echoes.
+            if (this.websocket && this.websocket.readyState === WebSocket.OPEN && upserted.message) {
               this.websocket.send(JSON.stringify({
                 type: 'chat_message',
-                room_id: this.roomCode,
-                participant_id: this.participantId,
-                message: messageText,
-                timestamp: new Date().toISOString(),
-                reply_to: this.replyingTo?.id
+                message: upserted.message
               }))
             }
-            
-            // Clear message input after successful send
+
             this.newMessage = ''
             this.replyingTo = null
-            
-            // Clear textarea and reset height
+
             this.$nextTick(() => {
               if (this.$refs.messageInput) {
                 this.$refs.messageInput.value = ''
                 this.$refs.messageInput.style.height = 'auto'
                 this.$refs.messageInput.focus()
               }
-              // Scroll to bottom to show new message
               this.scrollToBottom()
             })
           } else {
             const errorMsg = response?.data?.error || response?.data?.message || 'Unknown error'
-            console.error('Failed to send message:', errorMsg)
-            this.uploadError = `Failed to send message: ${errorMsg}`
-            setTimeout(() => { this.uploadError = null }, 5000)
+            throw new Error(errorMsg)
           }
         }
       } catch (error) {
         console.error('Failed to send message:', error)
         const errorMsg = error?.response?.data?.error || error?.message || 'Unknown error'
         this.uploadError = `Failed to send message: ${errorMsg}`
-        setTimeout(() => { this.uploadError = null }, 5000)
+        setTimeout(() => {
+          this.uploadError = null
+        }, 5000)
       } finally {
         this.isSending = false
       }
     },
-    
+
     async sendMessage() {
       // Alias for backward compatibility
       await this.handleSendMessage()
     },
-    
+
     canSendMessage() {
       // Backward-compatible alias: keep method for any external callers
       const hasText = typeof this.newMessage === 'string' && this.newMessage.trim().length > 0
@@ -568,157 +697,183 @@ export default {
     },
 
     async uploadFile() {
-      if (!this.selectedFile) return
-      
-      // Validate file size again before upload
+      if (!this.selectedFile) {
+        return
+      }
+
       if (this.selectedFile.size > this.maxFileSize) {
         this.uploadError = `File too large. Maximum size is ${this.formatFileSize(this.maxFileSize)}`
         this.clearFileSelection()
-        return
+        throw new Error(this.uploadError)
       }
-      
+
       const formData = new FormData()
       formData.append('file', this.selectedFile)
       formData.append('room_code', this.roomCode)
       formData.append('participant_id', this.participantId)
-      
+
       this.isUploading = true
       this.uploadProgress = 0
       this.uploadError = null
-      
-      try {
+
+      await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest()
-        
-        // Track upload progress
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            this.uploadProgress = Math.round((e.loaded / e.total) * 100)
+
+        const finalize = (isSuccess) => {
+          this.isUploading = false
+          if (!isSuccess) {
+            this.uploadProgress = 0
+          }
+        }
+
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable) {
+            this.uploadProgress = Math.round((event.loaded / event.total) * 100)
           }
         })
-        
-        // Handle completion
+
         xhr.addEventListener('load', () => {
-          if (xhr.status === 200 || xhr.status === 201) {
-            try {
-              const data = JSON.parse(xhr.responseText)
-              if (data.success || data.message) {
-                // Add message to local list immediately for better UX
-                if (data.message) {
-                  this.messages.push(data.message)
-                }
-                
-                // Broadcast via WebSocket
-                if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
-                  this.websocket.send(JSON.stringify({
-                    type: 'file_uploaded',
-                    attachment: data.attachment,
-                    message: data.message
-                  }))
-                }
-                
-                this.clearFileSelection()
-                this.newMessage = ''
-                this.uploadProgress = 0
-                this.uploadError = null
-              } else {
-                this.uploadError = data.error || 'Upload failed'
-                this.isUploading = false
-              }
-            } catch (error) {
-              console.error('Failed to parse server response:', error)
-              this.uploadError = 'Failed to parse server response'
-              this.isUploading = false
-            }
-          } else {
+          if (xhr.status !== 200 && xhr.status !== 201) {
+            let errorMessage = `Upload failed with status ${xhr.status}`
             try {
               const errorData = JSON.parse(xhr.responseText)
-              this.uploadError = errorData.error || `Upload failed with status ${xhr.status}`
+              errorMessage = errorData.error || errorData.message || errorMessage
             } catch {
-              this.uploadError = `Upload failed with status ${xhr.status}`
+              // Keep fallback message
             }
-            this.isUploading = false
+            this.uploadError = errorMessage
+            finalize(false)
+            reject(new Error(errorMessage))
+            return
+          }
+
+          try {
+            const data = JSON.parse(xhr.responseText)
+            if (!(data.success || data.message)) {
+              const serverError = data.error || 'Upload failed'
+              this.uploadError = serverError
+              finalize(false)
+              reject(new Error(serverError))
+              return
+            }
+
+            const normalizedAttachment = this.upsertAttachment(data.attachment)
+            const messagePayload = data.message ? { ...data.message } : null
+
+            if (
+              messagePayload &&
+              normalizedAttachment &&
+              (!Array.isArray(messagePayload.attachments) || messagePayload.attachments.length === 0)
+            ) {
+              messagePayload.attachments = [normalizedAttachment]
+              messagePayload.message_type = messagePayload.message_type || 'file'
+            }
+
+            const upserted = this.upsertMessage(messagePayload)
+
+            if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+              this.websocket.send(JSON.stringify({
+                type: 'file_uploaded',
+                attachment: normalizedAttachment,
+                message: upserted.message
+              }))
+            }
+
+            this.clearFileSelection()
+            this.newMessage = ''
+            this.replyingTo = null
+            this.uploadProgress = 0
+            this.uploadError = null
+            finalize(true)
+            resolve(null)
+          } catch (error) {
+            const parseError = 'Failed to parse server response'
+            console.error(parseError, error)
+            this.uploadError = parseError
+            finalize(false)
+            reject(new Error(parseError))
           }
         })
-        
-        // Handle errors
+
         xhr.addEventListener('error', () => {
-          this.uploadError = 'Network error during upload'
-          this.isUploading = false
-          this.uploadProgress = 0
+          const errorMessage = 'Network error during upload'
+          this.uploadError = errorMessage
+          finalize(false)
+          reject(new Error(errorMessage))
         })
-        
-        // Handle abort
+
         xhr.addEventListener('abort', () => {
-          this.uploadError = 'Upload cancelled'
-          this.isUploading = false
-          this.uploadProgress = 0
+          const errorMessage = 'Upload cancelled'
+          this.uploadError = errorMessage
+          finalize(false)
+          reject(new Error(errorMessage))
         })
-        
+
         xhr.open('POST', '/api/rooms/chat/attachments/')
         xhr.send(formData)
-        
-      } catch (error) {
-        console.error('Failed to upload file:', error)
-        this.uploadError = error.message || 'Upload failed'
-        this.isUploading = false
-        this.uploadProgress = 0
-      }
+      })
     },
-    
+
     handleFileSelect(event) {
       const file = event.target.files[0]
-      if (file) {
-        // Validate file size on frontend before upload
-        if (file.size > this.maxFileSize) {
-          this.uploadError = `File too large. Maximum size is ${this.formatFileSize(this.maxFileSize)}`
-          this.$nextTick(() => {
-            setTimeout(() => {
-              this.uploadError = null
-            }, 5000)
-          })
-          // Clear file input
-          if (this.$refs.fileInput) {
-            this.$refs.fileInput.value = ''
-          }
-          return
-        }
-        
-        // Validate file type
-        const fileExtension = '.' + file.name.split('.').pop().toLowerCase()
-        if (!this.acceptedFileTypes.includes(fileExtension)) {
-          this.uploadError = `File type not supported. Allowed types: ${this.acceptedFileTypes}`
-          this.$nextTick(() => {
-            setTimeout(() => {
-              this.uploadError = null
-            }, 5000)
-          })
-          if (this.$refs.fileInput) {
-            this.$refs.fileInput.value = ''
-          }
-          return
-        }
-        
-        this.selectedFile = file
-        this.uploadError = null
+      if (!file) {
+        return
       }
+
+      // Validate file size on frontend before upload
+      if (file.size > this.maxFileSize) {
+        this.uploadError = `File too large. Maximum size is ${this.formatFileSize(this.maxFileSize)}`
+        this.$nextTick(() => {
+          setTimeout(() => {
+            this.uploadError = null
+          }, 5000)
+        })
+        if (this.$refs.fileInput) {
+          this.$refs.fileInput.value = ''
+        }
+        return
+      }
+
+      // Validate file type
+      const extension = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : ''
+      const fileExtension = extension ? `.${extension}` : ''
+      const acceptedExtensions = this.acceptedFileTypes
+        .split(',')
+        .map(type => type.trim().toLowerCase())
+        .filter(Boolean)
+      if (!fileExtension || !acceptedExtensions.includes(fileExtension)) {
+        this.uploadError = `File type not supported. Allowed types: ${this.acceptedFileTypes}`
+        this.$nextTick(() => {
+          setTimeout(() => {
+            this.uploadError = null
+          }, 5000)
+        })
+        if (this.$refs.fileInput) {
+          this.$refs.fileInput.value = ''
+        }
+        return
+      }
+
+      this.selectedFile = file
+      this.uploadError = null
     },
-    
+
     clearFileSelection() {
       this.selectedFile = null
       if (this.$refs.fileInput) {
         this.$refs.fileInput.value = ''
       }
     },
-    
+
     replyToMessage(message) {
       this.replyingTo = message
       this.$refs.messageInput.focus()
     },
-    
+
     cancelReply() {
       this.replyingTo = null
     },
-    
+
     async editMessage(message) {
       const newContent = prompt('Edit message:', message.content)
       if (newContent && newContent !== message.content) {
@@ -731,12 +886,12 @@ export default {
               content: newContent
             })
           })
-          
+
           const data = await response.json()
           if (data.success && this.websocket && this.websocket.readyState === WebSocket.OPEN) {
             this.websocket.send(JSON.stringify({
               type: 'chat_message_edited',
-              message: data.message
+              message: this.normalizeMessage(data.message)
             }))
           }
         } catch (error) {
@@ -744,7 +899,7 @@ export default {
         }
       }
     },
-    
+
     async deleteMessage(message) {
       if (confirm('Delete this message?')) {
         try {
@@ -755,7 +910,7 @@ export default {
               participant_id: this.participantId
             })
           })
-          
+
           const data = await response.json()
           if (data.success && this.websocket && this.websocket.readyState === WebSocket.OPEN) {
             this.websocket.send(JSON.stringify({
@@ -768,14 +923,45 @@ export default {
         }
       }
     },
-    
+
     async downloadAttachment(attachment) {
-      window.open(`/api/rooms/chat/attachments/${attachment.id}/download/`, '_blank')
+      if (!attachment || !attachment.id) {
+        this.uploadError = 'Attachment is unavailable'
+        setTimeout(() => {
+          this.uploadError = null
+        }, 5000)
+        return
+      }
+
+      try {
+        const response = await fetch(`/api/rooms/chat/attachments/${attachment.id}/download/`)
+        if (!response.ok) {
+          throw new Error(`Download failed with status ${response.status}`)
+        }
+
+        const blob = await response.blob()
+        const blobUrl = window.URL.createObjectURL(blob)
+        const filename = attachment.original_filename || 'attachment'
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = filename
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        window.URL.revokeObjectURL(blobUrl)
+      } catch (error) {
+        console.error('Failed to download attachment:', error)
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        this.uploadError = `Failed to download file: ${errorMsg}`
+        setTimeout(() => {
+          this.uploadError = null
+        }, 5000)
+      }
     },
-    
+
     getSenderId(message) {
       // Normalized sender/participant id from different payload shapes
-      const rawId = message.participant_id || message.sender_id || message.participant?.id || null
+      const rawId = message.sender_id || message.participant_id || message.participant?.id || null
       return rawId != null ? String(rawId) : ''
     },
 
@@ -804,23 +990,31 @@ export default {
 
       return 'Participant'
     },
-    
+
     getReplyContent(replyToId) {
-      const message = this.messages.find(m => m.id === replyToId)
+      const message = this.messages.find((item) => String(item.id) === String(replyToId))
       return message ? message.content : 'Message not found'
     },
-    
+
     formatTime(timestamp) {
+      if (!timestamp) {
+        return '--:--'
+      }
+
       const date = new Date(timestamp)
+      if (Number.isNaN(date.getTime())) {
+        return '--:--'
+      }
+
       return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
     },
-    
+
     formatFileSize(bytes) {
       if (bytes < 1024) return bytes + ' B'
       if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
       return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
     },
-    
+
     getFileIconColor(fileType) {
       const colors = {
         image: 'text-emerald-400',
@@ -830,7 +1024,7 @@ export default {
       }
       return colors[fileType] || colors.other
     },
-    
+
     scrollToBottom() {
       if (this.$refs.messagesContainer) {
         this.$refs.messagesContainer.scrollTop = this.$refs.messagesContainer.scrollHeight
@@ -846,9 +1040,7 @@ export default {
     }
   },
   beforeUnmount() {
-    if (this.websocket) {
-      this.websocket.removeEventListener('message', this.handleWebSocketMessage)
-    }
+    this.detachWebSocket(this.websocket)
   }
 }
 </script>
@@ -868,15 +1060,21 @@ export default {
 }
 
 .messages-container::-webkit-scrollbar-thumb {
-  background: linear-gradient(to bottom, rgba(79, 70, 229, 0.5), rgba(56, 189, 248, 0.5));
+  background: linear-gradient(to bottom, rgba(16, 185, 129, 0.45), rgba(56, 189, 248, 0.45));
   border-radius: 3px;
 }
 
 .messages-container::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(to bottom, rgba(79, 70, 229, 0.8), rgba(56, 189, 248, 0.8));
+  background: linear-gradient(to bottom, rgba(16, 185, 129, 0.7), rgba(56, 189, 248, 0.75));
 }
 
 textarea {
   field-sizing: content;
+}
+
+.room-chat button:focus-visible,
+.room-chat textarea:focus-visible {
+  outline: 2px solid rgba(56, 189, 248, 0.65);
+  outline-offset: 2px;
 }
 </style>
