@@ -3,6 +3,21 @@ import js from '@eslint/js'
 import pluginVue from 'eslint-plugin-vue'
 import tseslint from '@typescript-eslint/eslint-plugin'
 import tsparser from '@typescript-eslint/parser'
+import vueParser from 'vue-eslint-parser'
+
+const sharedGlobals = {
+  ...globals.browser,
+  ...globals.node,
+  // Vue i18n globals
+  $t: 'readonly',
+  // Vue globals
+  $route: 'readonly',
+  $router: 'readonly',
+  // Pinia store globals
+  useGlobalStore: 'readonly',
+  // Google Analytics
+  gtag: 'readonly',
+}
 
 export default [
   {
@@ -24,25 +39,14 @@ export default [
         sourceType: 'module',
         project: './tsconfig.json',
       },
-      globals: {
-        ...globals.browser,
-        ...globals.node,
-        // Vue i18n globals
-        $t: 'readonly',
-        // Vue globals
-        $route: 'readonly',
-        $router: 'readonly',
-        // Pinia store globals
-        useGlobalStore: 'readonly',
-        // Google Analytics
-        gtag: 'readonly',
-      },
+      globals: sharedGlobals,
     },
     plugins: {
       '@typescript-eslint': tseslint,
     },
     rules: {
       ...tseslint.configs.recommended.rules,
+      'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'warn',
     },
@@ -52,18 +56,7 @@ export default [
   {
     files: ['**/*.{js,mjs,jsx,vue}'],
     languageOptions: {
-      globals: {
-        ...globals.browser,
-        // Vue i18n globals
-        $t: 'readonly',
-        // Vue globals
-        $route: 'readonly',
-        $router: 'readonly',
-        // Pinia store globals
-        useGlobalStore: 'readonly',
-        // Google Analytics
-        gtag: 'readonly',
-      },
+      globals: sharedGlobals,
     },
   },
 
@@ -95,4 +88,39 @@ export default [
 
   js.configs.recommended,
   ...pluginVue.configs['flat/essential'],
+  // Final overrides must come after recommended configs.
+  {
+    name: 'app/final-vue-ts-parser',
+    files: ['**/*.vue'],
+    languageOptions: {
+      parser: vueParser,
+      parserOptions: {
+        parser: tsparser,
+        ecmaVersion: 'latest',
+        sourceType: 'module',
+        extraFileExtensions: ['.vue'],
+      },
+      globals: sharedGlobals,
+    },
+    rules: {
+      'no-unused-vars': 'off',
+    },
+  },
+  {
+    name: 'app/final-ts-rules',
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'warn',
+    },
+  },
+  {
+    name: 'app/final-test-overrides',
+    files: ['**/__tests__/**/*.{js,jsx,ts,tsx}', '**/*.test.{js,jsx,ts,tsx}', 'src/test/**/*.{js,ts}'],
+    rules: {
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
 ]

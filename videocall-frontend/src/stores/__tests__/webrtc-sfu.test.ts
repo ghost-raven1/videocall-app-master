@@ -42,7 +42,7 @@ describe('WebRTC Store - SFU Mode', () => {
     // Mock WebSocket with proper async handling
     let mockWebSocket: any = null
     
-    global.WebSocket = vi.fn().mockImplementation(() => {
+    const WebSocketMock = vi.fn().mockImplementation(() => {
       mockWebSocket = {
         readyState: 0, // CONNECTING initially
         send: vi.fn(),
@@ -69,6 +69,8 @@ describe('WebRTC Store - SFU Mode', () => {
       
       return mockWebSocket
     }) as any
+    Object.assign(WebSocketMock, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 })
+    ;(global as any).WebSocket = WebSocketMock
 
     // Mock RTCPeerConnection
     const mockPeerConnection = {
@@ -198,7 +200,7 @@ describe('WebRTC Store - P2P Fallback', () => {
 
     // Mock WebSocket for P2P - websocket is a ref, so we need to set it properly
     const mockWebSocket = {
-      readyState: WebSocket.OPEN,
+      readyState: 1,
       send: vi.fn(),
       close: vi.fn(),
       onopen: null,
@@ -249,4 +251,3 @@ describe('WebRTC Store - P2P Fallback', () => {
     expect(store.sfuMode).toBe(false)
   })
 })
-

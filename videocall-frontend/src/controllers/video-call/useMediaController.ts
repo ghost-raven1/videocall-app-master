@@ -19,13 +19,25 @@ export interface MediaController {
   canToggleAudio: Ref<boolean>
   
   // Methods
-  initializeMedia: (constraints?: MediaStreamConstraints) => Promise<{ success: boolean; error?: string }>
+  initializeMedia: (
+    constraints?: MediaStreamConstraints
+  ) => Promise<{
+    success: boolean
+    error?: string
+    fallbackMode?: 'audio_only' | 'video_only' | null
+  }>
   toggleVideo: () => Promise<void>
   toggleAudio: () => Promise<void>
   stopMedia: () => Promise<void>
   replaceVideoTrack: (newTrack: MediaStreamTrack) => Promise<void>
   replaceAudioTrack: (newTrack: MediaStreamTrack) => Promise<void>
-  updateMediaConstraints: (constraints: MediaStreamConstraints) => Promise<void>
+  updateMediaConstraints: (
+    constraints: Partial<MediaStreamConstraints>
+  ) => Promise<{
+    success: boolean
+    error?: string
+    fallbackMode?: 'audio_only' | 'video_only' | null
+  }>
 }
 
 /**
@@ -57,14 +69,25 @@ export function useMediaController(): MediaController {
    */
   const initializeMedia = async (
     constraints?: MediaStreamConstraints
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{
+    success: boolean
+    error?: string
+    fallbackMode?: 'audio_only' | 'video_only' | null
+  }> => {
     if (isInitializing.value) {
       return { success: false, error: 'Media initialization already in progress' }
     }
 
     try {
       isInitializing.value = true
-      
+
+      if (constraints) {
+        webrtcStore.mediaConstraints = {
+          ...webrtcStore.mediaConstraints,
+          ...constraints
+        } as any
+      }
+
       // Use store's initializeLocalMedia method
       const result = await webrtcStore.initializeLocalMedia()
       
@@ -77,7 +100,10 @@ export function useMediaController(): MediaController {
         return result
       }
 
-      return { success: true }
+      return {
+        success: true,
+        fallbackMode: result.fallbackMode ?? null,
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       console.error('Failed to initialize media:', error)
@@ -207,29 +233,33 @@ export function useMediaController(): MediaController {
    */
   const updateMediaConstraints = async (
     constraints: Partial<MediaStreamConstraints>
-  ): Promise<void> => {
+  ): Promise<{
+    success: boolean
+    error?: string
+    fallbackMode?: 'audio_only' | 'video_only' | null
+  }> => {
     try {
-      // Update constraints in store (merge with existing)
-      const currentConstraints = webrtcStore.mediaConstraints
-      
+      // Update constraints in one pass to avoid overriding a previous field update.
+      const nextConstraints = {
+        ...webrtcStore.mediaConstraints,
+      } as MediaStreamConstraints
+
       if (constraints.video !== undefined) {
-        webrtcStore.mediaConstraints = {
-          ...currentConstraints,
-          video: constraints.video
-        } as any // Type assertion needed due to store's specific constraint type
+        nextConstraints.video = constraints.video
       }
       if (constraints.audio !== undefined) {
-        webrtcStore.mediaConstraints = {
-          ...currentConstraints,
-          audio: constraints.audio
-        } as any // Type assertion needed due to store's specific constraint type
+        nextConstraints.audio = constraints.audio
       }
+
+      webrtcStore.mediaConstraints = nextConstraints as any // Store constraint type is narrower
       
       // Reinitialize media
-      await initializeMedia()
+      return await initializeMedia()
     } catch (error) {
       console.error('Failed to update media constraints:', error)
       globalStore.addNotification('Failed to update media settings', 'error', 3000)
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update media settings'
+      return { success: false, error: errorMessage }
     }
   }
 
@@ -257,4 +287,3 @@ export function useMediaController(): MediaController {
     updateMediaConstraints
   }
 }
-

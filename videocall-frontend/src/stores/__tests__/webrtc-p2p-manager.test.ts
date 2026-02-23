@@ -209,7 +209,7 @@ describe('P2PConnectionManager', () => {
   describe('createOfferForParticipant', () => {
     it('should create and send offer for participant', async () => {
       const participantId = 'participant-123'
-      const mockOffer = {
+      const mockOffer: RTCSessionDescriptionInit = {
         type: 'offer',
         sdp: 'test-offer-sdp'
       }
@@ -253,12 +253,12 @@ describe('P2PConnectionManager', () => {
   describe('handleOffer', () => {
     it('should handle incoming offer and send answer', async () => {
       const participantId = 'participant-123'
-      const mockOffer = {
+      const mockOffer: RTCSessionDescriptionInit = {
         type: 'offer',
         sdp: 'test-offer-sdp'
       }
 
-      const mockAnswer = {
+      const mockAnswer: RTCSessionDescriptionInit = {
         type: 'answer',
         sdp: 'test-answer-sdp'
       }
@@ -294,7 +294,7 @@ describe('P2PConnectionManager', () => {
 
     it('should create peer connection if it does not exist', async () => {
       const participantId = 'new-participant-123'
-      const mockOffer = {
+      const mockOffer: RTCSessionDescriptionInit = {
         type: 'offer',
         sdp: 'test-offer-sdp'
       }
@@ -338,7 +338,7 @@ describe('P2PConnectionManager', () => {
   describe('handleAnswer', () => {
     it('should handle incoming answer', async () => {
       const participantId = 'participant-123'
-      const mockAnswer = {
+      const mockAnswer: RTCSessionDescriptionInit = {
         type: 'answer',
         sdp: 'test-answer-sdp'
       }
@@ -361,7 +361,7 @@ describe('P2PConnectionManager', () => {
 
     it('should not throw error if peer connection does not exist', async () => {
       const participantId = 'non-existent-participant'
-      const mockAnswer = {
+      const mockAnswer: RTCSessionDescriptionInit = {
         type: 'answer',
         sdp: 'test-answer-sdp'
       }
@@ -467,4 +467,3 @@ describe('P2PConnectionManager', () => {
     })
   })
 })
-

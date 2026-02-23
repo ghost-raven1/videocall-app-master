@@ -54,7 +54,15 @@ describe('VideoCallHeader', () => {
       props: {
         ...defaultProps,
         ...props
-      }
+      },
+      global: {
+        directives: {
+          'click-outside': {
+            mounted: () => {},
+            unmounted: () => {}
+          }
+        }
+      },
     })
   }
 
@@ -80,7 +88,7 @@ describe('VideoCallHeader', () => {
 
   it('should not display call duration when 0', () => {
     wrapper = createWrapper({ callDuration: 0 })
-    const durationElement = wrapper.find('.text-sm.text-gray-300.font-mono')
+    const durationElement = wrapper.find('.text-sm.text-warp-muted.font-mono')
     expect(durationElement.exists()).toBe(false)
   })
 
@@ -104,9 +112,8 @@ describe('VideoCallHeader', () => {
 
   it('should emit toggle-chat when chat button is clicked', async () => {
     wrapper = createWrapper()
-    const chatButton = wrapper.findAll('button').find(btn => 
-      btn.attributes('title') === 'Toggle chat'
-    )
+    const chatButton = wrapper.find('[data-test="toggle-chat-button"]')
+    expect(chatButton.exists()).toBe(true)
     await chatButton.trigger('click')
     expect(wrapper.emitted('toggle-chat')).toBeTruthy()
     expect(wrapper.emitted('toggle-chat')).toHaveLength(1)
@@ -114,9 +121,8 @@ describe('VideoCallHeader', () => {
 
   it('should emit toggle-screen-share when screen share button is clicked', async () => {
     wrapper = createWrapper()
-    const screenShareButton = wrapper.findAll('button').find(btn => 
-      btn.attributes('title') === 'Share screen'
-    )
+    const screenShareButton = wrapper.find('[data-test="toggle-screen-share-button"]')
+    expect(screenShareButton.exists()).toBe(true)
     await screenShareButton.trigger('click')
     expect(wrapper.emitted('toggle-screen-share')).toBeTruthy()
     expect(wrapper.emitted('toggle-screen-share')).toHaveLength(1)
@@ -124,18 +130,15 @@ describe('VideoCallHeader', () => {
 
   it('should show active state for screen sharing', () => {
     wrapper = createWrapper({ isScreenSharing: true })
-    const screenShareButton = wrapper.findAll('button').find(btn => 
-      btn.attributes('title') === 'Stop sharing'
-    )
+    const screenShareButton = wrapper.find('[data-test="toggle-screen-share-button"]')
     expect(screenShareButton.exists()).toBe(true)
-    expect(screenShareButton.classes()).toContain('bg-green-600')
+    expect(screenShareButton.classes()).toContain('bg-warp-accent2')
   })
 
   it('should emit toggle-menu when menu button is clicked', async () => {
     wrapper = createWrapper()
-    // Find the menu button (the one with three dots)
-    const buttons = wrapper.findAll('button')
-    const menuBtn = buttons[buttons.length - 1] // Menu button is usually last
+    const menuBtn = wrapper.find('[data-test="toggle-menu-button"]')
+    expect(menuBtn.exists()).toBe(true)
     await menuBtn.trigger('click')
     expect(wrapper.emitted('toggle-menu')).toBeTruthy()
   })
@@ -154,22 +157,18 @@ describe('VideoCallHeader', () => {
 
   it('should emit share-room when share button in menu is clicked', async () => {
     wrapper = createWrapper({ showMenu: true })
-    const shareButton = wrapper.find('button:has-text("Поделиться комнатой")')
-    if (shareButton.exists()) {
-      await shareButton.trigger('click')
-      expect(wrapper.emitted('share-room')).toBeTruthy()
-    }
+    const shareButton = wrapper.find('[data-test="share-room-button"]')
+    expect(shareButton.exists()).toBe(true)
+    await shareButton.trigger('click')
+    expect(wrapper.emitted('share-room')).toBeTruthy()
   })
 
   it('should emit toggle-recording when recording button in menu is clicked', async () => {
     wrapper = createWrapper({ showMenu: true })
-    const recordingButton = wrapper.findAll('button').find(btn => 
-      btn.text().includes('Начать запись') || btn.text().includes('Остановить запись')
-    )
-    if (recordingButton) {
-      await recordingButton.trigger('click')
-      expect(wrapper.emitted('toggle-recording')).toBeTruthy()
-    }
+    const recordingButton = wrapper.find('[data-test="toggle-recording-button"]')
+    expect(recordingButton.exists()).toBe(true)
+    await recordingButton.trigger('click')
+    expect(wrapper.emitted('toggle-recording')).toBeTruthy()
   })
 
   it('should show "Остановить запись" when recording is active', () => {
@@ -184,24 +183,18 @@ describe('VideoCallHeader', () => {
 
   it('should emit toggle-stats when stats button in menu is clicked', async () => {
     wrapper = createWrapper({ showMenu: true })
-    const statsButton = wrapper.findAll('button').find(btn => 
-      btn.text().includes('Connection stats')
-    )
-    if (statsButton) {
-      await statsButton.trigger('click')
-      expect(wrapper.emitted('toggle-stats')).toBeTruthy()
-    }
+    const statsButton = wrapper.find('[data-test="toggle-stats-button"]')
+    expect(statsButton.exists()).toBe(true)
+    await statsButton.trigger('click')
+    expect(wrapper.emitted('toggle-stats')).toBeTruthy()
   })
 
   it('should emit end-call when end call button in menu is clicked', async () => {
     wrapper = createWrapper({ showMenu: true })
-    const endCallButton = wrapper.findAll('button').find(btn => 
-      btn.text().includes('End call')
-    )
-    if (endCallButton) {
-      await endCallButton.trigger('click')
-      expect(wrapper.emitted('end-call')).toBeTruthy()
-    }
+    const endCallButton = wrapper.find('[data-test="end-call-button"]')
+    expect(endCallButton.exists()).toBe(true)
+    await endCallButton.trigger('click')
+    expect(wrapper.emitted('end-call')).toBeTruthy()
   })
 
   it('should emit audio-settings-changed when AudioSettings emits settings-changed', async () => {

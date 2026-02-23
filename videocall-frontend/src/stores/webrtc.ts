@@ -108,9 +108,9 @@ export const useWebRTCStore = defineStore('webrtc', () => {
 
   // Retry and recovery state
   const retryOperations = ref(new Map()) // Map<operationId, retryInfo>
-  const connectionMonitors = ref(new Map()) // Map<participantId, monitorId>
-  const qualityMonitors = ref(new Map()) // Map<participantId, monitorId>
-  const fallbackLevels = ref(new Map()) // Map<participantId, fallbackLevel>
+  const connectionMonitors = ref<Map<string, string>>(new Map()) // Map<participantId, monitorId>
+  const qualityMonitors = ref<Map<string, ReturnType<typeof setInterval>>>(new Map()) // Map<participantId, intervalId>
+  const fallbackLevels = ref<Map<string, number>>(new Map()) // Map<participantId, fallbackLevel>
   const connectionRecoveryInProgress = ref(false)
   const lastConnectionAttempt = ref(null)
   const connectionAttemptCount = ref(0)
@@ -313,9 +313,58 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   )
 
   // Actions
+  const stopStreamTracks = (stream: MediaStream | null): void => {
+    if (!stream) {
+      return
+    }
+    stream.getTracks().forEach((track) => {
+      try {
+        track.stop()
+      } catch (error) {
+        console.warn('Failed to stop media track during cleanup:', error)
+      }
+    })
+  }
+
+  const getUserMediaWithTimeout = async (
+    constraints: MediaStreamConstraints,
+    timeoutMs: number = 15000
+  ): Promise<MediaStream> => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+    let timedOut = false
+    const mediaPromise = navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
+      if (timedOut) {
+        // If media arrives after timeout, immediately release device to avoid ghost capture.
+        stopStreamTracks(stream)
+        throw new Error('MEDIA_TIMEOUT')
+      }
+      return stream
+    })
+    const timeoutPromise = new Promise<MediaStream>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true
+        reject(new Error('MEDIA_TIMEOUT'))
+      }, timeoutMs)
+    })
+
+    try {
+      return await Promise.race([mediaPromise, timeoutPromise])
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+    }
+  }
+
   const initializeLocalMedia = async () => {
     try {
       globalStore.setLoading(true, 'Accessing camera and microphone...')
+
+      if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+        const unsupportedMessage = 'Browser does not support camera/microphone access.'
+        globalStore.addNotification(unsupportedMessage, 'error', 8000)
+        return { success: false, error: unsupportedMessage }
+      }
 
       const hostname = window.location.hostname
       const isLocalhost =
@@ -340,44 +389,149 @@ export const useWebRTCStore = defineStore('webrtc', () => {
         )
       }
 
-      let timeoutId: ReturnType<typeof setTimeout> | null = null
-      const mediaPromise = navigator.mediaDevices.getUserMedia(mediaConstraints.value)
-      const timeoutPromise = new Promise<MediaStream>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(new Error('MEDIA_TIMEOUT'))
-        }, 15000)
-      })
-
-      localStream.value = await Promise.race([mediaPromise, timeoutPromise])
-      if (timeoutId) {
-        clearTimeout(timeoutId)
+      const requestedConstraints: MediaStreamConstraints = {
+        video: mediaConstraints.value.video,
+        audio: mediaConstraints.value.audio,
       }
 
-      // Set initial media states based on stream tracks
-      const videoTrack = localStream.value.getVideoTracks()[0]
-      const audioTrack = localStream.value.getAudioTracks()[0]
+      const requestedVideo = requestedConstraints.video !== false
+      const requestedAudio = requestedConstraints.audio !== false
 
-      if (videoTrack) {
-        isVideoEnabled.value = videoTrack.enabled
-      }
-      if (audioTrack) {
-        isAudioEnabled.value = audioTrack.enabled
+      let acquiredStream: MediaStream | null = null
+      let appliedConstraints: MediaStreamConstraints = requestedConstraints
+      let fallbackMode: 'audio_only' | 'video_only' | null = null
+      let initialError: any = null
+
+      try {
+        acquiredStream = await getUserMediaWithTimeout(requestedConstraints)
+      } catch (error: any) {
+        initialError = error
+        const canTryPartialFallback =
+          requestedVideo &&
+          requestedAudio &&
+          (error?.name === 'NotReadableError' ||
+            error?.name === 'AbortError' ||
+            error?.name === 'NotFoundError' ||
+            error?.name === 'OverconstrainedError')
+
+        if (!canTryPartialFallback) {
+          throw error
+        }
+
+        const fallbackAttempts: Array<{
+          mode: 'audio_only' | 'video_only'
+          constraints: MediaStreamConstraints
+        }> = [
+          {
+            mode: 'audio_only',
+            constraints: {
+              video: false,
+              audio: requestedConstraints.audio || true,
+            },
+          },
+          {
+            mode: 'video_only',
+            constraints: {
+              video: requestedConstraints.video || true,
+              audio: false,
+            },
+          },
+        ]
+
+        // Final relaxed attempts: same mode with baseline constraints.
+        if (requestedConstraints.audio !== true) {
+          fallbackAttempts.push({
+            mode: 'audio_only',
+            constraints: {
+              video: false,
+              audio: true,
+            },
+          })
+        }
+
+        if (requestedConstraints.video !== true) {
+          fallbackAttempts.push({
+            mode: 'video_only',
+            constraints: {
+              video: true,
+              audio: false,
+            },
+          })
+        }
+
+        for (const attempt of fallbackAttempts) {
+          try {
+            acquiredStream = await getUserMediaWithTimeout(attempt.constraints, 10000)
+            appliedConstraints = attempt.constraints
+            fallbackMode = attempt.mode
+            break
+          } catch (fallbackError) {
+            console.warn(`Fallback media attempt failed (${attempt.mode}):`, fallbackError)
+          }
+        }
+
+        if (!acquiredStream) {
+          throw error
+        }
       }
 
-      return { success: true }
-    } catch (error) {
+      if (!acquiredStream) {
+        throw initialError || new Error('Failed to initialize media stream')
+      }
+
+      const previousStream = localStream.value
+      localStream.value = acquiredStream
+
+      if (previousStream && previousStream !== acquiredStream) {
+        stopStreamTracks(previousStream)
+      }
+
+      // Keep constraints in sync with the mode we actually joined with.
+      mediaConstraints.value = {
+        ...mediaConstraints.value,
+        video: appliedConstraints.video,
+        audio: appliedConstraints.audio,
+      } as any
+
+      const videoTrack = acquiredStream.getVideoTracks()[0]
+      const audioTrack = acquiredStream.getAudioTracks()[0]
+
+      isVideoEnabled.value = !!videoTrack && videoTrack.enabled
+      isAudioEnabled.value = !!audioTrack && audioTrack.enabled
+
+      if (fallbackMode === 'audio_only') {
+        globalStore.addNotification(
+          'Camera is busy or unavailable. Joined with microphone only.',
+          'warning',
+          6000
+        )
+      } else if (fallbackMode === 'video_only') {
+        globalStore.addNotification(
+          'Microphone is busy or unavailable. Joined with camera only.',
+          'warning',
+          6000
+        )
+      }
+
+      return { success: true, fallbackMode }
+    } catch (error: any) {
       let errorMessage = 'Failed to access camera or microphone'
 
       if (error?.message === 'MEDIA_TIMEOUT') {
         errorMessage =
           'Media permission request timed out. Allow camera/microphone access in the browser and try again.'
-      } else if (error.name === 'NotAllowedError') {
+      } else if (error?.name === 'NotAllowedError') {
         errorMessage =
           'Camera and microphone access denied. Please allow permissions and try again.'
-      } else if (error.name === 'NotFoundError') {
+      } else if (error?.name === 'NotFoundError') {
         errorMessage = 'No camera or microphone found on this device.'
-      } else if (error.name === 'NotReadableError') {
+      } else if (error?.name === 'NotReadableError') {
         errorMessage = 'Camera or microphone is already in use by another application.'
+      } else if (error?.name === 'AbortError') {
+        errorMessage = 'Camera or microphone is already in use by another application.'
+      } else if (error?.name === 'OverconstrainedError') {
+        errorMessage =
+          'Camera or microphone does not support the requested quality. Try lower quality settings.'
       }
 
       globalStore.addNotification(errorMessage, 'error', 8000)
@@ -581,7 +735,9 @@ export const useWebRTCStore = defineStore('webrtc', () => {
         (recoveryParticipantId, recoveryInfo) => handleConnectionRecovery(recoveryParticipantId, peerConnection, recoveryInfo),
         (quality, state) => handleConnectionQualityChange(participantId, quality, state)
       )
-      connectionMonitors.value.set(participantId, monitorId)
+      if (monitorId) {
+        connectionMonitors.value.set(participantId, monitorId)
+      }
 
       return { success: true, peerConnection }
     } catch (error) {
@@ -667,7 +823,10 @@ export const useWebRTCStore = defineStore('webrtc', () => {
     try {
       console.log(`Handling connection recovery for ${participantId}:`, recoveryInfo)
 
-      if (recoveryInfo.canRecover === false) {
+      const canRecover = recoveryInfo?.canRecover !== false
+      const requiresReconnection = recoveryInfo?.requiresReconnection ?? true
+
+      if (!canRecover) {
         globalStore.addNotification(
           'Connection cannot be restored. Please refresh the page or check your internet connection.',
           'error',
@@ -684,7 +843,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       }
 
       // Attempt recovery based on type
-      if (recoveryInfo.requiresReconnection) {
+      if (requiresReconnection) {
         await attemptReconnection(participantId)
       } else {
         globalStore.addNotification('Attempting to restore connection...', 'info', 3000)
@@ -1611,7 +1770,7 @@ export const useWebRTCStore = defineStore('webrtc', () => {
       
       // Stop all quality monitors
       qualityMonitors.value.forEach((monitor) => {
-        if (monitor && typeof monitor === 'number') {
+        if (monitor) {
           clearInterval(monitor)
         }
       })
@@ -1719,32 +1878,16 @@ export const useWebRTCStore = defineStore('webrtc', () => {
   const toggleParticipantVideo = (participantId) => {
     const participant = remoteParticipants.value.find(p => p.id === participantId)
     if (participant) {
+      // Local moderation view toggle only: backend does not support remote media control command.
       participant.isVideoEnabled = !participant.isVideoEnabled
-
-      sendWebSocketMessage({
-        type: 'participant_media_update',
-        participant_id: participantId,
-        media_state: {
-          video: participant.isVideoEnabled,
-          audio: participant.isAudioEnabled,
-        },
-      })
     }
   }
 
   const toggleParticipantAudio = (participantId) => {
     const participant = remoteParticipants.value.find(p => p.id === participantId)
     if (participant) {
+      // Local moderation view toggle only: backend does not support remote media control command.
       participant.isAudioEnabled = !participant.isAudioEnabled
-
-      sendWebSocketMessage({
-        type: 'participant_media_update',
-        participant_id: participantId,
-        media_state: {
-          video: participant.isVideoEnabled,
-          audio: participant.isAudioEnabled,
-        },
-      })
     }
   }
 

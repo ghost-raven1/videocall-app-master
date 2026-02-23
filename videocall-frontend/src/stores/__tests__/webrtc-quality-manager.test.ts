@@ -9,16 +9,16 @@ import { useGlobalStore } from '../global'
 
 describe('ConnectionQualityMonitor', () => {
   let monitor: ConnectionQualityMonitor
-  let connectionMonitors: ReturnType<typeof ref<Map<string, number>>>
-  let qualityMonitors: ReturnType<typeof ref<Map<string, number>>>
+  let connectionMonitors: ReturnType<typeof ref<Map<string, string>>>
+  let qualityMonitors: ReturnType<typeof ref<Map<string, ReturnType<typeof setInterval>>>>
   let fallbackLevels: ReturnType<typeof ref<Map<string, number>>>
   let remoteParticipants: ReturnType<typeof ref<any[]>>
 
   beforeEach(() => {
     setActivePinia(createPinia())
     
-    connectionMonitors = ref(new Map())
-    qualityMonitors = ref(new Map())
+    connectionMonitors = ref(new Map<string, string>())
+    qualityMonitors = ref(new Map<string, ReturnType<typeof setInterval>>())
     fallbackLevels = ref(new Map())
     remoteParticipants = ref([])
 
@@ -72,13 +72,13 @@ describe('ConnectionQualityMonitor', () => {
       } as any
 
       // Set existing monitor
-      connectionMonitors.value.set(participantId, 999)
+      connectionMonitors.value.set(participantId, 'existing-monitor')
       qualityMonitors.value.set(participantId, 888 as any)
 
       monitor.startQualityMonitoring(participantId, mockPC)
 
       // Should have new monitor IDs
-      expect(connectionMonitors.value.get(participantId)).not.toBe(999)
+      expect(connectionMonitors.value.get(participantId)).not.toBe('existing-monitor')
       expect(qualityMonitors.value.get(participantId)).not.toBe(888)
     })
 
@@ -120,13 +120,11 @@ describe('ConnectionQualityMonitor', () => {
       monitor.startQualityMonitoring(participantId, mockPC)
 
       // Fast-forward past first monitoring interval (5000ms)
-      vi.advanceTimersByTime(5001)
-
-      // Wait for async getStats to complete
-      await vi.runAllTimersAsync()
+      await vi.advanceTimersByTimeAsync(5001)
 
       const participant = remoteParticipants.value.find(p => p.id === participantId)
       expect(participant?.connectionQuality).toBeGreaterThan(0)
+      monitor.stopQualityMonitoring(participantId)
     })
 
     it('should set fallback level when quality is poor', async () => {
@@ -167,10 +165,10 @@ describe('ConnectionQualityMonitor', () => {
       monitor.startQualityMonitoring(participantId, mockPC)
 
       // Fast-forward past first monitoring interval
-      vi.advanceTimersByTime(5001)
-      await vi.runAllTimersAsync()
+      await vi.advanceTimersByTimeAsync(5001)
 
       expect(fallbackLevels.value.has(participantId)).toBe(true)
+      monitor.stopQualityMonitoring(participantId)
     })
 
     it('should show notification when quality is very poor', async () => {
@@ -214,21 +212,21 @@ describe('ConnectionQualityMonitor', () => {
       monitor.startQualityMonitoring(participantId, mockPC)
 
       // Fast-forward past first monitoring interval
-      vi.advanceTimersByTime(5001)
-      await vi.runAllTimersAsync()
+      await vi.advanceTimersByTimeAsync(5001)
 
       expect(addNotificationSpy).toHaveBeenCalledWith(
         expect.stringContaining('Connection quality is poor'),
         'warning',
         4000
       )
+      monitor.stopQualityMonitoring(participantId)
     })
   })
 
   describe('stopQualityMonitoring', () => {
     it('should stop quality monitoring for participant', () => {
       const participantId = 'participant-123'
-      const monitorId = 12345
+      const monitorId = 'monitor-12345'
       const qualityMonitorId = 67890
 
       connectionMonitors.value.set(participantId, monitorId)
@@ -252,8 +250,8 @@ describe('ConnectionQualityMonitor', () => {
       const participant1 = 'participant-1'
       const participant2 = 'participant-2'
 
-      connectionMonitors.value.set(participant1, 111)
-      connectionMonitors.value.set(participant2, 222)
+      connectionMonitors.value.set(participant1, 'monitor-111')
+      connectionMonitors.value.set(participant2, 'monitor-222')
       qualityMonitors.value.set(participant1, 333 as any)
       qualityMonitors.value.set(participant2, 444 as any)
 
@@ -345,4 +343,3 @@ describe('ConnectionQualityMonitor', () => {
     })
   })
 })
-

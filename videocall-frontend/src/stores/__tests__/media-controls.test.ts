@@ -103,7 +103,7 @@ describe('WebRTC Store - Media Controls', () => {
 
     const participant = store.remoteParticipants.find(p => p.id === 'participant-1')
     expect(participant?.isVideoEnabled).toBe(false)
-    expect(mockWS.send).toHaveBeenCalled()
+    expect(mockWS.send).not.toHaveBeenCalled()
   })
 
   it('should toggle participant audio', async () => {
@@ -133,7 +133,7 @@ describe('WebRTC Store - Media Controls', () => {
 
     const participant = store.remoteParticipants.find(p => p.id === 'participant-1')
     expect(participant?.isAudioEnabled).toBe(false)
-    expect(mockWS.send).toHaveBeenCalled()
+    expect(mockWS.send).not.toHaveBeenCalled()
   })
 
   it('should get participant stream', () => {
@@ -195,4 +195,3 @@ describe('WebRTC Store - Media Controls', () => {
     expect(store.mediaConstraints.video.frameRate.ideal).toBe(60)
   })
 })
-

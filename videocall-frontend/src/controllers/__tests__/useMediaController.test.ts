@@ -206,5 +206,20 @@ describe('useMediaController', () => {
       expect(mockWebRTCStore.localStream.addTrack).toHaveBeenCalledWith(newTrack)
     })
   })
-})
 
+  describe('updateMediaConstraints', () => {
+    it('applies video and audio updates together without dropping either field', async () => {
+      mockWebRTCStore.initializeLocalMedia.mockResolvedValue({ success: true })
+
+      const result = await controller.updateMediaConstraints({
+        video: false,
+        audio: { echoCancellation: false },
+      })
+
+      expect(result.success).toBe(true)
+      expect(mockWebRTCStore.mediaConstraints.video).toBe(false)
+      expect(mockWebRTCStore.mediaConstraints.audio).toEqual({ echoCancellation: false })
+      expect(mockWebRTCStore.initializeLocalMedia).toHaveBeenCalled()
+    })
+  })
+})

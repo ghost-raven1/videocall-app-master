@@ -1,43 +1,28 @@
-<testsuites id="" name="" tests="3" failures="3" skipped="0" errors="0" time="1.2933299999999999">
-<testsuite name="multi-user.spec.ts" timestamp="2026-02-16T14:34:17.368Z" hostname="chromium" tests="3" failures="3" skipped="0" time="0.028" errors="0">
-<testcase name="Multi-User Video Call E2E Tests › should handle multiple participants in P2P mode" classname="multi-user.spec.ts" time="0.007">
-<failure message="multi-user.spec.ts:4:3 should handle multiple participants in P2P mode" type="FAILURE">
-<![CDATA[  [chromium] › multi-user.spec.ts:4:3 › Multi-User Video Call E2E Tests › should handle multiple participants in P2P mode 
-
-    Error: browserType.launch: Failed to launch: Error: spawn /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell ENOENT
-    Call log:
-      - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-kdOdgi --remote-debugging-pipe --no-startup-window
-      - [pid=N/A] starting temporary directories cleanup
-      - [pid=N/A] finished temporary directories cleanup
-
-]]>
-</failure>
+<testsuites id="" name="" tests="10" failures="0" skipped="0" errors="0" time="66.292068">
+<testsuite name="auth.spec.ts" timestamp="2026-02-23T18:46:51.799Z" hostname="chromium" tests="3" failures="0" skipped="0" time="5.434" errors="0">
+<testcase name="Public Access E2E Tests › renders call actions page for guests" classname="auth.spec.ts" time="2.216">
 </testcase>
-<testcase name="Multi-User Video Call E2E Tests › should handle SFU mode with 3+ participants" classname="multi-user.spec.ts" time="0.01">
-<failure message="multi-user.spec.ts:60:3 should handle SFU mode with 3+ participants" type="FAILURE">
-<![CDATA[  [chromium] › multi-user.spec.ts:60:3 › Multi-User Video Call E2E Tests › should handle SFU mode with 3+ participants 
-
-    Error: browserType.launch: Failed to launch: Error: spawn /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell ENOENT
-    Call log:
-      - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-kcCKkj --remote-debugging-pipe --no-startup-window
-      - [pid=N/A] starting temporary directories cleanup
-      - [pid=N/A] finished temporary directories cleanup
-
-]]>
-</failure>
+<testcase name="Public Access E2E Tests › redirects /login to public flow when guest access is enabled" classname="auth.spec.ts" time="1.694">
 </testcase>
-<testcase name="Multi-User Video Call E2E Tests › should handle participant leaving" classname="multi-user.spec.ts" time="0.011">
-<failure message="multi-user.spec.ts:115:3 should handle participant leaving" type="FAILURE">
-<![CDATA[  [chromium] › multi-user.spec.ts:115:3 › Multi-User Video Call E2E Tests › should handle participant leaving 
-
-    Error: browserType.launch: Failed to launch: Error: spawn /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell ENOENT
-    Call log:
-      - <launching> /root/.cache/ms-playwright/chromium_headless_shell-1194/chrome-linux/headless_shell --disable-field-trial-config --disable-background-networking --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-back-forward-cache --disable-breakpad --disable-client-side-phishing-detection --disable-component-extensions-with-background-pages --disable-component-update --no-default-browser-check --disable-default-apps --disable-dev-shm-usage --disable-extensions --disable-features=AcceptCHFrame,AvoidUnnecessaryBeforeUnloadCheckSync,DestroyProfileOnBrowserClose,DialMediaRouteProvider,GlobalMediaControls,HttpsUpgrades,LensOverlay,MediaRouter,PaintHolding,ThirdPartyStoragePartitioning,Translate,AutoDeElevate,RenderDocument --enable-features=CDPScreenshotNewSurface --allow-pre-commit-input --disable-hang-monitor --disable-ipc-flooding-protection --disable-popup-blocking --disable-prompt-on-repost --disable-renderer-backgrounding --force-color-profile=srgb --metrics-recording-only --no-first-run --password-store=basic --use-mock-keychain --no-service-autorun --export-tagged-pdf --disable-search-engine-choice-screen --unsafely-disable-devtools-self-xss-warnings --edge-skip-compat-layer-relaunch --enable-automation --headless --hide-scrollbars --mute-audio --blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4 --no-sandbox --user-data-dir=/tmp/playwright_chromiumdev_profile-NmbPjj --remote-debugging-pipe --no-startup-window
-      - [pid=N/A] starting temporary directories cleanup
-      - [pid=N/A] finished temporary directories cleanup
-
-]]>
-</failure>
+<testcase name="Public Access E2E Tests › shows admin login form on /admin/login" classname="auth.spec.ts" time="1.524">
+</testcase>
+</testsuite>
+<testsuite name="multi-user.spec.ts" timestamp="2026-02-23T18:46:51.799Z" hostname="chromium" tests="2" failures="0" skipped="0" time="12.783" errors="0">
+<testcase name="Multi-User Video Call E2E Tests › should allow two participants to join the same room" classname="multi-user.spec.ts" time="8.246">
+</testcase>
+<testcase name="Multi-User Video Call E2E Tests › should handle participant leaving the call" classname="multi-user.spec.ts" time="4.537">
+</testcase>
+</testsuite>
+<testsuite name="video-call.spec.ts" timestamp="2026-02-23T18:46:51.799Z" hostname="chromium" tests="5" failures="0" skipped="0" time="46.147" errors="0">
+<testcase name="Video Call E2E Tests › should create a new room and navigate to call page" classname="video-call.spec.ts" time="2.379">
+</testcase>
+<testcase name="Video Call E2E Tests › should open and close chat panel in call" classname="video-call.spec.ts" time="16.985">
+</testcase>
+<testcase name="Video Call E2E Tests › should send chat message from call chat" classname="video-call.spec.ts" time="11.262">
+</testcase>
+<testcase name="Video Call E2E Tests › should select file in chat composer" classname="video-call.spec.ts" time="13.026">
+</testcase>
+<testcase name="Video Call E2E Tests › should toggle microphone and camera buttons in call controls" classname="video-call.spec.ts" time="2.495">
 </testcase>
 </testsuite>
 </testsuites>

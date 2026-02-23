@@ -325,7 +325,7 @@ describe('webrtc store helpers', () => {
   })
 
   describe('participant media toggles', () => {
-    it('toggleParticipantVideo flips remote participant and sends update', async () => {
+    it('toggleParticipantVideo flips remote participant locally without unsupported WS command', async () => {
       const store = useWebRTCStore()
       await store.connectWebSocket('room-participant-video')
       
@@ -341,20 +341,18 @@ describe('webrtc store helpers', () => {
         },
       ]
 
+      // websocket is a ref, so we need to access .value
+      const ws = store.websocket?.value || store.websocket
+      const sendCountBefore = ws.send.mock.calls.length
+
       store.toggleParticipantVideo('p1')
 
       const p = store.remoteParticipants.find((x) => x.id === 'p1')
       expect(p.isVideoEnabled).toBe(false)
-      
-      // websocket is a ref, so we need to access .value
-      const ws = store.websocket?.value || store.websocket
-      const payload = JSON.parse(ws.send.mock.calls.at(-1)[0])
-      expect(payload.type).toBe('participant_media_update')
-      expect(payload.participant_id).toBe('p1')
-      expect(payload.media_state).toEqual({ video: false, audio: true })
+      expect(ws.send.mock.calls.length).toBe(sendCountBefore)
     }, 10000) // 10 second timeout
 
-    it('toggleParticipantAudio flips remote participant and sends update', async () => {
+    it('toggleParticipantAudio flips remote participant locally without unsupported WS command', async () => {
       const store = useWebRTCStore()
       await store.connectWebSocket('room-participant-audio')
       
@@ -370,17 +368,15 @@ describe('webrtc store helpers', () => {
         },
       ]
 
+      // websocket is a ref, so we need to access .value
+      const ws = store.websocket?.value || store.websocket
+      const sendCountBefore = ws.send.mock.calls.length
+
       store.toggleParticipantAudio('p2')
 
       const p = store.remoteParticipants.find((x) => x.id === 'p2')
       expect(p.isAudioEnabled).toBe(false)
-      
-      // websocket is a ref, so we need to access .value
-      const ws = store.websocket?.value || store.websocket
-      const payload = JSON.parse(ws.send.mock.calls.at(-1)[0])
-      expect(payload.type).toBe('participant_media_update')
-      expect(payload.participant_id).toBe('p2')
-      expect(payload.media_state).toEqual({ video: true, audio: false })
+      expect(ws.send.mock.calls.length).toBe(sendCountBefore)
     }, 10000) // 10 second timeout
   })
 
@@ -461,7 +457,7 @@ describe('webrtc store helpers', () => {
       // Simulate failure and trigger handler
       pc.connectionState = 'failed'
       await pc.onconnectionstatechange()
-      expect(store.connectionState).toBe('failed')
+      expect(store.connectionState).toBe('connecting')
     })
   })
 

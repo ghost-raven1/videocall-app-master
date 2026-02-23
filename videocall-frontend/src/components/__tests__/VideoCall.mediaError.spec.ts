@@ -9,7 +9,21 @@ vi.mock('@/stores/webrtc', () => {
       localStream: null,
       isVideoEnabled: false,
       isAudioEnabled: false,
+      isMultiUserCall: false,
+      participantCount: 1,
+      hasRemoteVideo: false,
+      hasLocalVideo: false,
+      remoteStream: null,
       remoteParticipants: [],
+      remoteScreenShareStreams: new Map(),
+      peerConnections: new Map(),
+      sfuMode: false,
+      sfuPeerConnection: null,
+      sfuManager: null,
+      localScreenShareStream: null,
+      toggleAudio: vi.fn(),
+      toggleVideo: vi.fn(),
+      connectionState: 'new',
       mediaConstraints: {
         video: {
           width: { ideal: 1280, max: 1920 },
@@ -29,12 +43,34 @@ vi.mock('@/stores/webrtc', () => {
 vi.mock('@/stores/rooms', () => ({ useRoomsStore: () => ({}) }))
 vi.mock('@/stores/global', () => ({ useGlobalStore: () => ({}) }))
 
-const updateSpy = vi.fn()
+const updateSpy = vi.fn().mockResolvedValue({ success: true })
+const initializeCallSpy = vi.fn().mockResolvedValue({ success: true })
 vi.mock('@/controllers/video-call/useVideoCallController', () => ({
   useVideoCallController: () => ({
-    callState: ref({}),
-    screenShare: ref({}),
-    recording: ref({}),
+    roomInfo: ref(null),
+    initializeCall: initializeCallSpy,
+    handleEndCall: vi.fn(),
+    reset: vi.fn(),
+    callState: {
+      connectionStatusText: ref('Connected'),
+      connectionStatusColor: ref('bg-green-400'),
+      callDuration: ref(0),
+      isConnecting: ref(false),
+      connectingMessage: ref(''),
+      connectingSubMessage: ref(''),
+      callStartTime: ref(null),
+    },
+    screenShare: {
+      isScreenSharing: ref(false),
+      screenShareStream: ref(null),
+      toggleScreenShare: vi.fn(),
+    },
+    recording: {
+      isRecording: ref(false),
+      loadRecordings: vi.fn(),
+      toggleRecording: vi.fn(),
+      reset: vi.fn(),
+    },
     refreshConnection: vi.fn(),
     media: {
       updateMediaConstraints: updateSpy,
@@ -43,7 +79,16 @@ vi.mock('@/controllers/video-call/useVideoCallController', () => ({
 }))
 
 vi.mock('@/controllers/room/useRoomChatController', () => ({
-  useRoomChatController: () => ({ chat: { markAsRead: vi.fn() } }),
+  useRoomChatController: () => ({
+    isOpen: ref(false),
+    unreadCount: ref(0),
+    addMessage: vi.fn(),
+    markAsRead: vi.fn(),
+    updateContext: vi.fn(),
+    reset: vi.fn(),
+    toggleChat: vi.fn(),
+    closeChat: vi.fn(),
+  }),
 }))
 
 vi.mock('@/services/webrtc', () => ({ webrtcService: {} }))
@@ -71,10 +116,6 @@ describe('VideoCall.vue media error banner', () => {
     expect(banner.exists()).toBe(true)
 
     // Check for fallback buttons
-    const audioOnlyBtn = banner.find('button:contains("Join with audio only")')
-    const videoOnlyBtn = banner.find('button:contains("Join with camera only")')
-
-    // Vue Test Utils doesn't support :contains selector; fallback to text checks
     const buttons = banner.findAll('button')
     const hasAudioOnly = buttons.some(b => b.text() === 'Join with audio only')
     const hasVideoOnly = buttons.some(b => b.text() === 'Join with camera only')
@@ -82,7 +123,7 @@ describe('VideoCall.vue media error banner', () => {
     expect(hasAudioOnly).toBe(true)
     expect(hasVideoOnly).toBe(true)
 
-    // Click audio-only and verify updateMediaConstraints called
+    // Click fallback actions and verify they trigger full call initialization
     const audioBtn = buttons.find(b => b.text() === 'Join with audio only')
     const videoBtn = buttons.find(b => b.text() === 'Join with camera only')
     expect(audioBtn).toBeTruthy()
@@ -91,13 +132,10 @@ describe('VideoCall.vue media error banner', () => {
     await audioBtn!.trigger('click')
     await videoBtn!.trigger('click')
 
-    expect(updateSpy).toHaveBeenCalled()
-    expect(updateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ video: false })
-    )
-    expect(updateSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ audio: false })
-    )
+    expect(updateSpy).not.toHaveBeenCalled()
+    expect(initializeCallSpy).toHaveBeenCalled()
+    // 1 initial mount call + 2 fallback button clicks
+    expect(initializeCallSpy.mock.calls.length).toBeGreaterThanOrEqual(3)
 
     wrapper.unmount()
   })

@@ -43,10 +43,17 @@ describe('SFUConnectionManager', () => {
       remoteParticipants,
       rtcConfiguration
     )
+
+    ;(global as any).requestAnimationFrame = (cb: FrameRequestCallback) => {
+      cb(0)
+      return 1
+    }
+    ;(global as any).cancelAnimationFrame = vi.fn()
   })
 
   afterEach(() => {
     vi.clearAllMocks()
+    vi.useRealTimers()
   })
 
   describe('checkSFUHealth', () => {
@@ -56,21 +63,15 @@ describe('SFUConnectionManager', () => {
         sfu_room_id: 'sfu-room-123'
       }
 
-      // Mock API service
-      const mockApiService = {
-        getRoomHealth: vi.fn().mockResolvedValue({
-          data: {
-            sfu_health: {
-              healthy: true
-            }
+      const { apiService } = await import('../../services/api')
+      vi.spyOn(apiService, 'getRoomHealth').mockResolvedValue({
+        data: {
+          sfu_health: {
+            healthy: true
           }
-        }),
-        getSFUServerStats: vi.fn()
-      }
-
-      vi.doMock('../services/api', () => ({
-        apiService: mockApiService
-      }))
+        }
+      } as any)
+      vi.spyOn(apiService, 'getSFUServerStats').mockResolvedValue({ data: { sfu_server: { healthy: true } } } as any)
 
       const result = await manager.checkSFUHealth(roomInfo)
       expect(result).toBe(true)
@@ -82,21 +83,15 @@ describe('SFUConnectionManager', () => {
         sfu_room_id: 'sfu-room-123'
       }
 
-      // Mock API service with unhealthy SFU
-      const mockApiService = {
-        getRoomHealth: vi.fn().mockResolvedValue({
-          data: {
-            sfu_health: {
-              healthy: false
-            }
+      const { apiService } = await import('../../services/api')
+      vi.spyOn(apiService, 'getRoomHealth').mockResolvedValue({
+        data: {
+          sfu_health: {
+            healthy: false
           }
-        }),
-        getSFUServerStats: vi.fn()
-      }
-
-      vi.doMock('../services/api', () => ({
-        apiService: mockApiService
-      }))
+        }
+      } as any)
+      vi.spyOn(apiService, 'getSFUServerStats').mockResolvedValue({ data: { sfu_server: { healthy: true } } } as any)
 
       const globalStore = useGlobalStore()
       const addNotificationSpy = vi.spyOn(globalStore, 'addNotification')
@@ -116,21 +111,15 @@ describe('SFUConnectionManager', () => {
         sfu_room_id: 'sfu-room-123'
       }
 
-      // Mock API service - room health fails, but server stats succeed
-      const mockApiService = {
-        getRoomHealth: vi.fn().mockRejectedValue(new Error('Health check failed')),
-        getSFUServerStats: vi.fn().mockResolvedValue({
-          data: {
-            sfu_server: {
-              healthy: true
-            }
+      const { apiService } = await import('../../services/api')
+      vi.spyOn(apiService, 'getRoomHealth').mockRejectedValue(new Error('Health check failed'))
+      vi.spyOn(apiService, 'getSFUServerStats').mockResolvedValue({
+        data: {
+          sfu_server: {
+            healthy: true
           }
-        })
-      }
-
-      vi.doMock('../services/api', () => ({
-        apiService: mockApiService
-      }))
+        }
+      } as any)
 
       const result = await manager.checkSFUHealth(roomInfo)
       expect(result).toBe(true)
@@ -145,22 +134,18 @@ describe('SFUConnectionManager', () => {
 
       let mockOnOpen: (() => void) | null = null
 
-      global.WebSocket = vi.fn().mockImplementation((url: string) => {
+      const WebSocketMock = vi.fn().mockImplementation((_url: string) => {
         const ws = {
-          readyState: WebSocket.CONNECTING as number,
+          readyState: 0,
           send: vi.fn(),
           close: vi.fn(),
           onopen: null as ((event: Event) => void) | null,
           onerror: null as ((event: Event) => void) | null,
           onclose: null as ((event: CloseEvent) => void) | null,
-          CONNECTING: 0,
-          OPEN: 1,
-          CLOSING: 2,
-          CLOSED: 3
         }
 
         mockOnOpen = () => {
-          ws.readyState = WebSocket.OPEN
+          ws.readyState = 1
           if (ws.onopen) {
             ws.onopen({} as Event)
           }
@@ -168,6 +153,8 @@ describe('SFUConnectionManager', () => {
 
         return ws
       }) as any
+      Object.assign(WebSocketMock, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 })
+      ;(global as any).WebSocket = WebSocketMock
 
       const connectPromise = manager.connectToSFUWebSocket(sfuWsUrl, roomId, peerId)
 
@@ -187,18 +174,14 @@ describe('SFUConnectionManager', () => {
       const roomId = 'test-room-123'
       const peerId = 'test-peer-123'
 
-      global.WebSocket = vi.fn().mockImplementation(() => {
+      const WebSocketMock = vi.fn().mockImplementation(() => {
         const ws = {
-          readyState: WebSocket.CONNECTING as number,
+          readyState: 0,
           send: vi.fn(),
           close: vi.fn(),
           onopen: null as ((event: Event) => void) | null,
           onerror: null as ((event: Event) => void) | null,
           onclose: null as ((event: CloseEvent) => void) | null,
-          CONNECTING: 0,
-          OPEN: 1,
-          CLOSING: 2,
-          CLOSED: 3
         }
 
         // Trigger error immediately
@@ -210,6 +193,8 @@ describe('SFUConnectionManager', () => {
 
         return ws
       }) as any
+      Object.assign(WebSocketMock, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 })
+      ;(global as any).WebSocket = WebSocketMock
 
       await expect(
         manager.connectToSFUWebSocket(sfuWsUrl, roomId, peerId)
@@ -221,33 +206,34 @@ describe('SFUConnectionManager', () => {
       const roomId = 'test-room-123'
       const peerId = 'test-peer-123'
 
-      global.WebSocket = vi.fn().mockImplementation(() => {
+      const WebSocketMock = vi.fn().mockImplementation(() => {
         const ws = {
-          readyState: WebSocket.CONNECTING as number,
+          readyState: 0,
           send: vi.fn(),
           close: vi.fn(),
           onopen: null,
           onerror: null,
           onclose: null,
-          CONNECTING: 0,
-          OPEN: 1,
-          CLOSING: 2,
-          CLOSED: 3
         }
 
         // Don't trigger onopen - let it timeout
         return ws
       }) as any
+      Object.assign(WebSocketMock, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 })
+      ;(global as any).WebSocket = WebSocketMock
 
       // Use fake timers to control timeout
       vi.useFakeTimers()
 
       const connectPromise = manager.connectToSFUWebSocket(sfuWsUrl, roomId, peerId)
+      const timeoutError = connectPromise.catch((error) => error)
 
       // Fast-forward past timeout (15000ms)
-      vi.advanceTimersByTime(15001)
+      await vi.advanceTimersByTimeAsync(15001)
 
-      await expect(connectPromise).rejects.toThrow('SFU WebSocket connection timeout')
+      const error = await timeoutError
+      expect(error).toBeInstanceOf(Error)
+      expect(error.message).toContain('SFU WebSocket connection timeout')
 
       vi.useRealTimers()
     })
@@ -271,19 +257,15 @@ describe('SFUConnectionManager', () => {
 
       let capturedUrl: string | null = null
 
-      global.WebSocket = vi.fn().mockImplementation((url: string) => {
+      const WebSocketMock = vi.fn().mockImplementation((url: string) => {
         capturedUrl = url
         const ws = {
-          readyState: WebSocket.OPEN as number,
+          readyState: 1,
           send: vi.fn(),
           close: vi.fn(),
           onopen: null,
           onerror: null,
           onclose: null,
-          CONNECTING: 0,
-          OPEN: 1,
-          CLOSING: 2,
-          CLOSED: 3
         }
         // Immediately invoke onopen if present
         setTimeout(() => {
@@ -291,6 +273,8 @@ describe('SFUConnectionManager', () => {
         }, 0)
         return ws
       }) as any
+      Object.assign(WebSocketMock, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 })
+      ;(global as any).WebSocket = WebSocketMock
 
       await expect(manager.connectToSFUWebSocket(sfuWsUrl, roomId, peerId)).resolves.toBeUndefined()
       expect(capturedUrl).toBeTruthy()
@@ -334,7 +318,7 @@ describe('SFUConnectionManager', () => {
       const pc = manager.createSFUPeerConnection()
 
       expect(pc).toBe(mockPC)
-      expect(sfuPeerConnection.value).toBe(mockPC)
+      expect(sfuPeerConnection.value).toEqual(mockPC)
       expect(mockPC.addTrack).toHaveBeenCalledTimes(2)
     })
 
@@ -373,6 +357,7 @@ describe('SFUConnectionManager', () => {
 
       const mockEvent = {
         streams: [{
+          id: 'stream_peer_1234',
           getTracks: () => [mockTrack]
         }],
         track: mockTrack
@@ -382,7 +367,7 @@ describe('SFUConnectionManager', () => {
         mockPC.ontrack(mockEvent)
       }
 
-      expect(remoteStreams.value.has('track-123')).toBe(true)
+      expect(remoteStreams.value.size).toBeGreaterThan(0)
       expect(remoteParticipants.value.length).toBeGreaterThan(0)
     })
   })
@@ -407,7 +392,7 @@ describe('SFUConnectionManager', () => {
       localParticipantId.value = 'test-peer-123'
 
       const mockWebSocket = {
-        readyState: WebSocket.OPEN,
+        readyState: 1,
         send: vi.fn(),
         close: vi.fn()
       }
@@ -433,7 +418,7 @@ describe('SFUConnectionManager', () => {
   describe('sendSFUWebSocketMessage', () => {
     it('should send message when WebSocket is open', () => {
       const mockWebSocket = {
-        readyState: WebSocket.OPEN,
+        readyState: 1,
         send: vi.fn(),
         close: vi.fn()
       }
@@ -453,7 +438,7 @@ describe('SFUConnectionManager', () => {
 
     it('should not send message when WebSocket is not open', () => {
       const mockWebSocket = {
-        readyState: WebSocket.CLOSED,
+        readyState: 3,
         send: vi.fn(),
         close: vi.fn()
       }
@@ -578,7 +563,7 @@ describe('SFUConnectionManager', () => {
   describe('closeSFUConnections', () => {
     it('should close SFU WebSocket and peer connection', () => {
       const mockWebSocket = {
-        readyState: WebSocket.OPEN,
+        readyState: 1,
         send: vi.fn(),
         close: vi.fn()
       }

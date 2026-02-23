@@ -16,7 +16,8 @@ vi.mock('@/stores/global', () => ({
 vi.mock('axios', () => ({
   default: {
     post: vi.fn(),
-    get: vi.fn()
+    get: vi.fn(),
+    isAxiosError: (err: unknown) => !!(err && typeof err === 'object' && ('response' in (err as Record<string, unknown>) || 'message' in (err as Record<string, unknown>)))
   }
 }))
 
@@ -349,7 +350,7 @@ describe('useRecordingController', () => {
       await controller.stopRecording()
 
       expect(axios.get).toHaveBeenCalledWith(
-        '/api/recordings/list_by_room/',
+        '/api/rooms/recordings/list_by_room/',
         expect.objectContaining({
           params: { room_code: 'TEST123' }
         })
@@ -472,33 +473,40 @@ describe('useRecordingController', () => {
   })
 
   describe('downloadRecording', () => {
-    it('should open download URL in new window', () => {
-      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    it('downloads recording via fetch and triggers success notification', async () => {
+      const mockBlob = new Blob(['test'], { type: 'video/webm' })
+      const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue({
+        ok: true,
+        headers: { get: () => 'attachment; filename="recording.webm"' },
+        blob: vi.fn().mockResolvedValue(mockBlob),
+      } as any)
+      ;(window.URL as any).createObjectURL = (window.URL as any).createObjectURL || vi.fn()
+      ;(window.URL as any).revokeObjectURL = (window.URL as any).revokeObjectURL || vi.fn()
+      const createObjectURLSpy = vi.spyOn(window.URL as any, 'createObjectURL').mockReturnValue('blob:test')
+      const revokeObjectURLSpy = vi.spyOn(window.URL as any, 'revokeObjectURL').mockImplementation(() => {})
 
-      controller.downloadRecording('rec1')
+      await controller.downloadRecording('rec1')
 
-      expect(openSpy).toHaveBeenCalledWith(
-        '/api/recordings/rec1/download/',
-        '_blank'
+      expect(fetchSpy).toHaveBeenCalledWith('/api/rooms/recordings/rec1/download/', expect.objectContaining({ method: 'GET' }))
+      expect(createObjectURLSpy).toHaveBeenCalled()
+      expect(revokeObjectURLSpy).toHaveBeenCalled()
+      expect(mockGlobalStore.addNotification).toHaveBeenCalledWith(
+        'Recording downloaded successfully',
+        'success',
+        2000
       )
-
-      openSpy.mockRestore()
     })
 
-    it('should handle download errors', () => {
-      const openSpy = vi.spyOn(window, 'open').mockImplementation(() => {
-        throw new Error('Download failed')
-      })
+    it('should handle download errors', async () => {
+      vi.spyOn(global, 'fetch').mockRejectedValue(new Error('Download failed'))
 
-      controller.downloadRecording('rec1')
+      await controller.downloadRecording('rec1')
 
       expect(mockGlobalStore.addNotification).toHaveBeenCalledWith(
-        'Failed to download recording',
+        expect.stringContaining('Failed to download recording'),
         'error',
         3000
       )
-
-      openSpy.mockRestore()
     })
   })
 
@@ -626,4 +634,3 @@ describe('useRecordingController', () => {
     })
   })
 })
-

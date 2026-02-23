@@ -155,21 +155,26 @@ export function useRoomChatController(
         'text',
         replyTo
       )
+      const responseData = response?.data ?? response
 
-      if (response.data.success) {
+      if (responseData?.success) {
         // Update message with server response
-        const serverMessage = response.data.message
+        const serverMessage = responseData.message
         const index = messages.value.findIndex(m => m.id === optimisticMessage.id)
-        if (index !== -1) {
+        if (index !== -1 && serverMessage) {
           messages.value[index] = {
             ...optimisticMessage,
-            id: serverMessage.id,
-            timestamp: serverMessage.created_at
+            id: serverMessage.id || optimisticMessage.id,
+            timestamp: serverMessage.created_at || optimisticMessage.timestamp
           }
         }
 
         // Broadcast via WebSocket if available
-        if (currentWebSocket.value && currentWebSocket.value.readyState === WebSocket.OPEN) {
+        if (
+          serverMessage &&
+          currentWebSocket.value &&
+          currentWebSocket.value.readyState === WebSocket.OPEN
+        ) {
           currentWebSocket.value.send(JSON.stringify({
             type: 'chat_message',
             message: serverMessage
@@ -183,7 +188,7 @@ export function useRoomChatController(
         if (index !== -1) {
           messages.value.splice(index, 1)
         }
-        throw new Error(response.data.error || 'Failed to send message')
+        throw new Error(responseData?.error || 'Failed to send message')
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
@@ -245,23 +250,29 @@ export function useRoomChatController(
         currentParticipantId.value,
         file
       )
+      const uploadData = uploadResponse?.data ?? uploadResponse
 
-      if (uploadResponse.data.success) {
-        const serverMessage = uploadResponse.data.message
-        const attachment = uploadResponse.data.attachment
+      if (uploadData?.success) {
+        const serverMessage = uploadData.message || {}
+        const attachment = uploadData.attachment || {}
+        const attachmentFile = attachment.file
+        const attachmentUrl =
+          typeof attachmentFile === 'string'
+            ? attachmentFile
+            : attachmentFile?.url
 
         // Create file message from server response
         const fileMessage: ChatMessage = {
-          id: serverMessage.id,
+          id: serverMessage.id || `file_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
           room_id: currentRoomCode.value,
           participant_id: currentParticipantId.value,
-          participant_name: currentParticipantName.value,
+          participant_name: currentParticipantName.value || 'You',
           message: serverMessage.content || `Shared file: ${file.name}`,
-          timestamp: serverMessage.created_at,
+          timestamp: serverMessage.created_at || new Date().toISOString(),
           message_type: 'file',
-          file_name: attachment.original_filename,
-          file_size: attachment.file_size,
-          file_url: attachment.file.url || attachment.file
+          file_name: attachment.original_filename || file.name,
+          file_size: attachment.file_size || file.size,
+          file_url: attachmentUrl
         }
 
         // Add message to local state
@@ -279,7 +290,7 @@ export function useRoomChatController(
         globalStore.addNotification('File sent successfully', 'success', 2000)
         return { success: true }
       } else {
-        throw new Error(uploadResponse.data.error || 'Failed to upload file')
+        throw new Error(uploadData?.error || 'Failed to upload file')
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error'
@@ -332,8 +343,9 @@ export function useRoomChatController(
       }
       
       const response = await apiService.getChatHistory(roomCodeToUse, limit)
+      const historyData = response?.data ?? response
       
-      if (response.data.success) {
+      if (historyData?.success) {
         // Convert server messages to ChatMessage format
         interface ServerMessage {
           id: string
@@ -352,7 +364,20 @@ export function useRoomChatController(
           participant?: { display_name?: string }
         }
         
-        messages.value = (response.data.messages as ServerMessage[]).map((msg) => ({
+        messages.value = ((historyData.messages || []) as ServerMessage[]).map((msg) => ({
+          ...(() => {
+            const firstAttachment = msg.attachments?.[0]
+            const attachmentFile = firstAttachment?.file
+            const attachmentUrl =
+              typeof attachmentFile === 'string'
+                ? attachmentFile
+                : attachmentFile?.url
+            return {
+              file_url: attachmentUrl,
+              file_name: firstAttachment?.original_filename,
+              file_size: firstAttachment?.file_size,
+            }
+          })(),
           id: msg.id,
           room_id: msg.room_id,
           participant_id: msg.sender_id,
@@ -360,9 +385,6 @@ export function useRoomChatController(
           message: msg.content,
           timestamp: msg.created_at,
           message_type: msg.message_type || 'text',
-          file_url: msg.attachments?.[0]?.file?.url,
-          file_name: msg.attachments?.[0]?.original_filename,
-          file_size: msg.attachments?.[0]?.file_size,
           reply_to: msg.reply_to?.id
         }))
       }
@@ -420,4 +442,3 @@ export function useRoomChatController(
     updateContext
   }
 }
-

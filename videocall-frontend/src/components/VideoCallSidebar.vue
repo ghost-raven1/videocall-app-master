@@ -1,9 +1,9 @@
 <!-- src/components/VideoCallSidebar.vue - Sidebar component extracted from VideoCall.vue -->
 <template>
   <div
-    v-if="showChat"
     class="absolute right-0 top-0 bottom-0 w-full md:w-96 bg-warp-surface shadow-warp-md z-20 transform transition-transform duration-300 border-l border-warp-border"
-    :class="showChat ? 'translate-x-0' : 'translate-x-full'"
+    :class="showChat ? 'translate-x-0 opacity-100 pointer-events-auto' : 'translate-x-full opacity-0 pointer-events-none'"
+    :aria-hidden="!showChat"
   >
     <RoomChat
       v-if="roomCode"
@@ -33,11 +33,10 @@ defineProps({
     default: ''
   },
   websocket: {
-    type: WebSocket,
+    type: Object,
     default: null
   }
 })
 
 defineEmits(['close', 'new-message'])
 </script>
-

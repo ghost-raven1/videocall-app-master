@@ -57,6 +57,12 @@ export interface RecordingController {
  */
 export function useRecordingController(): RecordingController {
   const globalStore = useGlobalStore()
+  const isAxiosLikeError = (value: unknown): value is { response?: { data?: { error?: string } }; message?: string } => {
+    if (typeof (axios as any)?.isAxiosError === 'function') {
+      return (axios as any).isAxiosError(value)
+    }
+    return !!(value && typeof value === 'object' && ('response' in (value as Record<string, unknown>) || 'message' in (value as Record<string, unknown>)))
+  }
   
   // State
   const isRecording = ref(false)
@@ -174,7 +180,7 @@ export function useRecordingController(): RecordingController {
       }
     } catch (err: unknown) {
       let errorMessage = 'Unknown error'
-      if (axios.isAxiosError(err)) {
+      if (isAxiosLikeError(err)) {
         errorMessage = err.response?.data?.error || err.message || 'Unknown error'
       } else if (err instanceof Error) {
         errorMessage = err.message
@@ -233,7 +239,7 @@ export function useRecordingController(): RecordingController {
       }
     } catch (err: unknown) {
       let errorMessage = 'Unknown error'
-      if (axios.isAxiosError(err)) {
+      if (isAxiosLikeError(err)) {
         errorMessage = err.response?.data?.error || err.message || 'Unknown error'
       } else if (err instanceof Error) {
         errorMessage = err.message
@@ -383,4 +389,3 @@ export function useRecordingController(): RecordingController {
     reset
   }
 }
-

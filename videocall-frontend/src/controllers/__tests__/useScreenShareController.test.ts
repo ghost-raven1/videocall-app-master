@@ -79,7 +79,7 @@ describe('useScreenShareController', () => {
 
       expect(result.success).toBe(true)
       expect(controller.isScreenSharing.value).toBe(true)
-      expect(controller.screenShareStream.value).toBe(mockStream)
+      expect(controller.screenShareStream.value).toEqual(mockStream)
       expect(mockGlobalStore.addNotification).toHaveBeenCalledWith(
         'Screen sharing started',
         'success',
@@ -141,13 +141,14 @@ describe('useScreenShareController', () => {
       }
       const mockStream = {
         getVideoTracks: () => [mockTrack],
-        getAudioTracks: () => []
+        getAudioTracks: () => [],
+        getTracks: () => [mockTrack]
       }
 
       mockGetDisplayMedia.mockResolvedValue(mockStream)
-      const stopSpy = vi.spyOn(controller, 'stopScreenShare')
 
       await controller.startScreenShare()
+      expect(controller.isScreenSharing.value).toBe(true)
 
       // Simulate track ending
       if (mockTrack.onended) {
@@ -155,9 +156,10 @@ describe('useScreenShareController', () => {
       }
 
       // Wait a bit for async operations
-      await new Promise(resolve => setTimeout(resolve, 10))
-
-      expect(stopSpy).toHaveBeenCalled()
+      await new Promise(resolve => setTimeout(resolve, 0))
+      await Promise.resolve()
+      expect(controller.isScreenSharing.value).toBe(false)
+      expect(controller.screenShareStream.value).toBeNull()
     })
   })
 
@@ -269,4 +271,3 @@ describe('useScreenShareController', () => {
     })
   })
 })
-

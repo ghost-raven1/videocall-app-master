@@ -11,6 +11,7 @@
       :unread-messages="unreadMessages"
       :is-screen-sharing="isScreenSharing"
       :is-recording="isRecording"
+      :is-multi-user-call="webrtcStore?.isMultiUserCall || false"
       :show-menu="showMenu"
       @toggle-chat="chat.toggleChat()"
       @toggle-screen-share="handleToggleScreenShare"
@@ -37,16 +38,16 @@
       />
       <!-- Screen Share Display (overlay) - show all active screen shares -->
       <div
-        v-if="allActiveScreenShares.length > 0"
+        v-if="orderedScreenShares.length > 0 && !isScreenShareOverlayHidden"
         class="absolute inset-0 z-30 bg-black/90 backdrop-blur-xl"
       >
         <!-- Main screen share (first one) -->
         <div
-          v-if="allActiveScreenShares[0]"
+          v-if="orderedScreenShares[0]"
           class="absolute inset-0"
         >
           <video
-            :ref="(el) => setScreenShareVideoRef(el, allActiveScreenShares[0]?.participantId)"
+            :ref="(el) => setScreenShareVideoRef(el, orderedScreenShares[0]?.participantId)"
             autoplay
             playsinline
             muted
@@ -54,21 +55,21 @@
           ></video>
           <div class="absolute top-4 left-4 px-4 py-2 bg-warp-surfaceAlt/90 text-warp-text rounded-lg z-10 border border-warp-border">
             <p class="text-sm font-medium">
-              {{ allActiveScreenShares[0].participantId === currentParticipantId ? 'Your Screen' : (allActiveScreenShares[0].participantName || 'Someone') + "'s Screen" }}
+              {{ orderedScreenShares[0].participantId === currentParticipantId ? 'Your Screen' : (orderedScreenShares[0].participantName || 'Someone') + "'s Screen" }}
             </p>
           </div>
         </div>
         
         <!-- Other screen shares as thumbnails (if multiple) -->
           <div
-            v-if="allActiveScreenShares.length > 1"
+            v-if="orderedScreenShares.length > 1"
             class="absolute bottom-4 right-4 flex gap-2 z-20"
           >
           <div
-            v-for="(screenShare, index) in allActiveScreenShares.slice(1)"
+            v-for="screenShare in orderedScreenShares.slice(1)"
             :key="screenShare.participantId"
             class="w-48 h-32 bg-warp-surfaceAlt/90 backdrop-blur-md rounded-xl overflow-hidden border border-warp-border/80 cursor-pointer hover:border-warp-accent hover:shadow-warp-md transition-all duration-200"
-            @click="switchToScreenShare(index + 1)"
+            @click="switchToScreenShareByParticipant(screenShare.participantId)"
           >
             <video
               :ref="(el) => setScreenShareThumbnailRef(el, screenShare.participantId)"
@@ -82,9 +83,9 @@
             </div>
           </div>
         </div>
-        <!-- Close button for screen share -->
+        <!-- Controls for screen share overlay -->
         <button
-          v-if="screenShare.isScreenSharing.value"
+          v-if="isScreenSharing"
           @click="handleToggleScreenShare"
           class="absolute top-4 right-4 z-10 btn-primary bg-red-600 hover:bg-red-700 flex items-center gap-2"
         >
@@ -93,7 +94,28 @@
           </svg>
           Stop Sharing
         </button>
+        <button
+          v-else
+          @click="isScreenShareOverlayHidden = true"
+          class="absolute top-4 right-4 z-10 btn-secondary flex items-center gap-2"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18M10.58 10.58A2 2 0 0010 12a2 2 0 002 2c.52 0 .99-.2 1.34-.53M9.88 5.09A9.77 9.77 0 0112 4c5 0 9.27 3.11 11 8-1 2.77-3 5-5.6 6.37M6.1 6.1C3.98 7.52 2.35 9.57 1 12c.84 2.33 2.29 4.27 4.16 5.63" />
+          </svg>
+          Hide Share
+        </button>
       </div>
+
+      <button
+        v-if="orderedScreenShares.length > 0 && isScreenShareOverlayHidden"
+        @click="isScreenShareOverlayHidden = false"
+        class="absolute top-4 right-4 z-20 btn-secondary flex items-center gap-2"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0zm6-1s-3-7-9-7-9 7-9 7 3 7 9 7 9-7 9-7z" />
+        </svg>
+        View Screen Share
+      </button>
 
       <div class="relative w-full h-full px-2 sm:px-4 pb-2">
         <!-- Multi-user call (3+ participants) -->
@@ -779,6 +801,7 @@ const remoteVideoRef = ref(null)
 const screenShareVideoRefs = ref(new Map()) // Map<participantId, videoElement>
 const screenShareThumbnailRefs = ref(new Map()) // Map<participantId, videoElement>
 const currentScreenShareIndex = ref(0) // Index of currently displayed screen share
+const isScreenShareOverlayHidden = ref(false)
 
 // Ref callback functions for template (to avoid TypeScript syntax in template)
 const setLocalVideoRef = (el) => {
@@ -823,8 +846,8 @@ const currentParticipantName = ref(
 
 // Chat controller - initialize after websocket and participant are available
 const chat = useRoomChatController()
-const showChat = computed(() => chat.isOpen.value)
-const unreadMessages = computed(() => chat.unreadCount.value)
+const showChat = computed(() => chat?.isOpen?.value ?? false)
+const unreadMessages = computed(() => chat?.unreadCount?.value ?? 0)
 
 // Keep chat context in sync with current room and WebSocket
 watch(
@@ -862,15 +885,15 @@ const handleToggleVideo = () => {
 }
 
 // Use roomInfo from controller
-const roomInfo = computed(() => videoCall.roomInfo.value)
+const roomInfo = computed(() => videoCall?.roomInfo?.value ?? null)
 
 // Computed properties - use controller values
-const connectionStatusText = computed(() => callState.connectionStatusText.value)
-const connectionStatusColor = computed(() => callState.connectionStatusColor.value)
-const callDuration = computed(() => callState.callDuration.value)
-const isConnecting = computed(() => callState.isConnecting.value)
-const connectingMessage = computed(() => callState.connectingMessage.value)
-const connectingSubMessage = computed(() => callState.connectingSubMessage.value)
+const connectionStatusText = computed(() => callState?.connectionStatusText?.value ?? 'Connecting...')
+const connectionStatusColor = computed(() => callState?.connectionStatusColor?.value ?? 'bg-yellow-400')
+const callDuration = computed(() => callState?.callDuration?.value ?? 0)
+const isConnecting = computed(() => callState?.isConnecting?.value ?? false)
+const connectingMessage = computed(() => callState?.connectingMessage?.value ?? 'Connecting...')
+const connectingSubMessage = computed(() => callState?.connectingSubMessage?.value ?? '')
 // connectionProgress is managed inside the controller; no local binding needed
 
 const participantCount = computed(() => {
@@ -919,14 +942,14 @@ const connectionMessage = computed(() => {
 })
 
 // Use screen share state from controller
-const isScreenSharing = computed(() => screenShare.isScreenSharing.value)
+const isScreenSharing = computed(() => screenShare?.isScreenSharing?.value ?? false)
 
 // Get all active screen shares (local and remote)
 const allActiveScreenShares = computed(() => {
   const activeShares = []
   
   // Check local screen share
-  if (screenShare.isScreenSharing.value && screenShare.screenShareStream.value) {
+  if (screenShare?.isScreenSharing?.value && screenShare?.screenShareStream?.value) {
     const localStream = screenShare.screenShareStream.value
     const videoTracks = localStream.getVideoTracks()
     if (localStream.active && videoTracks.length > 0 && videoTracks[0].readyState === 'live') {
@@ -955,7 +978,7 @@ const allActiveScreenShares = computed(() => {
   }
   
   // Also check participants with isScreenSharing flag and screenShareStream
-  for (const participant of webrtcStore.remoteParticipants) {
+  for (const participant of webrtcStore.remoteParticipants || []) {
     if (participant.isScreenSharing && participant.screenShareStream) {
       const stream = participant.screenShareStream
       if (stream && stream.active) {
@@ -975,6 +998,18 @@ const allActiveScreenShares = computed(() => {
   }
   
   return activeShares
+})
+
+const orderedScreenShares = computed(() => {
+  const shares = allActiveScreenShares.value
+  if (shares.length === 0) return []
+
+  const safeIndex = Math.max(0, Math.min(currentScreenShareIndex.value, shares.length - 1))
+  return [
+    shares[safeIndex],
+    ...shares.slice(0, safeIndex),
+    ...shares.slice(safeIndex + 1),
+  ]
 })
 
 // Legacy active screen share helpers removed (unused in template)
@@ -1008,8 +1043,17 @@ const switchToScreenShare = (index) => {
   }
 }
 
+const switchToScreenShareByParticipant = (participantId) => {
+  const targetIndex = allActiveScreenShares.value.findIndex(
+    (share) => share.participantId === participantId,
+  )
+  if (targetIndex !== -1) {
+    switchToScreenShare(targetIndex)
+  }
+}
+
 // Use recording state from controller
-const isRecording = computed(() => recording.isRecording.value)
+const isRecording = computed(() => recording?.isRecording?.value ?? false)
 
 // ID of pinned participant (for focus layout / grid ordering)
 const pinnedParticipantId = ref(null)
@@ -1026,6 +1070,8 @@ const fallbackModeMessage = computed(() => {
   switch (currentFallbackMode.value) {
     case 'audio_only':
       return 'Video unavailable. Continue with audio only or check your connection.'
+    case 'video_only':
+      return 'Microphone unavailable. Continue with camera only or retry device access.'
     case 'chat_only':
       return 'Audio and video unavailable. You can continue with chat or refresh the page.'
     default:
@@ -1038,7 +1084,7 @@ const showFallbackControls = computed(() => {
 })
 
 const canRestoreVideo = computed(() => {
-  return currentFallbackMode.value === 'audio_only' && webrtcStore.hasLocalVideo
+  return currentFallbackMode.value === 'audio_only'
 })
 
 // Connection quality computed properties
@@ -1113,14 +1159,25 @@ const remoteVideoInfo = computed(() => {
 // Use controller's initializeCall method
 const initializeCall = async () => {
   const roomId = utils.normalizeRouteParam(route.params.roomId)
+  if (typeof videoCall?.initializeCall !== 'function') {
+    mediaError.value = 'Call controller is not initialized'
+    return
+  }
   const result = await videoCall.initializeCall(roomId)
   
   if (result.success) {
+    const fallbackMode = result.fallbackMode ?? null
+    isInFallbackMode.value = fallbackMode !== null
+    currentFallbackMode.value = fallbackMode
+
     // Start stats monitoring after successful initialization
     startStatsMonitoring()
     setupEnhancedMonitoring()
     mediaError.value = null
   } else {
+    isInFallbackMode.value = false
+    currentFallbackMode.value = null
+
     // Surface media access errors to banner
     const err = result.error || ''
     if (/camera|microphone|Permission/i.test(err)) {
@@ -1138,7 +1195,7 @@ const handleEndCall = async () => {
   }
   
   // Update history with call duration if needed
-  if (roomInfo.value && callState.callStartTime.value) {
+  if (roomInfo.value && callState?.callStartTime?.value) {
     const callEndTime = new Date()
     const duration = Math.floor((callEndTime.getTime() - callState.callStartTime.value.getTime()) / 1000)
     
@@ -1150,7 +1207,9 @@ const handleEndCall = async () => {
   }
   
   // Use controller's method
-  await videoCall.handleEndCall()
+  if (typeof videoCall?.handleEndCall === 'function') {
+    await videoCall.handleEndCall()
+  }
 }
 
 const toggleLocalVideoSize = () => {
@@ -1383,17 +1442,12 @@ const applyAdaptiveVideoLevel = async (level) => {
 }
 
 const restoreVideoFromAudioOnly = () => {
-  if (currentFallbackMode.value === 'audio_only' && webrtcStore.hasLocalVideo) {
+  if (currentFallbackMode.value === 'audio_only') {
     // Attempt to restore video by re-enabling video tracks
     globalStore.addNotification('Attempting to restore video...', 'info', 3000)
 
-    // This would trigger a reconnection with video enabled
-    // The retry service will handle the restoration
-    webrtcStore.toggleVideo()
-
-    // Reset fallback mode
-    isInFallbackMode.value = false
-    currentFallbackMode.value = null
+    // Full reconnect is the safest way to renegotiate and restore missing tracks.
+    refreshConnection()
   }
 }
 
@@ -1401,7 +1455,18 @@ const handleConnectionHelp = () => {
   showConnectionHelp.value = true
 }
 
-const refreshConnection = () => {
+const refreshConnection = async () => {
+  try {
+    if (typeof videoCall?.refreshConnection === 'function') {
+      await videoCall.refreshConnection()
+      mediaError.value = null
+      showConnectionHelp.value = false
+      return
+    }
+  } catch (error) {
+    console.error('Controller-based refresh failed, falling back to page reload:', error)
+  }
+
   window.location.reload()
 }
 
@@ -1413,18 +1478,22 @@ const onNewChatMessage = (message) => {
 
 // Use controller's screen share methods
 const handleToggleScreenShare = async () => {
-  const wasSharing = screenShare.isScreenSharing.value
+  if (typeof screenShare?.toggleScreenShare !== 'function') {
+    return
+  }
+
+  const wasSharing = screenShare?.isScreenSharing?.value ?? false
   await screenShare.toggleScreenShare()
   
   // Store screen share stream in webrtc store for adding to new peer connections
-  if (screenShare.isScreenSharing.value && screenShare.screenShareStream.value) {
+  if (screenShare?.isScreenSharing?.value && screenShare?.screenShareStream?.value) {
     webrtcStore.localScreenShareStream = screenShare.screenShareStream.value
   } else {
     webrtcStore.localScreenShareStream = null
   }
   
   // After toggling, if screen share started, add stream to existing peer connections
-  if (screenShare.isScreenSharing.value && !wasSharing && screenShare.screenShareStream.value) {
+  if (screenShare?.isScreenSharing?.value && !wasSharing && screenShare?.screenShareStream?.value) {
     const stream = screenShare.screenShareStream.value
     console.log('Adding screen share stream to peer connections:', stream)
     
@@ -1494,7 +1563,7 @@ const handleToggleScreenShare = async () => {
     } catch (error) {
       console.error('Failed to add screen share to peer connections:', error)
     }
-  } else if (!screenShare.isScreenSharing.value && wasSharing) {
+  } else if (!(screenShare?.isScreenSharing?.value) && wasSharing) {
     // Screen share stopped - remove from all peer connections
     webrtcStore.localScreenShareStream = null
     
@@ -1520,7 +1589,7 @@ const handleToggleScreenShare = async () => {
 
 // Recording handlers - use controller
 const toggleRecording = async () => {
-  if (roomInfo.value) {
+  if (roomInfo.value && typeof recording?.toggleRecording === 'function') {
     await recording.toggleRecording(roomInfo.value.short_code, currentParticipantId.value || undefined)
   }
 }
@@ -1553,28 +1622,68 @@ const onAudioSettingsChanged = async (settings) => {
     // Restart audio stream with new settings
     if (webrtcStore.localStream) {
       const newStream = await navigator.mediaDevices.getUserMedia(constraints)
-      
-      // Replace audio track
-      const audioTrack = newStream.getAudioTracks()[0]
+      const newAudioTrack = newStream.getAudioTracks()[0]
+
+      if (!newAudioTrack) {
+        throw new Error('No audio track available from selected input')
+      }
+
+      const replaceSenderTrack = async (pc) => {
+        if (!pc || typeof pc.getSenders !== 'function') {
+          return
+        }
+
+        const audioSender = pc.getSenders().find((sender) => sender.track?.kind === 'audio')
+        if (audioSender && typeof audioSender.replaceTrack === 'function') {
+          await audioSender.replaceTrack(newAudioTrack)
+          return
+        }
+
+        if (typeof pc.addTrack === 'function') {
+          pc.addTrack(newAudioTrack, webrtcStore.localStream)
+        }
+      }
+
+      if (webrtcStore.sfuPeerConnection) {
+        await replaceSenderTrack(webrtcStore.sfuPeerConnection)
+      }
+
+      if (webrtcStore.peerConnections && typeof webrtcStore.peerConnections.forEach === 'function') {
+        const tasks: Promise<void>[] = []
+        webrtcStore.peerConnections.forEach((pc) => {
+          tasks.push(replaceSenderTrack(pc))
+        })
+        await Promise.all(tasks)
+      }
+
       const oldAudioTrack = webrtcStore.localStream.getAudioTracks()[0]
-      
       if (oldAudioTrack) {
         webrtcStore.localStream.removeTrack(oldAudioTrack)
         oldAudioTrack.stop()
       }
-      
-      webrtcStore.localStream.addTrack(audioTrack)
-      
+
+      webrtcStore.localStream.addTrack(newAudioTrack)
+      webrtcStore.isAudioEnabled = newAudioTrack.enabled
+
+      // Stop extra tracks from temporary stream to avoid leaks.
+      newStream.getTracks().forEach((track) => {
+        if (track !== newAudioTrack) {
+          track.stop()
+        }
+      })
+
+      globalStore.addNotification('Audio settings applied', 'success', 2500)
       console.log('Audio settings applied successfully')
     }
   } catch (error) {
     console.error('Failed to apply audio settings:', error)
+    globalStore.addNotification('Failed to apply audio settings', 'error', 4000)
   }
 }
 
 // Watch chat visibility to reset unread count
 watch(showChat, (isVisible) => {
-  if (isVisible) {
+  if (isVisible && chat && typeof chat.markAsRead === 'function') {
     chat.markAsRead()
   }
 })
@@ -1691,12 +1800,20 @@ watch(
 // Watch for screen share stream changes (local or remote)
 // Watch for screen share stream changes (all active screen shares)
 watch(
-  () => allActiveScreenShares.value,
-  (newShares) => {
+  () => orderedScreenShares.value,
+  (orderedShares) => {
+    const totalShares = allActiveScreenShares.value.length
+    if (totalShares === 0) {
+      currentScreenShareIndex.value = 0
+      isScreenShareOverlayHidden.value = false
+    } else if (currentScreenShareIndex.value >= totalShares) {
+      currentScreenShareIndex.value = 0
+    }
+
     nextTick(() => {
       // Update main screen share video
-      if (newShares.length > 0 && currentScreenShareIndex.value < newShares.length) {
-        const currentShare = newShares[currentScreenShareIndex.value]
+      if (orderedShares.length > 0) {
+        const currentShare = orderedShares[0]
         const videoRef = screenShareVideoRefs.value.get(currentShare.participantId)
         if (videoRef && currentShare.stream) {
           if (videoRef.srcObject !== currentShare.stream) {
@@ -1709,22 +1826,20 @@ watch(
       }
       
       // Update thumbnail videos
-      newShares.forEach((share, index) => {
-        if (index > 0) { // Skip first one (main display)
-          const thumbnailRef = screenShareThumbnailRefs.value.get(share.participantId)
-          if (thumbnailRef && share.stream) {
-            if (thumbnailRef.srcObject !== share.stream) {
-              thumbnailRef.srcObject = share.stream
-            }
-            thumbnailRef.play().catch(err => {
-              console.warn('Failed to autoplay screen share thumbnail:', err)
-            })
+      orderedShares.slice(1).forEach((share) => {
+        const thumbnailRef = screenShareThumbnailRefs.value.get(share.participantId)
+        if (thumbnailRef && share.stream) {
+          if (thumbnailRef.srcObject !== share.stream) {
+            thumbnailRef.srcObject = share.stream
           }
+          thumbnailRef.play().catch(err => {
+            console.warn('Failed to autoplay screen share thumbnail:', err)
+          })
         }
       })
       
       // Clear refs for removed screen shares
-      const activeParticipantIds = new Set(newShares.map(s => s.participantId))
+      const activeParticipantIds = new Set(orderedShares.map(s => s.participantId))
       screenShareVideoRefs.value.forEach((ref, participantId) => {
         if (!activeParticipantIds.has(participantId) && ref) {
           ref.srcObject = null
@@ -1748,11 +1863,11 @@ watch(
 // Lifecycle
 // Update chat context when room info or websocket changes
 watch(() => [roomInfo.value, websocket.value, currentParticipantId.value], ([newRoomInfo, newWebsocket, newParticipantId]) => {
-  if (newRoomInfo && newParticipantId) {
+  if (newRoomInfo && newParticipantId && chat && typeof chat.updateContext === 'function') {
     chat.updateContext(
       newRoomInfo.short_code,
       newParticipantId,
-      'Participant',
+      currentParticipantName.value || 'You',
       newWebsocket
     )
   }
@@ -1762,13 +1877,13 @@ onMounted(async () => {
   await initializeCall()
   
   // Load recordings for the room
-  if (roomInfo.value) {
+  if (roomInfo.value && typeof recording?.loadRecordings === 'function') {
     await recording.loadRecordings(roomInfo.value.short_code)
   }
   
   // Watch for room info changes to load recordings
   watch(() => roomInfo.value, async (newRoomInfo) => {
-    if (newRoomInfo) {
+    if (newRoomInfo && typeof recording?.loadRecordings === 'function') {
       await recording.loadRecordings(newRoomInfo.short_code)
     }
   })
@@ -1780,30 +1895,51 @@ onUnmounted(async () => {
     clearInterval(statsMonitor.value)
   }
 
+  // Best-effort teardown if user leaves the route without pressing End call.
+  if (
+    typeof webrtcStore.endCall === 'function' &&
+    (
+      !!webrtcStore.isConnected ||
+      !!webrtcStore.localStream ||
+      ((webrtcStore.peerConnections?.size || 0) > 0)
+    )
+  ) {
+    try {
+      await webrtcStore.endCall()
+    } catch (error) {
+      console.error('Cleanup endCall failed during unmount:', error)
+    }
+  }
+
   // Use controller's cleanup
-  videoCall.reset()
-  chat.reset()
+  if (videoCall && typeof videoCall.reset === 'function') {
+    videoCall.reset()
+  }
+  if (chat && typeof chat.reset === 'function') {
+    chat.reset()
+  }
 })
 
 // Busy device detection for error banner
 const isDeviceBusyError = computed((): boolean => {
   const msg = mediaError.value || ''
-  return /already in use|NotReadableError/i.test(String(msg))
+  return /already in use|NotReadableError|busy|unavailable/i.test(String(msg))
 })
 
 // Fallback handlers: audio-only or video-only initialization
 const joinWithAudioOnly = async (): Promise<void> => {
   try {
-    // Отключаем видео, включаем аудио с безопасными дефолтами (через контроллер)
-    await videoCall.media.updateMediaConstraints({
+    // Preserve full call flow: set constraints first, then run complete call initialization.
+    webrtcStore.mediaConstraints = {
+      ...webrtcStore.mediaConstraints,
       video: false,
       audio: {
         echoCancellation: true,
         noiseSuppression: true,
         autoGainControl: true,
       },
-    })
-    mediaError.value = null
+    } as any
+    await initializeCall()
   } catch (err) {
     console.error('Failed to join with audio only:', err)
     mediaError.value = err instanceof Error ? err.message : 'Failed to initialize audio only'
@@ -1812,16 +1948,17 @@ const joinWithAudioOnly = async (): Promise<void> => {
 
 const joinWithVideoOnly = async (): Promise<void> => {
   try {
-    // Отключаем аудио, включаем видео с безопасными дефолтами (через контроллер)
-    await videoCall.media.updateMediaConstraints({
+    // Preserve full call flow: set constraints first, then run complete call initialization.
+    webrtcStore.mediaConstraints = {
+      ...webrtcStore.mediaConstraints,
       video: {
         width: { ideal: 1280, max: 1920 },
         height: { ideal: 720, max: 1080 },
         frameRate: { ideal: 30, max: 60 },
       },
       audio: false,
-    })
-    mediaError.value = null
+    } as any
+    await initializeCall()
   } catch (err) {
     console.error('Failed to join with video only:', err)
     mediaError.value = err instanceof Error ? err.message : 'Failed to initialize video only'

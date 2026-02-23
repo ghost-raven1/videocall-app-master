@@ -46,6 +46,41 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
     expect(store.isAudioEnabled).toBe(true)
   })
 
+  it('falls back to audio-only when camera/mic full request fails with busy device', async () => {
+    const store = useWebRTCStore()
+
+    const audioOnlyStream = {
+      getTracks: () => [{ kind: 'audio', enabled: true, readyState: 'live' }],
+      getVideoTracks: () => [],
+      getAudioTracks: () => [{ kind: 'audio', enabled: true, readyState: 'live' }],
+      active: true,
+    }
+
+    const getUserMediaMock = vi
+      .fn()
+      .mockRejectedValueOnce({ name: 'NotReadableError' })
+      .mockResolvedValueOnce(audioOnlyStream)
+
+    if (global.navigator.mediaDevices) {
+      global.navigator.mediaDevices.getUserMedia = getUserMediaMock
+    } else {
+      Object.defineProperty(global.navigator, 'mediaDevices', {
+        value: { getUserMedia: getUserMediaMock },
+        writable: true,
+        configurable: true,
+      })
+    }
+
+    const result = await store.initializeLocalMedia()
+
+    expect(result.success).toBe(true)
+    expect(result.fallbackMode).toBe('audio_only')
+    expect(store.localStream).toEqual(audioOnlyStream)
+    expect(store.isVideoEnabled).toBe(false)
+    expect(store.isAudioEnabled).toBe(true)
+    expect(getUserMediaMock).toHaveBeenCalledTimes(2)
+  })
+
   it('should create peer connection for participant', async () => {
     const store = useWebRTCStore()
 
@@ -97,12 +132,14 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
       CLOSED: 3
     }
 
-    global.WebSocket = vi.fn().mockImplementation(() => {
+    const WebSocketMock = vi.fn().mockImplementation(() => {
       setTimeout(() => {
         if (mockWS.onopen) mockWS.onopen({} as Event)
       }, 0)
       return mockWS
     }) as any
+    Object.assign(WebSocketMock, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 })
+    ;(global as any).WebSocket = WebSocketMock
 
     // Mock local stream
     const mockStream = {
@@ -117,7 +154,8 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
     await store.connectWebSocket('test-room-123')
 
     expect(store.websocket).toBeTruthy()
-    expect(store.isConnected).toBe(true)
+    expect(store.isConnected).toBe(false)
+    expect(store.connectionState).toBe('connecting')
 
     // Create peer connection
     const mockPC = {
@@ -209,9 +247,10 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
       getAudioTracks: () => [audioTrack]
     } as any
 
-    // Mock WebSocket - use WebSocket.OPEN constant
+    const openState = (global as any).WebSocket?.OPEN ?? 1
+    // Mock WebSocket
     const mockWS = {
-      readyState: WebSocket.OPEN,
+      readyState: openState,
       send: vi.fn(),
       close: vi.fn()
     }
@@ -237,9 +276,10 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
       getAudioTracks: () => [audioTrack]
     } as any
 
-    // Mock WebSocket - use WebSocket.OPEN constant
+    const openState = (global as any).WebSocket?.OPEN ?? 1
+    // Mock WebSocket
     const mockWS = {
-      readyState: WebSocket.OPEN,
+      readyState: openState,
       send: vi.fn(),
       close: vi.fn()
     }
@@ -256,17 +296,23 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
   it('should handle ICE candidates in P2P call', async () => {
     const store = useWebRTCStore()
 
+    const openState = (global as any).WebSocket?.OPEN ?? 1
     // Mock WebSocket
     const mockWS = {
-      readyState: 1,
+      readyState: openState,
       send: vi.fn(),
       close: vi.fn()
     }
     store.websocket = mockWS as any
 
-    // Mock peer connection
+    // Mock local stream and peer connection
+    store.localStream = {
+      getTracks: () => [{ kind: 'video', enabled: true }, { kind: 'audio', enabled: true }]
+    } as any
+
     const mockPC = {
       addTrack: vi.fn(),
+      getSenders: vi.fn().mockReturnValue([]),
       connectionState: 'new',
       onicecandidate: null,
       ontrack: null,
@@ -274,7 +320,8 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
       close: vi.fn()
     }
 
-    store.peerConnections.set('participant-1', mockPC as any)
+    global.RTCPeerConnection = vi.fn().mockImplementation(() => mockPC) as any
+    await store.createPeerConnectionForParticipant('participant-1')
 
     // Simulate ICE candidate
     const mockCandidate = {
@@ -283,7 +330,7 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
       sdpMid: '0'
     }
 
-    // Trigger onicecandidate handler
+    // Trigger onicecandidate handler configured by store
     if (mockPC.onicecandidate) {
       mockPC.onicecandidate({ candidate: mockCandidate } as any)
     }
@@ -361,9 +408,10 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
     }
     store.remoteStreams.set('participant-1', mockStream as any)
 
+    const openState = (global as any).WebSocket?.OPEN ?? 1
     // Mock WebSocket
     const mockWS = {
-      readyState: 1,
+      readyState: openState,
       send: vi.fn(),
       close: vi.fn()
     }
@@ -380,4 +428,3 @@ describe('WebRTC Store - P2P Call (2 participants)', () => {
     expect(store.connectionState).toBe('new')
   })
 })
-

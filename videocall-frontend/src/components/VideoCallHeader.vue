@@ -20,8 +20,10 @@
       <!-- Participants count (clickable to show participants list) -->
       <button
         @click="$emit('show-participants')"
+        data-test="participants-button"
         class="flex items-center space-x-1 text-sm text-warp-muted hover:text-warp-text transition-colors cursor-pointer"
         :title="`${participantCount} participant${participantCount !== 1 ? 's' : ''}`"
+        :aria-label="`Show participants (${participantCount})`"
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -37,8 +39,10 @@
       <!-- Chat button -->
       <button
         @click="$emit('toggle-chat')"
+        data-test="toggle-chat-button"
         class="p-2 hover:bg-warp-surfaceAlt rounded-full transition-colors relative"
         title="Toggle chat"
+        aria-label="Toggle chat"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -53,12 +57,15 @@
 
       <!-- Screen share button -->
       <button
+        v-if="!isMultiUserCall"
         @click="$emit('toggle-screen-share')"
+        data-test="toggle-screen-share-button"
         :class="[
           'p-2 rounded-full transition-colors',
           isScreenSharing ? 'bg-warp-accent2 hover:bg-emerald-500' : 'hover:bg-warp-surfaceAlt'
         ]"
         :title="isScreenSharing ? 'Stop sharing' : 'Share screen'"
+        :aria-label="isScreenSharing ? 'Stop sharing screen' : 'Share screen'"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -68,19 +75,23 @@
       <!-- Audio Settings button -->
       <AudioSettings @settings-changed="$emit('audio-settings-changed', $event)" />
 
-      <!-- Menu button -->
-      <button
-        @click="$emit('toggle-menu')"
-        class="p-2 hover:bg-warp-surfaceAlt rounded-full transition-colors relative"
-      >
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            stroke-width="2"
-            d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
-          ></path>
-        </svg>
+      <!-- Menu button + dropdown -->
+      <div class="relative">
+        <button
+          @click="$emit('toggle-menu')"
+          data-test="toggle-menu-button"
+          class="p-2 hover:bg-warp-surfaceAlt rounded-full transition-colors"
+          aria-label="Open call menu"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"
+            ></path>
+          </svg>
+        </button>
 
         <!-- Dropdown menu -->
         <div
@@ -89,7 +100,8 @@
           class="absolute right-0 mt-2 w-48 bg-warp-surfaceAlt rounded-lg shadow-xl border border-warp-border py-2 z-50"
         >
           <button
-            @click="$emit('share-room')"
+            @click="$emit('share-room'); $emit('close-menu')"
+            data-test="share-room-button"
             class="w-full text-left px-4 py-2 text-sm text-warp-text hover:bg-warp-surface flex items-center space-x-2"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -103,7 +115,8 @@
             <span>Поделиться комнатой</span>
           </button>
           <button
-            @click="$emit('toggle-recording')"
+            @click="$emit('toggle-recording'); $emit('close-menu')"
+            data-test="toggle-recording-button"
             class="w-full text-left px-4 py-2 text-sm text-warp-text hover:bg-warp-surface flex items-center space-x-2"
           >
             <svg class="w-4 h-4" :style="isRecording ? 'color: red;' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -117,7 +130,8 @@
             <span>{{ isRecording ? 'Остановить запись' : 'Начать запись' }}</span>
           </button>
           <button
-            @click="$emit('toggle-stats')"
+            @click="$emit('toggle-stats'); $emit('close-menu')"
+            data-test="toggle-stats-button"
             class="w-full text-left px-4 py-2 text-sm text-warp-text hover:bg-warp-surface flex items-center space-x-2"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -132,7 +146,8 @@
           </button>
           <div class="border-t border-warp-border my-2"></div>
           <button
-            @click="$emit('end-call')"
+            @click="$emit('end-call'); $emit('close-menu')"
+            data-test="end-call-button"
             class="w-full text-left px-4 py-2 text-sm text-red-500 hover:bg-red-500/10 flex items-center space-x-2"
           >
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -146,7 +161,7 @@
             <span>End call</span>
           </button>
         </div>
-      </button>
+      </div>
     </div>
   </header>
 </template>
@@ -186,6 +201,10 @@ const props = defineProps({
     default: false
   },
   isRecording: {
+    type: Boolean,
+    default: false
+  },
+  isMultiUserCall: {
     type: Boolean,
     default: false
   },
@@ -260,4 +279,3 @@ button:active {
   animation: connection-breathe 1.6s ease-in-out infinite;
 }
 </style>
-

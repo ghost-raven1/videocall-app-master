@@ -101,11 +101,11 @@ describe('AdminStore', () => {
   it('loadDashboardStats грузит данные и устанавливает кэш', async () => {
     const store = useAdminStore()
     const mockData = { activeRooms: 5, onlineUsers: 10, totalCalls: 100, serverLoad: 20 }
-    store.api.get = vi.fn().mockResolvedValue({ data: mockData })
+    store.api.get = vi.fn().mockResolvedValue(mockData)
 
     await store.loadDashboardStats()
 
-    expect(store.api.get).toHaveBeenCalledWith('/admin/dashboard/stats')
+    expect(store.api.get).toHaveBeenCalledWith('/rooms/admin/dashboard/stats')
     expect(store.stats).toEqual(mockData)
     expect(store.cache.stats).not.toBe(null)
     expect(store.ui.loading).toBe(false)

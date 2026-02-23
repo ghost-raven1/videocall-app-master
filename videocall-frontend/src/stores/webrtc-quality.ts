@@ -1,21 +1,20 @@
 // src/stores/webrtc-quality.ts - Connection quality monitoring extracted from webrtc.ts
-import { ref, Ref } from 'vue'
+import { Ref } from 'vue'
 import { useGlobalStore } from './global'
-import { webrtcRetryService } from '../services/webrtc-retry'
 
 /**
  * Connection quality monitor
  */
 export class ConnectionQualityMonitor {
-  private connectionMonitors: Ref<Map<string, number>>
-  private qualityMonitors: Ref<Map<string, number>>
+  private connectionMonitors: Ref<Map<string, string>>
+  private qualityMonitors: Ref<Map<string, ReturnType<typeof setInterval>>>
   private fallbackLevels: Ref<Map<string, number>>
   private remoteParticipants: Ref<any[]>
   private globalStore: ReturnType<typeof useGlobalStore>
 
   constructor(
-    connectionMonitors: Ref<Map<string, number>>,
-    qualityMonitors: Ref<Map<string, number>>,
+    connectionMonitors: Ref<Map<string, string>>,
+    qualityMonitors: Ref<Map<string, ReturnType<typeof setInterval>>>,
     fallbackLevels: Ref<Map<string, number>>,
     remoteParticipants: Ref<any[]>
   ) {
@@ -33,15 +32,7 @@ export class ConnectionQualityMonitor {
     // Stop existing monitor if any
     this.stopQualityMonitoring(participantId)
 
-    const monitorId = webrtcRetryService.monitorConnectionState(
-      peerConnection,
-      (state) => {
-        const participant = this.remoteParticipants.value.find(p => p.id === participantId)
-        if (participant) {
-          participant.connectionState = state
-        }
-      }
-    )
+    const monitorId = `quality_${participantId}_${Date.now()}`
 
     this.connectionMonitors.value.set(participantId, monitorId)
 
@@ -71,22 +62,20 @@ export class ConnectionQualityMonitor {
       }
     }, 5000)
 
-    this.qualityMonitors.value.set(participantId, qualityMonitorId as any)
+    this.qualityMonitors.value.set(participantId, qualityMonitorId)
   }
 
   /**
    * Stop quality monitoring for a participant
    */
   stopQualityMonitoring(participantId: string): void {
-    const monitorId = this.connectionMonitors.value.get(participantId)
-    if (monitorId) {
-      webrtcRetryService.stopQualityMonitor(monitorId)
+    if (this.connectionMonitors.value.has(participantId)) {
       this.connectionMonitors.value.delete(participantId)
     }
 
     const qualityMonitorId = this.qualityMonitors.value.get(participantId)
     if (qualityMonitorId) {
-      clearInterval(qualityMonitorId as any)
+      clearInterval(qualityMonitorId)
       this.qualityMonitors.value.delete(participantId)
     }
   }
@@ -182,4 +171,3 @@ export class ConnectionQualityMonitor {
     }
   }
 }
-

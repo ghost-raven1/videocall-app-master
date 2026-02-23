@@ -1,13 +1,25 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { shallowMount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import AdminHeader from '@/admin/components/admin-layout/AdminHeader.vue'
+import { useGlobalStore } from '@/stores/global'
 
 describe('AdminHeader', () => {
+  let pinia: ReturnType<typeof createPinia>
+
+  beforeEach(() => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const globalStore = useGlobalStore()
+    globalStore.user = { email: 'administrator@example.com' } as any
+  })
+
   it('эмитит toggle-sidebar при клике по кнопке меню', async () => {
     vi.stubGlobal('$t', (key: string) => key)
     const wrapper = shallowMount(AdminHeader, {
       props: { title: 'Admin', sidebarOpen: false },
       global: {
+        plugins: [pinia],
         stubs: { LanguageSwitcher: true },
         mocks: { $t: (key: string) => key },
       },
@@ -28,19 +40,20 @@ describe('AdminHeader', () => {
     const wrapper = shallowMount(AdminHeader, {
       props: { title: 'Admin', sidebarOpen: false },
       global: {
+        plugins: [pinia],
         stubs: { LanguageSwitcher: true },
         mocks: { $t: (key: string) => key },
       },
     })
 
-    // Открыть меню пользователя (кнопка после поиска и уведомлений)
     const buttons = wrapper.findAll('button')
-    // Ищем кнопку открытия меню пользователя по порядку и наличию аватара внутри
-    const userMenuButton = buttons.find(btn => btn.html().includes('administrator')) || buttons[2]
+    const userMenuButton =
+      buttons.find((btn) => btn.text().includes('admin.common.administrator')) ||
+      buttons[buttons.length - 1]
+    expect(userMenuButton).toBeTruthy()
     await userMenuButton.trigger('click')
 
-    // Найти кнопку logout по тексту (мок $t возвращает ключ)
-    const logoutButton = wrapper.findAll('button').find(b => b.text() === 'admin.common.logout')
+    const logoutButton = wrapper.findAll('button').find((b) => b.text().includes('admin.common.logout'))
     expect(logoutButton).toBeTruthy()
     await logoutButton!.trigger('click')
 

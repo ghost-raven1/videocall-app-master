@@ -1,13 +1,25 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { shallowMount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import AdminSidebar from '@/admin/components/admin-layout/AdminSidebar.vue'
+import { useGlobalStore } from '@/stores/global'
 
 describe('AdminSidebar', () => {
+  let pinia: ReturnType<typeof createPinia>
+
+  beforeEach(() => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const globalStore = useGlobalStore()
+    globalStore.user = { email: 'administrator@example.com' } as any
+  })
+
   it('рендерит 5 пунктов навигации и SVG-иконки', () => {
     vi.stubGlobal('$t', (key: string) => key)
     const wrapper = shallowMount(AdminSidebar, {
       props: { isOpen: true, currentRoute: '' },
       global: {
+        plugins: [pinia],
         mocks: { $t: (key: string) => key },
       },
     })
@@ -25,6 +37,7 @@ describe('AdminSidebar', () => {
     const wrapper = shallowMount(AdminSidebar, {
       props: { isOpen: true, currentRoute: '' },
       global: {
+        plugins: [pinia],
         mocks: { $t: (key: string) => key },
       },
     })

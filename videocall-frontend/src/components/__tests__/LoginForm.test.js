@@ -209,9 +209,12 @@ describe('LoginForm.vue', () => {
 
   describe('Loading States', () => {
     it('shows loading spinner when submitting', async () => {
-      // Mock a delayed login response
+      let resolveLogin
       mockStore.login = vi.fn().mockImplementation(
-        () => new Promise(resolve => setTimeout(resolve, 50))
+        () =>
+          new Promise((resolve) => {
+            resolveLogin = resolve
+          }),
       )
 
       wrapper.vm.password = 'testpassword'
@@ -224,9 +227,10 @@ describe('LoginForm.vue', () => {
       await wrapper.vm.$nextTick()
       expect(wrapper.vm.isLoading).toBe(true)
 
-      // Wait for promise to resolve
+      // Resolve login and ensure loading turns off
+      resolveLogin({ success: true })
       await submitPromise
-      await new Promise(resolve => setTimeout(resolve, 10))
+      await Promise.resolve()
       await wrapper.vm.$nextTick()
       expect(wrapper.vm.isLoading).toBe(false)
     }, 10000) // 10 second timeout

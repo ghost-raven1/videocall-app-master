@@ -329,42 +329,49 @@ const localParticipant = computed(() => ({
   connectionState: 'connected'
 }))
 
+const visibleParticipantCountForGrid = computed(() => {
+  // Grid density should be based on currently visible tiles (page),
+  // not total participants across all pages.
+  if (props.layout === 'focus' || props.layout === 'sidebar') {
+    return participantCount.value
+  }
+
+  return Math.max(1, visibleRemoteParticipants.value.length)
+})
+
+const getDensityClass = (count) => {
+  if (count <= 1) return 'grid-single'
+  if (count === 2) return 'grid-duo'
+  if (count <= 4) return 'grid-quad'
+  if (count <= 6) return 'grid-six'
+  if (count <= 9) return 'grid-nine'
+  if (count <= 12) return 'grid-twelve'
+  return 'grid-large'
+}
+
 const gridClass = computed(() => {
   // If layout is explicitly set, use it
-  if (props.layout === 'grid') {
-    const count = participantCount.value
-    if (count <= 4) return 'grid-small'
-    if (count <= 9) return 'grid-medium'
-    return 'grid-large'
+  if (props.layout === 'grid' || props.layout === 'auto') {
+    return getDensityClass(visibleParticipantCountForGrid.value)
   }
-  
-  // Auto layout - calculate based on participant count
-  if (props.layout === 'auto') {
-    const count = participantCount.value
-    if (count <= 4) return 'grid-small'
-    if (count <= 9) return 'grid-medium'
-    return 'grid-large'
-  }
-  
+
   // Focus layout - show one participant large, others small
   if (props.layout === 'focus') {
     return 'focus-layout'
   }
-  
+
   // Sidebar layout
   if (props.layout === 'sidebar') {
     return 'sidebar-layout'
   }
-  
+
   // Default to auto
-  const count = participantCount.value
-  if (count <= 4) return 'grid-small'
-  if (count <= 9) return 'grid-medium'
-  return 'grid-large'
+  return getDensityClass(visibleParticipantCountForGrid.value)
 })
 
 const participantCardSize = computed(() => {
-  const count = participantCount.value
+  const count = visibleParticipantCountForGrid.value
+  if (count <= 2) return 'large'
   if (count <= 4) return 'medium'
   if (count <= 9) return 'small'
   return 'tiny'
@@ -443,10 +450,10 @@ onUnmounted(() => {
 <style scoped>
 .participant-grid-container {
   @apply relative w-full h-full overflow-hidden;
-  /* Warp-style deep space gradient instead of flat gray */
+  /* Deep atmospheric gradient without heavy purple bias */
   background:
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.35), transparent 55%),
-    radial-gradient(circle at bottom, rgba(147, 51, 234, 0.25), transparent 55%),
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.35), transparent 58%),
+    radial-gradient(circle at bottom, rgba(16, 185, 129, 0.18), transparent 55%),
     #020617;
 }
 
@@ -455,43 +462,68 @@ onUnmounted(() => {
 }
 
 .two-participants {
-  @apply w-full h-full grid gap-1;
+  @apply w-full h-full grid gap-2 p-2;
   grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .multi-participants {
-  @apply w-full h-full relative;
+  @apply w-full h-full relative min-h-0;
   background:
-    radial-gradient(circle at top, rgba(59, 130, 246, 0.35), transparent 55%),
-    radial-gradient(circle at bottom, rgba(147, 51, 234, 0.25), transparent 55%),
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.35), transparent 58%),
+    radial-gradient(circle at bottom, rgba(16, 185, 129, 0.18), transparent 55%),
     #020617;
 }
 
-.grid-small {
-  @apply grid gap-2 p-4;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(2, 1fr);
+.grid-single {
+  @apply grid gap-2 p-3;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  grid-template-rows: repeat(1, minmax(0, 1fr));
 }
 
-.grid-medium {
-  @apply grid gap-1 p-2;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
+.grid-duo {
+  @apply grid gap-2 p-3;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(1, minmax(0, 1fr));
+}
+
+.grid-quad {
+  @apply grid gap-2 p-3;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.grid-six {
+  @apply grid gap-2 p-2;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+
+.grid-nine {
+  @apply grid gap-2 p-2;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+}
+
+.grid-twelve {
+  @apply grid gap-1.5 p-1.5;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
 }
 
 .grid-large {
-  @apply grid gap-1 p-1;
-  grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: repeat(4, 1fr);
+  @apply grid gap-1.5 p-1.5;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(4, minmax(0, 1fr));
 }
 
 /* Focus layout */
 .focus-layout {
-  @apply flex gap-2 p-2;
+  @apply flex gap-2 p-2 h-full min-h-0;
 }
 
 .focus-main {
-  @apply flex-1;
+  @apply flex-1 min-h-0;
   min-width: 0;
 }
 
@@ -500,35 +532,37 @@ onUnmounted(() => {
 }
 
 .focus-sidebar {
-  @apply w-64 flex flex-col gap-2 overflow-y-auto;
+  width: clamp(11rem, 22vw, 16rem);
+  @apply flex flex-col gap-2 overflow-y-auto pr-1;
 }
 
 /* Sidebar layout */
 .sidebar-layout {
-  @apply flex gap-2 p-2;
+  @apply flex gap-2 p-2 h-full min-h-0;
 }
 
 .sidebar-main-grid {
-  @apply flex-1 grid gap-2;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(2, 1fr);
+  @apply flex-1 grid gap-2 min-h-0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
 }
 
 .sidebar-participants {
-  @apply w-64 flex flex-col gap-2 overflow-y-auto;
+  width: clamp(11rem, 22vw, 16rem);
+  @apply flex flex-col gap-2 overflow-y-auto pr-1;
 }
 
 .local-participant {
   @apply absolute z-20 rounded-xl overflow-hidden shadow-2xl border-2;
-  width: 180px;
-  height: 135px;
+  width: clamp(120px, 16vw, 180px);
+  height: clamp(84px, 12vw, 135px);
   bottom: 20px;
   right: 20px;
   border-color: rgb(34, 197, 94);
 }
 
 .grid-item {
-  @apply rounded-xl overflow-hidden transition-all duration-300;
+  @apply w-full h-full min-w-0 min-h-0 rounded-xl overflow-hidden transition-all duration-300 bg-warp-surface/30;
 }
 
 .grid-item.dominant-speaker {
@@ -557,18 +591,6 @@ onUnmounted(() => {
 
 .pagination-label {
   @apply px-2 py-1 bg-warp-surfaceAlt/80 text-warp-text rounded border border-warp-border/60;
-}
-
-.participants-pagination {
-  @apply flex items-center justify-end space-x-2 text-xs text-white pr-1;
-}
-
-.pagination-btn {
-  @apply px-2 py-1 rounded bg-black bg-opacity-40 hover:bg-opacity-70 disabled:opacity-40 disabled:cursor-not-allowed;
-}
-
-.pagination-label {
-  @apply px-2 py-1 bg-black bg-opacity-30 rounded;
 }
 
 .waiting-state {
@@ -610,6 +632,12 @@ onUnmounted(() => {
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
+  .two-participants {
+    @apply p-1.5;
+    grid-template-columns: 1fr;
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+
   .local-participant {
     width: 112px;
     height: 84px;
@@ -622,8 +650,12 @@ onUnmounted(() => {
     right: 4px;
   }
 
-  .grid-small,
-  .grid-medium,
+  .grid-single,
+  .grid-duo,
+  .grid-quad,
+  .grid-six,
+  .grid-nine,
+  .grid-twelve,
   .grid-large {
     gap: 0.5rem;
     padding: 0.5rem;
@@ -637,6 +669,16 @@ onUnmounted(() => {
   .focus-sidebar,
   .sidebar-participants {
     @apply w-full flex-row overflow-x-auto overflow-y-hidden;
+  }
+
+  .focus-sidebar .grid-item,
+  .sidebar-participants .grid-item {
+    flex: 0 0 44vw;
+    max-width: 240px;
+  }
+
+  .participants-pagination {
+    @apply justify-center pr-0;
   }
 }
 

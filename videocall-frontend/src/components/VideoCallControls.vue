@@ -30,11 +30,14 @@
       <!-- Toggle Audio -->
       <button
         @click="$emit('toggle-audio')"
+        data-test="toggle-audio-button"
         :class="[
           'control-button',
           isAudioEnabled ? 'control-button-active' : 'control-button-danger',
         ]"
         :title="isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'"
+        :aria-label="isAudioEnabled ? 'Mute microphone' : 'Unmute microphone'"
+        :aria-pressed="String(isAudioEnabled)"
       >
         <svg
           v-if="isAudioEnabled"
@@ -63,11 +66,14 @@
       <!-- Toggle Video -->
       <button
         @click="$emit('toggle-video')"
+        data-test="toggle-video-button"
         :class="[
           'control-button',
           isVideoEnabled ? 'control-button-active' : 'control-button-danger',
         ]"
         :title="isVideoEnabled ? 'Turn off camera' : 'Turn on camera'"
+        :aria-label="isVideoEnabled ? 'Turn off camera' : 'Turn on camera'"
+        :aria-pressed="String(isVideoEnabled)"
       >
         <svg
           v-if="isVideoEnabled"
@@ -96,8 +102,10 @@
       <!-- Share Room -->
       <button
         @click="$emit('share-room')"
+        data-test="share-room-button"
         class="control-button control-button-inactive"
         title="Share room"
+        aria-label="Share room"
       >
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -112,8 +120,10 @@
       <!-- End Call -->
       <button
         @click="$emit('end-call')"
+        data-test="end-call-button"
         class="control-button control-button-danger"
         title="End call"
+        aria-label="End call"
       >
         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path
@@ -185,4 +195,3 @@ defineEmits([
   'end-call',
 ])
 </script>
-

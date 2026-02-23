@@ -24,7 +24,11 @@ export interface VideoCallController {
   isInitialized: Ref<boolean>
   
   // Methods
-  initializeCall: (roomId: string) => Promise<{ success: boolean; error?: string }>
+  initializeCall: (roomId?: string) => Promise<{
+    success: boolean
+    error?: string
+    fallbackMode?: 'audio_only' | 'video_only' | 'chat_only' | null
+  }>
   handleEndCall: () => Promise<void>
   refreshConnection: () => Promise<void>
   reset: () => void
@@ -62,7 +66,11 @@ export function useVideoCallController(roomId?: string): VideoCallController {
    */
   const initializeCall = async (
     roomIdParam?: string
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{
+    success: boolean
+    error?: string
+    fallbackMode?: 'audio_only' | 'video_only' | 'chat_only' | null
+  }> => {
     const targetRoomId = roomIdParam || currentRoomId
     
     if (!targetRoomId) {
@@ -79,6 +87,7 @@ export function useVideoCallController(roomId?: string): VideoCallController {
       const roomResult = await roomsStore.getRoomInfo(targetRoomId)
       if (!roomResult.success) {
         globalStore.addNotification('Room not found or expired', 'error')
+        callState.endCall()
         router.push('/')
         return { success: false, error: 'Room not found' }
       }
@@ -120,14 +129,34 @@ export function useVideoCallController(roomId?: string): VideoCallController {
 
       // Initialize media
       const mediaResult = await media.initializeMedia()
+      let fallbackMode: 'audio_only' | 'video_only' | 'chat_only' | null =
+        mediaResult.fallbackMode ?? null
+
       if (!mediaResult.success) {
-        globalStore.addNotification(
-          mediaResult.error || 'Failed to access camera/microphone',
-          'error',
-          6000
+        const mediaError = mediaResult.error || 'Failed to access camera/microphone'
+        const canContinueWithoutMedia =
+          /already in use|failed to access camera or microphone|camera and microphone access denied|no camera or microphone found|timed out|does not support the requested quality|require HTTPS|does not support camera\/microphone access|notreadableerror|notallowederror|notfounderror|overconstrainederror|permission/i.test(
+            mediaError,
+          )
+
+        if (!canContinueWithoutMedia) {
+          callState.endCall()
+          return { success: false, error: mediaError }
+        }
+
+        // Graceful chat-only fallback when media cannot be acquired.
+        fallbackMode = 'chat_only'
+        webrtcStore.isVideoEnabled = false
+        webrtcStore.isAudioEnabled = false
+        callState.setConnectingMessage(
+          'Joining without camera/microphone...',
+          'Step 2/4: Media fallback mode'
         )
-        callState.endCall()
-        return { success: false, error: mediaResult.error }
+        globalStore.addNotification(
+          'Camera/microphone unavailable. Joined in chat-only mode.',
+          'warning',
+          7000
+        )
       }
 
       callState.setConnectingMessage('Setting up connection...', 'Preparing for video call')
@@ -150,61 +179,76 @@ export function useVideoCallController(roomId?: string): VideoCallController {
       // Immediately try to create SFU room and switch to SFU mode
       callState.setConnectingMessage('Setting up SFU connection...', 'Initializing SFU')
       try {
-        console.log('Creating SFU room immediately for all calls, roomId:', targetRoomId)
-        // room_id is passed in URL path, not in body
-        const sfuResponse = await fetch(`/api/rooms/${targetRoomId}/sfu/create/`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          }
-        })
-        
-        // Check if SFU room creation was successful
-        // Status 201 = SFU created successfully
-        // Status 200 = P2P fallback (SFU unavailable, but OK to use P2P)
-        if (sfuResponse.ok) {
-          const contentType = sfuResponse.headers.get('content-type')
-          if (contentType && contentType.includes('application/json')) {
-            const sfuData = await sfuResponse.json()
-            console.log('SFU room creation response:', sfuData, 'status:', sfuResponse.status)
-            
-            // Only switch to SFU if status is 201 (SFU created) and mode is 'sfu'
-            // Status 200 means P2P fallback, which is fine - we'll use P2P mode
-            if (sfuResponse.status === 201 && sfuData.success && sfuData.mode === 'sfu' && sfuData.sfu_ws_url) {
-              // Refresh room info to get SFU details
-              const updatedRoomResult = await roomsStore.getRoomInfo(targetRoomId)
-              if (updatedRoomResult.success) {
-                roomInfo.value = updatedRoomResult.room
+        if (typeof fetch !== 'function') {
+          console.warn('Fetch API is unavailable, skipping SFU setup and using P2P fallback')
+        } else {
+          console.log('Creating SFU room immediately for all calls, roomId:', targetRoomId)
+          // room_id is passed in URL path, not in body
+          const sfuResponse = await fetch(`/api/rooms/${targetRoomId}/sfu/create/`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          })
+
+          if (
+            !sfuResponse ||
+            typeof sfuResponse !== 'object' ||
+            !('ok' in sfuResponse) ||
+            !('headers' in sfuResponse) ||
+            !sfuResponse.headers ||
+            typeof sfuResponse.headers.get !== 'function'
+          ) {
+            console.warn('Invalid SFU create-room response, continuing in P2P mode')
+          } else {
+            // Check if SFU room creation was successful
+            // Status 201 = SFU created successfully
+            // Status 200 = P2P fallback (SFU unavailable, but OK to use P2P)
+            if (sfuResponse.ok) {
+              const contentType = sfuResponse.headers.get('content-type')
+              if (contentType && contentType.includes('application/json')) {
+                const sfuData = await sfuResponse.json()
+                console.log('SFU room creation response:', sfuData, 'status:', sfuResponse.status)
                 
-                // Double-check if SFU is actually enabled in room info
-                if (roomInfo.value.sfu_enabled && roomInfo.value.sfu_ws_url) {
-                  // Switch to SFU mode immediately
-                  const sfuResult = await (webrtcStore as any).switchToSFUMode(roomInfo.value)
-                  if (sfuResult.success) {
-                    console.log('Successfully switched to SFU mode')
-                  } else {
-                    console.warn('Failed to switch to SFU mode, using P2P fallback:', sfuResult.error)
+                // Only switch to SFU if status is 201 (SFU created) and mode is 'sfu'
+                // Status 200 means P2P fallback, which is fine - we'll use P2P mode
+                if (sfuResponse.status === 201 && sfuData.success && sfuData.mode === 'sfu' && sfuData.sfu_ws_url) {
+                  // Refresh room info to get SFU details
+                  const updatedRoomResult = await roomsStore.getRoomInfo(targetRoomId)
+                  if (updatedRoomResult.success) {
+                    roomInfo.value = updatedRoomResult.room
+                    
+                    // Double-check if SFU is actually enabled in room info
+                    if (roomInfo.value.sfu_enabled && roomInfo.value.sfu_ws_url) {
+                      // Switch to SFU mode immediately
+                      const sfuResult = await (webrtcStore as any).switchToSFUMode(roomInfo.value)
+                      if (sfuResult.success) {
+                        console.log('Successfully switched to SFU mode')
+                      } else {
+                        console.warn('Failed to switch to SFU mode, using P2P fallback:', sfuResult.error)
+                      }
+                    } else {
+                      console.warn('SFU room created but not enabled in room info, using P2P fallback')
+                    }
                   }
                 } else {
-                  console.warn('SFU room created but not enabled in room info, using P2P fallback')
+                  console.warn('SFU room creation returned fallback to P2P mode:', sfuData)
                 }
+              } else {
+                const text = await sfuResponse.text()
+                console.warn('SFU response is not JSON, got:', text.substring(0, 200))
               }
             } else {
-              console.warn('SFU room creation returned fallback to P2P mode:', sfuData)
+              // Try to parse error response
+              const contentType = sfuResponse.headers.get('content-type')
+              if (contentType && contentType.includes('application/json')) {
+                const errorData = await sfuResponse.json()
+                console.warn('Failed to create SFU room, using P2P fallback:', errorData)
+              } else {
+                const text = await sfuResponse.text()
+                console.warn(`Failed to create SFU room (${sfuResponse.status}), using P2P fallback. Response:`, text.substring(0, 200))
+              }
             }
-          } else {
-            const text = await sfuResponse.text()
-            console.warn('SFU response is not JSON, got:', text.substring(0, 200))
-          }
-        } else {
-          // Try to parse error response
-          const contentType = sfuResponse.headers.get('content-type')
-          if (contentType && contentType.includes('application/json')) {
-            const errorData = await sfuResponse.json()
-            console.warn('Failed to create SFU room, using P2P fallback:', errorData)
-          } else {
-            const text = await sfuResponse.text()
-            console.warn(`Failed to create SFU room (${sfuResponse.status}), using P2P fallback. Response:`, text.substring(0, 200))
           }
         }
       } catch (error) {
@@ -222,7 +266,7 @@ export function useVideoCallController(roomId?: string): VideoCallController {
       
       isInitialized.value = true
       
-      return { success: true }
+      return { success: true, fallbackMode }
     } catch (error) {
       console.error('Failed to initialize call:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
@@ -262,9 +306,6 @@ export function useVideoCallController(roomId?: string): VideoCallController {
         await recording.stopRecording()
       }
 
-      // Stop media
-      await media.stopMedia()
-
       // Reset call state
       callState.endCall()
 
@@ -291,9 +332,15 @@ export function useVideoCallController(roomId?: string): VideoCallController {
       
       // Reinitialize
       if (roomInfo.value) {
-        await initializeCall(roomInfo.value.room_id)
+        const result = await initializeCall(roomInfo.value.room_id)
+        if (!result.success) {
+          globalStore.addNotification('Failed to refresh connection', 'error')
+        }
       } else if (currentRoomId) {
-        await initializeCall(currentRoomId)
+        const result = await initializeCall(currentRoomId)
+        if (!result.success) {
+          globalStore.addNotification('Failed to refresh connection', 'error')
+        }
       }
     } catch (error) {
       console.error('Error refreshing connection:', error)

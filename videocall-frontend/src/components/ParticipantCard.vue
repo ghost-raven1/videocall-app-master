@@ -411,7 +411,7 @@ onUnmounted(() => {
 
 <style scoped>
 .participant-card {
-  @apply relative bg-warp-surface rounded-lg overflow-hidden transition-all duration-300 border border-warp-border/60 shadow-sm;
+  @apply relative w-full h-full min-w-0 min-h-0 bg-warp-surface rounded-lg overflow-hidden transition-all duration-300 border border-warp-border/60 shadow-sm;
   aspect-ratio: 16/9;
 }
 
@@ -461,27 +461,27 @@ onUnmounted(() => {
 
 /* Size variants */
 .participant-card-tiny {
-  @apply w-24 h-16;
+  min-height: 5rem;
 }
 
 .participant-card-small {
-  @apply w-32 h-24;
+  min-height: 6.5rem;
 }
 
 .participant-card-medium {
-  @apply w-48 h-36;
+  min-height: 8.5rem;
 }
 
 .participant-card-large {
-  @apply w-64 h-48;
+  min-height: 12rem;
 }
 
 .participant-card-fullscreen {
-  @apply w-full h-full;
+  min-height: 0;
 }
 
 .participant-card-half {
-  @apply w-full h-full;
+  min-height: 0;
 }
 
 /* Video styles */
@@ -623,7 +623,7 @@ onUnmounted(() => {
 }
 
 .control-btn {
-  @apply p-2 bg-black bg-opacity-50 hover:bg-opacity-70 rounded-full transition-all duration-200;
+  @apply p-2 bg-black/55 hover:bg-black/75 rounded-full transition-all duration-200 backdrop-blur-sm;
 }
 
 .control-btn.active {
@@ -677,11 +677,11 @@ onUnmounted(() => {
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .participant-card-small {
-    @apply w-20 h-16;
+    min-height: 4.5rem;
   }
 
   .participant-card-medium {
-    @apply w-32 h-24;
+    min-height: 6rem;
   }
 
   .media-controls {

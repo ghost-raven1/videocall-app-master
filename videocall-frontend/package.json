@@ -24,7 +24,7 @@
     "@headlessui/vue": "^1.7.16",
     "@heroicons/vue": "^2.2.0",
     "@vueuse/core": "^10.5.0",
-    "axios": "^1.7.9",
+    "axios": "^1.13.5",
     "pinia": "^2.1.7",
     "qrcode": "^1.5.3",
     "socket.io-client": "^4.7.4",
@@ -34,6 +34,7 @@
   },
   "devDependencies": {
     "@pinia/testing": "^0.1.7",
+    "@playwright/test": "^1.40.0",
     "@types/qrcode": "^1.5.5",
     "@typescript-eslint/eslint-plugin": "^8.47.0",
     "@typescript-eslint/parser": "^8.47.0",
@@ -52,7 +53,6 @@
     "vite-plugin-pwa": "^0.20.5",
     "vitest": "^1.0.0",
     "vue-tsc": "^2.2.0",
-    "workbox-window": "^7.3.0",
-    "@playwright/test": "^1.40.0"
+    "workbox-window": "^7.3.0"
   }
 }

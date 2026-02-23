@@ -8,6 +8,7 @@ import { useWebRTCStore } from '@/stores/webrtc'
 import { useRoomsStore } from '@/stores/rooms'
 import { useGlobalStore } from '@/stores/global'
 import { useRoute, useRouter } from 'vue-router'
+import { useMediaController } from '../video-call/useMediaController'
 
 // Mock stores
 vi.mock('@/stores/webrtc', () => ({
@@ -102,6 +103,10 @@ describe('useVideoCallController', () => {
     vi.mocked(useWebRTCStore).mockReturnValue(mockWebRTCStore as any)
     vi.mocked(useRoomsStore).mockReturnValue(mockRoomsStore as any)
     vi.mocked(useGlobalStore).mockReturnValue(mockGlobalStore as any)
+    vi.mocked(useMediaController).mockReturnValue({
+      initializeMedia: vi.fn().mockResolvedValue({ success: true, fallbackMode: null }),
+      stopMedia: vi.fn().mockResolvedValue(undefined),
+    } as any)
   })
 
   afterEach(() => {
@@ -171,7 +176,6 @@ describe('useVideoCallController', () => {
     })
 
     it('should handle media initialization failure', async () => {
-      const { useMediaController } = await import('../video-call/useMediaController')
       vi.mocked(useMediaController).mockReturnValue({
         initializeMedia: vi.fn().mockResolvedValue({
           success: false,
@@ -184,11 +188,12 @@ describe('useVideoCallController', () => {
 
       const result = await controller.initializeCall()
 
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Permission denied')
+      expect(result.success).toBe(true)
+      expect(result.fallbackMode).toBe('chat_only')
       expect(mockGlobalStore.addNotification).toHaveBeenCalledWith(
-        'Failed to access camera/microphone',
-        'error'
+        'Camera/microphone unavailable. Joined in chat-only mode.',
+        'warning',
+        7000
       )
     })
 

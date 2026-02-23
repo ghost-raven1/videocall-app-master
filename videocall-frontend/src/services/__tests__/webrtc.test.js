@@ -217,9 +217,8 @@ describe('webrtcService', () => {
       expect(monitor).not.toBeNull()
 
       // Fast-forward time to trigger the interval
-      vi.advanceTimersByTime(1000)
-
-      await new Promise(resolve => setImmediate(resolve))
+      await vi.advanceTimersByTimeAsync(1000)
+      await Promise.resolve()
 
       expect(getStatsSpy).toHaveBeenCalledWith(mockPeerConnection)
       expect(callback).toHaveBeenCalled()
@@ -234,9 +233,8 @@ describe('webrtcService', () => {
       expect(monitor).not.toBeNull()
 
       // Fast-forward time to trigger the interval
-      vi.advanceTimersByTime(1000)
-
-      await new Promise(resolve => setImmediate(resolve))
+      await vi.advanceTimersByTimeAsync(1000)
+      await Promise.resolve()
 
       expect(console.error).toHaveBeenCalledWith('Quality monitoring error:', expect.any(Error))
     })
@@ -250,9 +248,8 @@ describe('webrtcService', () => {
       const monitor = webrtcService.createQualityMonitor(mockPeerConnection, callback, 1000)
 
       // Fast-forward time to trigger the interval
-      vi.advanceTimersByTime(1000)
-
-      await new Promise(resolve => setImmediate(resolve))
+      await vi.advanceTimersByTimeAsync(1000)
+      await Promise.resolve()
 
       expect(clearIntervalSpy).toHaveBeenCalledWith(monitor)
     })

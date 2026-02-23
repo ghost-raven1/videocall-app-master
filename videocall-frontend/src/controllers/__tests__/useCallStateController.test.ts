@@ -1,7 +1,7 @@
 /**
  * Tests for useCallStateController
  */
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useCallStateController, type ConnectionState } from '../video-call/useCallStateController'
 import { ref } from 'vue'
 
@@ -27,8 +27,8 @@ describe('useCallStateController', () => {
     })
 
     it('should have computed properties', () => {
-      expect(controller.connectionStatusText.value).toBe('Unknown')
-      expect(controller.connectionStatusColor.value).toBe('bg-gray-400')
+      expect(controller.connectionStatusText.value).toBe('Initializing...')
+      expect(controller.connectionStatusColor.value).toBe('bg-yellow-400')
       expect(controller.formattedCallDuration.value).toBe('0:00')
     })
   })
@@ -158,4 +158,3 @@ describe('useCallStateController', () => {
     })
   })
 })
-

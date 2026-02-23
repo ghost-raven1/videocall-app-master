@@ -38,10 +38,13 @@ describe('VideoCallSidebar', () => {
     })
   }
 
-  it('should not render when showChat is false', () => {
+  it('should stay mounted but hidden when showChat is false', () => {
     wrapper = createWrapper({ showChat: false })
     const sidebar = wrapper.find('.absolute.right-0')
-    expect(sidebar.exists()).toBe(false)
+    expect(sidebar.exists()).toBe(true)
+    expect(sidebar.classes()).toContain('translate-x-full')
+    expect(sidebar.classes()).toContain('pointer-events-none')
+    expect(sidebar.attributes('aria-hidden')).toBe('true')
   })
 
   it('should render when showChat is true', () => {
@@ -54,6 +57,8 @@ describe('VideoCallSidebar', () => {
     wrapper = createWrapper({ showChat: true })
     const sidebar = wrapper.find('.absolute.right-0')
     expect(sidebar.classes()).toContain('translate-x-0')
+    expect(sidebar.classes()).toContain('pointer-events-auto')
+    expect(sidebar.attributes('aria-hidden')).toBe('false')
   })
 
   it('should render RoomChat when showChat is true and roomCode is provided', () => {
@@ -94,7 +99,7 @@ describe('VideoCallSidebar', () => {
       websocket: mockWebSocket 
     })
     const roomChat = wrapper.findComponent({ name: 'RoomChat' })
-    expect(roomChat.props('websocket')).toBe(mockWebSocket)
+    expect(roomChat.props('websocket')).toEqual(mockWebSocket)
   })
 
   it('should emit close when RoomChat emits close', async () => {
@@ -123,9 +128,9 @@ describe('VideoCallSidebar', () => {
     expect(sidebar.classes()).toContain('bottom-0')
     expect(sidebar.classes()).toContain('w-full')
     expect(sidebar.classes()).toContain('md:w-96')
-    expect(sidebar.classes()).toContain('bg-white')
-    expect(sidebar.classes()).toContain('dark:bg-gray-800')
-    expect(sidebar.classes()).toContain('shadow-2xl')
+    expect(sidebar.classes()).toContain('bg-warp-surface')
+    expect(sidebar.classes()).toContain('shadow-warp-md')
+    expect(sidebar.classes()).toContain('border-l')
     expect(sidebar.classes()).toContain('z-20')
   })
 
@@ -137,4 +142,3 @@ describe('VideoCallSidebar', () => {
     expect(sidebar.classes()).toContain('duration-300')
   })
 })
-

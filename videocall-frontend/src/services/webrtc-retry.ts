@@ -191,6 +191,8 @@ export class WebRTCRetryService {
     if (!peerConnection) return null
 
     const monitorId = `${participantId}_${Date.now()}`
+    const previousConnectionStateHandler = peerConnection.onconnectionstatechange
+    const previousIceConnectionStateHandler = peerConnection.oniceconnectionstatechange
 
     const handleConnectionStateChange = async () => {
       const state = peerConnection.connectionState
@@ -221,8 +223,26 @@ export class WebRTCRetryService {
       }
     }
 
-    peerConnection.onconnectionstatechange = handleConnectionStateChange
-    peerConnection.oniceconnectionstatechange = handleIceConnectionStateChange
+    peerConnection.onconnectionstatechange = async (event) => {
+      if (typeof previousConnectionStateHandler === 'function') {
+        try {
+          await Promise.resolve(previousConnectionStateHandler.call(peerConnection, event))
+        } catch (error) {
+          console.error(`Previous onconnectionstatechange handler failed for ${participantId}:`, error)
+        }
+      }
+      await handleConnectionStateChange()
+    }
+    peerConnection.oniceconnectionstatechange = async (event) => {
+      if (typeof previousIceConnectionStateHandler === 'function') {
+        try {
+          await Promise.resolve(previousIceConnectionStateHandler.call(peerConnection, event))
+        } catch (error) {
+          console.error(`Previous oniceconnectionstatechange handler failed for ${participantId}:`, error)
+        }
+      }
+      await handleIceConnectionStateChange()
+    }
 
     return monitorId
   }

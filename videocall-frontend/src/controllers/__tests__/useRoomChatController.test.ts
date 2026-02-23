@@ -2,392 +2,294 @@
  * Tests for useRoomChatController
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { useRoomChatController, type ChatMessage } from '../room/useRoomChatController'
 import { createPinia, setActivePinia } from 'pinia'
 import { useGlobalStore } from '@/stores/global'
+import { apiService } from '@/services/api'
+import { useRoomChatController, type ChatMessage } from '../room/useRoomChatController'
 
-// Mock stores
 vi.mock('@/stores/global', () => ({
-  useGlobalStore: vi.fn()
+  useGlobalStore: vi.fn(),
+}))
+
+vi.mock('@/services/api', () => ({
+  apiService: {
+    sendChatMessage: vi.fn(),
+    uploadChatFile: vi.fn(),
+    getChatHistory: vi.fn(),
+  },
 }))
 
 describe('useRoomChatController', () => {
-  let controller: ReturnType<typeof useRoomChatController>
-  let mockGlobalStore: any
+  let mockGlobalStore: { addNotification: ReturnType<typeof vi.fn> }
+  let websocket: { readyState: number; send: ReturnType<typeof vi.fn> }
+
+  const createController = () =>
+    useRoomChatController('ROOM123', 'participant-1', 'Tester', websocket as unknown as WebSocket)
 
   beforeEach(() => {
+    vi.clearAllMocks()
     setActivePinia(createPinia())
 
     mockGlobalStore = {
-      addNotification: vi.fn()
+      addNotification: vi.fn(),
     }
-
     vi.mocked(useGlobalStore).mockReturnValue(mockGlobalStore as any)
 
-    controller = useRoomChatController()
+    websocket = {
+      readyState: WebSocket.OPEN,
+      send: vi.fn(),
+    }
+
+    vi.mocked(apiService.sendChatMessage).mockResolvedValue({
+      data: {
+        success: true,
+        message: {
+          id: 'msg_server_1',
+          created_at: '2026-02-23T12:00:00.000Z',
+          content: 'Hello',
+        },
+      },
+    } as any)
+
+    vi.mocked(apiService.uploadChatFile).mockResolvedValue({
+      data: {
+        success: true,
+        message: {
+          id: 'msg_file_1',
+          created_at: '2026-02-23T12:00:00.000Z',
+          content: 'Shared file',
+        },
+        attachment: {
+          original_filename: 'test.txt',
+          file_size: 11,
+          file: '/uploads/test.txt',
+        },
+      },
+    } as any)
+
+    vi.mocked(apiService.getChatHistory).mockResolvedValue({
+      data: {
+        success: true,
+        messages: [],
+      },
+    } as any)
   })
 
-  describe('Initialization', () => {
-    it('should initialize with default state', () => {
-      expect(controller.messages.value).toEqual([])
-      expect(controller.unreadCount.value).toBe(0)
-      expect(controller.isOpen.value).toBe(false)
-      expect(controller.isSending.value).toBe(false)
-      expect(controller.error.value).toBeNull()
-    })
+  it('initializes with defaults', () => {
+    const controller = createController()
 
-    it('should have computed properties', () => {
-      expect(controller.hasUnreadMessages.value).toBe(false)
-      expect(controller.lastMessage.value).toBeNull()
-    })
+    expect(controller.messages.value).toEqual([])
+    expect(controller.unreadCount.value).toBe(0)
+    expect(controller.isOpen.value).toBe(false)
+    expect(controller.isSending.value).toBe(false)
+    expect(controller.error.value).toBeNull()
+    expect(controller.hasUnreadMessages.value).toBe(false)
+    expect(controller.lastMessage.value).toBeNull()
   })
 
-  describe('openChat and closeChat', () => {
-    it('should open chat and mark as read', () => {
-      controller.unreadCount.value = 5
+  it('opens and closes chat', () => {
+    const controller = createController()
+    controller.unreadCount.value = 3
 
-      controller.openChat()
+    controller.openChat()
+    expect(controller.isOpen.value).toBe(true)
+    expect(controller.unreadCount.value).toBe(0)
 
-      expect(controller.isOpen.value).toBe(true)
-      expect(controller.unreadCount.value).toBe(0)
-    })
-
-    it('should close chat', () => {
-      controller.openChat()
-      controller.closeChat()
-
-      expect(controller.isOpen.value).toBe(false)
-    })
+    controller.closeChat()
+    expect(controller.isOpen.value).toBe(false)
   })
 
-  describe('toggleChat', () => {
-    it('should toggle chat from closed to open', () => {
-      expect(controller.isOpen.value).toBe(false)
+  it('sends a text message and broadcasts to websocket', async () => {
+    const controller = createController()
 
-      controller.toggleChat()
+    const result = await controller.sendMessage('Hello world')
 
-      expect(controller.isOpen.value).toBe(true)
-    })
-
-    it('should toggle chat from open to closed', () => {
-      controller.openChat()
-      expect(controller.isOpen.value).toBe(true)
-
-      controller.toggleChat()
-
-      expect(controller.isOpen.value).toBe(false)
-    })
+    expect(result.success).toBe(true)
+    expect(apiService.sendChatMessage).toHaveBeenCalledWith(
+      'ROOM123',
+      'participant-1',
+      'Hello world',
+      'text',
+      undefined
+    )
+    expect(controller.messages.value).toHaveLength(1)
+    expect(controller.messages.value[0].id).toBe('msg_server_1')
+    expect(controller.messages.value[0].message).toBe('Hello world')
+    expect(websocket.send).toHaveBeenCalledTimes(1)
   })
 
-  describe('sendMessage', () => {
-    it('should send message successfully', async () => {
-      const result = await controller.sendMessage('Hello, world!')
+  it('rejects empty text messages', async () => {
+    const controller = createController()
+    const result = await controller.sendMessage('   ')
 
-      expect(result.success).toBe(true)
-      expect(controller.messages.value.length).toBe(1)
-      expect(controller.messages.value[0].message).toBe('Hello, world!')
-      expect(controller.messages.value[0].message_type).toBe('text')
-    })
-
-    it('should reject empty message', async () => {
-      const result = await controller.sendMessage('   ')
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Message cannot be empty')
-      expect(controller.messages.value.length).toBe(0)
-    })
-
-    it('should reject message when already sending', async () => {
-      controller.isSending.value = true
-
-      const result = await controller.sendMessage('Test message')
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('Message is already being sent')
-    })
-
-    it('should send message with reply', async () => {
-      const originalMessage: ChatMessage = {
-        id: 'msg1',
-        room_id: 'room1',
-        participant_id: 'user1',
-        participant_name: 'User 1',
-        message: 'Original message',
-        timestamp: new Date().toISOString(),
-        message_type: 'text'
-      }
-      controller.addMessage(originalMessage)
-
-      const result = await controller.sendMessage('Reply message', 'msg1')
-
-      expect(result.success).toBe(true)
-      expect(controller.messages.value[1].reply_to).toBe('msg1')
-    })
-
-    it('should handle send message errors', async () => {
-      // Mock an error scenario
-      const originalSendMessage = controller.sendMessage
-      controller.sendMessage = vi.fn().mockRejectedValue(new Error('Network error'))
-
-      try {
-        await controller.sendMessage('Test')
-      } catch (error) {
-        // Error handling is done internally
-      }
-
-      // Restore
-      controller.sendMessage = originalSendMessage
-    })
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Message cannot be empty')
+    expect(apiService.sendChatMessage).not.toHaveBeenCalled()
   })
 
-  describe('sendFile', () => {
-    it('should send file successfully', async () => {
-      const file = new File(['test content'], 'test.txt', { type: 'text/plain' })
+  it('returns context error when room/participant are missing', async () => {
+    const controller = useRoomChatController()
 
-      const result = await controller.sendFile(file)
+    const result = await controller.sendMessage('Hello')
 
-      expect(result.success).toBe(true)
-      expect(controller.messages.value.length).toBe(1)
-      expect(controller.messages.value[0].message_type).toBe('file')
-      expect(controller.messages.value[0].file_name).toBe('test.txt')
-      expect(mockGlobalStore.addNotification).toHaveBeenCalledWith(
-        'File sent successfully',
-        'success',
-        2000
-      )
-    })
-
-    it('should reject file that is too large', async () => {
-      const largeFile = new File(['x'.repeat(51 * 1024 * 1024)], 'large.txt', {
-        type: 'text/plain'
-      })
-
-      const result = await controller.sendFile(largeFile)
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('File size exceeds 50MB limit')
-      expect(mockGlobalStore.addNotification).toHaveBeenCalledWith(
-        'File size exceeds 50MB limit',
-        'error',
-        5000
-      )
-    })
-
-    it('should reject file with invalid type', async () => {
-      const invalidFile = new File(['content'], 'test.exe', {
-        type: 'application/x-msdownload'
-      })
-
-      const result = await controller.sendFile(invalidFile)
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('File type not allowed')
-    })
-
-    it('should reject file when already sending', async () => {
-      controller.isSending.value = true
-      const file = new File(['test'], 'test.txt', { type: 'text/plain' })
-
-      const result = await controller.sendFile(file)
-
-      expect(result.success).toBe(false)
-      expect(result.error).toBe('File is already being sent')
-    })
-
-    it('should accept valid image files', async () => {
-      const imageFile = new File(['image content'], 'test.jpg', {
-        type: 'image/jpeg'
-      })
-
-      const result = await controller.sendFile(imageFile)
-
-      expect(result.success).toBe(true)
-    })
-
-    it('should accept valid PDF files', async () => {
-      const pdfFile = new File(['pdf content'], 'test.pdf', {
-        type: 'application/pdf'
-      })
-
-      const result = await controller.sendFile(pdfFile)
-
-      expect(result.success).toBe(true)
-    })
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Room code and participant ID are required')
   })
 
-  describe('addMessage', () => {
-    it('should add message to chat', () => {
-      const message: ChatMessage = {
-        id: 'msg1',
-        room_id: 'room1',
-        participant_id: 'user1',
-        participant_name: 'User 1',
-        message: 'Test message',
-        timestamp: new Date().toISOString(),
-        message_type: 'text'
-      }
+  it('prevents duplicate sends while already sending', async () => {
+    const controller = createController()
+    controller.isSending.value = true
 
-      controller.addMessage(message)
+    const result = await controller.sendMessage('Hello')
 
-      expect(controller.messages.value.length).toBe(1)
-      expect(controller.messages.value[0]).toEqual(message)
-    })
-
-    it('should increment unread count when chat is closed', () => {
-      controller.isOpen.value = false
-      const message: ChatMessage = {
-        id: 'msg1',
-        room_id: 'room1',
-        participant_id: 'user1',
-        participant_name: 'User 1',
-        message: 'Test message',
-        timestamp: new Date().toISOString(),
-        message_type: 'text'
-      }
-
-      controller.addMessage(message)
-
-      expect(controller.unreadCount.value).toBe(1)
-    })
-
-    it('should not increment unread count when chat is open', () => {
-      controller.isOpen.value = true
-      const message: ChatMessage = {
-        id: 'msg1',
-        room_id: 'room1',
-        participant_id: 'user1',
-        participant_name: 'User 1',
-        message: 'Test message',
-        timestamp: new Date().toISOString(),
-        message_type: 'text'
-      }
-
-      controller.addMessage(message)
-
-      expect(controller.unreadCount.value).toBe(0)
-    })
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('Message is already being sent')
   })
 
-  describe('markAsRead', () => {
-    it('should reset unread count', () => {
-      controller.unreadCount.value = 5
+  it('sends file message and stores attachment metadata', async () => {
+    const controller = createController()
+    const file = new File(['hello world'], 'test.txt', { type: 'text/plain' })
 
-      controller.markAsRead()
+    const result = await controller.sendFile(file)
 
-      expect(controller.unreadCount.value).toBe(0)
-    })
+    expect(result.success).toBe(true)
+    expect(apiService.uploadChatFile).toHaveBeenCalledWith('ROOM123', 'participant-1', file)
+    expect(controller.messages.value).toHaveLength(1)
+    expect(controller.messages.value[0].message_type).toBe('file')
+    expect(controller.messages.value[0].file_name).toBe('test.txt')
+    expect(controller.messages.value[0].file_url).toBe('/uploads/test.txt')
+    expect(mockGlobalStore.addNotification).toHaveBeenCalledWith('File sent successfully', 'success', 2000)
   })
 
-  describe('clearMessages', () => {
-    it('should clear all messages and unread count', () => {
-      const message: ChatMessage = {
-        id: 'msg1',
-        room_id: 'room1',
-        participant_id: 'user1',
-        participant_name: 'User 1',
-        message: 'Test message',
-        timestamp: new Date().toISOString(),
-        message_type: 'text'
-      }
-      controller.addMessage(message)
-      controller.unreadCount.value = 1
+  it('rejects oversized files', async () => {
+    const controller = createController()
+    const huge = new File(['x'], 'huge.txt', { type: 'text/plain' })
+    Object.defineProperty(huge, 'size', { value: 51 * 1024 * 1024 })
 
-      controller.clearMessages()
+    const result = await controller.sendFile(huge)
 
-      expect(controller.messages.value.length).toBe(0)
-      expect(controller.unreadCount.value).toBe(0)
-    })
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('File size exceeds 50MB limit')
   })
 
-  describe('loadHistory', () => {
-    it('should load chat history', async () => {
-      await controller.loadHistory('room1')
+  it('rejects unsupported file types', async () => {
+    const controller = createController()
+    const bad = new File(['x'], 'malware.exe', { type: 'application/x-msdownload' })
 
-      // Currently just clears messages
-      expect(controller.messages.value.length).toBe(0)
-      expect(controller.error.value).toBeNull()
-    })
+    const result = await controller.sendFile(bad)
 
-    it('should handle load history errors', async () => {
-      // Mock error scenario
-      const originalLoadHistory = controller.loadHistory
-      controller.loadHistory = vi.fn().mockRejectedValue(new Error('Load failed'))
-
-      try {
-        await controller.loadHistory('room1')
-      } catch (error) {
-        // Error handling is done internally
-      }
-
-      // Restore
-      controller.loadHistory = originalLoadHistory
-    })
+    expect(result.success).toBe(false)
+    expect(result.error).toBe('File type not allowed')
   })
 
-  describe('computed properties', () => {
-    it('should compute hasUnreadMessages correctly', () => {
-      expect(controller.hasUnreadMessages.value).toBe(false)
+  it('loads and normalizes chat history (including attachment url variants)', async () => {
+    vi.mocked(apiService.getChatHistory).mockResolvedValue({
+      data: {
+        success: true,
+        messages: [
+          {
+            id: 'h1',
+            room_id: 'ROOM123',
+            sender_id: 'participant-2',
+            content: 'File one',
+            message_type: 'file',
+            created_at: '2026-02-23T12:01:00.000Z',
+            attachments: [
+              {
+                id: 'a1',
+                original_filename: 'a.txt',
+                file_size: 10,
+                file: '/files/a.txt',
+              },
+            ],
+            participant: { display_name: 'Alice' },
+          },
+          {
+            id: 'h2',
+            room_id: 'ROOM123',
+            sender_id: 'participant-3',
+            content: 'File two',
+            message_type: 'file',
+            created_at: '2026-02-23T12:02:00.000Z',
+            attachments: [
+              {
+                id: 'a2',
+                original_filename: 'b.txt',
+                file_size: 20,
+                file: { url: '/files/b.txt' },
+              },
+            ],
+            participant: { display_name: 'Bob' },
+          },
+        ],
+      },
+    } as any)
 
-      controller.unreadCount.value = 1
-      expect(controller.hasUnreadMessages.value).toBe(true)
+    const controller = createController()
+    await controller.loadHistory()
 
-      controller.unreadCount.value = 0
-      expect(controller.hasUnreadMessages.value).toBe(false)
-    })
-
-    it('should compute lastMessage correctly', () => {
-      expect(controller.lastMessage.value).toBeNull()
-
-      const message1: ChatMessage = {
-        id: 'msg1',
-        room_id: 'room1',
-        participant_id: 'user1',
-        participant_name: 'User 1',
-        message: 'First message',
-        timestamp: new Date().toISOString(),
-        message_type: 'text'
-      }
-      controller.addMessage(message1)
-      expect(controller.lastMessage.value).toEqual(message1)
-
-      const message2: ChatMessage = {
-        id: 'msg2',
-        room_id: 'room1',
-        participant_id: 'user2',
-        participant_name: 'User 2',
-        message: 'Second message',
-        timestamp: new Date().toISOString(),
-        message_type: 'text'
-      }
-      controller.addMessage(message2)
-      expect(controller.lastMessage.value).toEqual(message2)
-    })
+    expect(controller.messages.value).toHaveLength(2)
+    expect(controller.messages.value[0].file_url).toBe('/files/a.txt')
+    expect(controller.messages.value[1].file_url).toBe('/files/b.txt')
+    expect(controller.messages.value[0].participant_name).toBe('Alice')
   })
 
-  describe('reset', () => {
-    it('should reset all state', () => {
-      const message: ChatMessage = {
-        id: 'msg1',
-        room_id: 'room1',
-        participant_id: 'user1',
-        participant_name: 'User 1',
-        message: 'Test message',
-        timestamp: new Date().toISOString(),
-        message_type: 'text'
-      }
-      controller.addMessage(message)
-      controller.openChat()
-      controller.isSending.value = true
-      controller.error.value = 'Some error'
+  it('increments unread count only when chat is closed', () => {
+    const controller = createController()
+    const message: ChatMessage = {
+      id: 'm1',
+      room_id: 'ROOM123',
+      participant_id: 'participant-2',
+      participant_name: 'Remote',
+      message: 'Hi',
+      timestamp: new Date().toISOString(),
+      message_type: 'text',
+    }
 
-      controller.reset()
+    controller.addMessage(message)
+    expect(controller.unreadCount.value).toBe(1)
 
-      expect(controller.messages.value.length).toBe(0)
-      expect(controller.unreadCount.value).toBe(0)
-      expect(controller.isOpen.value).toBe(false)
-      expect(controller.isSending.value).toBe(false)
-      expect(controller.error.value).toBeNull()
+    controller.openChat()
+    controller.addMessage({ ...message, id: 'm2' })
+    expect(controller.unreadCount.value).toBe(0)
+  })
+
+  it('updateContext enables sending after dynamic context injection', async () => {
+    const controller = useRoomChatController()
+    controller.updateContext('ROOM777', 'participant-77', 'Dynamic User', websocket as unknown as WebSocket)
+
+    const result = await controller.sendMessage('Dynamic hello')
+
+    expect(result.success).toBe(true)
+    expect(apiService.sendChatMessage).toHaveBeenCalledWith(
+      'ROOM777',
+      'participant-77',
+      'Dynamic hello',
+      'text',
+      undefined
+    )
+  })
+
+  it('reset clears state', () => {
+    const controller = createController()
+    controller.addMessage({
+      id: 'm1',
+      room_id: 'ROOM123',
+      participant_id: 'participant-2',
+      participant_name: 'Remote',
+      message: 'Hi',
+      timestamp: new Date().toISOString(),
+      message_type: 'text',
     })
+    controller.openChat()
+    controller.error.value = 'err'
+
+    controller.reset()
+
+    expect(controller.messages.value).toEqual([])
+    expect(controller.unreadCount.value).toBe(0)
+    expect(controller.isOpen.value).toBe(false)
+    expect(controller.isSending.value).toBe(false)
+    expect(controller.error.value).toBeNull()
   })
 })
-
